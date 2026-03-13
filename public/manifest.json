@@ -1,0 +1,38 @@
+{
+  "name": "FinTracker",
+  "short_name": "FinTracker",
+  "description": "Personal finance forecasting — offline-first, Firebase-synced",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090f",
+  "theme_color": "#07090f",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Add Expense",
+      "url": "/?tab=expenses",
+      "description": "Log a new expense"
+    },
+    {
+      "name": "Dashboard",
+      "url": "/?tab=dashboard",
+      "description": "View your financial dashboard"
+    }
+  ]
+}
