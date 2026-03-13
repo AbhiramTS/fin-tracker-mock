@@ -12,7 +12,7 @@ export default defineConfig({
 	},
 	// Set base to "/" for a custom domain, or "/repo-name/" for GitHub Pages
 	// without a custom domain (e.g. base: "/fintracker/")
-	base: '/fintracker-mock/',
+	base: '/fin-tracker-mock/',
 	build: {
 		outDir: 'dist',
 		sourcemap: false,
