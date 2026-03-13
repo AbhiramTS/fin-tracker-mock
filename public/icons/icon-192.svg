@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-label="FinTracker icon">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#1f7a8c"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="192" height="192" rx="40" fill="url(#bg)"/>
+  <rect x="44" y="108" width="16" height="40" rx="4" fill="#9ee493"/>
+  <rect x="72" y="88" width="16" height="60" rx="4" fill="#9ee493"/>
+  <rect x="100" y="68" width="16" height="80" rx="4" fill="#9ee493"/>
+  <path d="M44 60h72" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="132" cy="60" r="20" fill="#ffffff"/>
+  <path d="M132 48v24M120 60h24" stroke="#0b1220" stroke-width="8" stroke-linecap="round"/>
+</svg>

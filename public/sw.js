@@ -2,8 +2,10 @@
 // Cache-first strategy for all GET requests
 // Offline-capable: app shell cached on install
 
-const CACHE_NAME = "fintracker-v3";
-const PRECACHE_URLS = ["/", "/index.html"];
+const CACHE_NAME = "fintracker-v4";
+const ROOT_URL = new URL("./", self.registration.scope).pathname;
+const INDEX_URL = new URL("index.html", self.registration.scope).pathname;
+const PRECACHE_URLS = [ROOT_URL, INDEX_URL];
 
 // Install: precache the app shell
 self.addEventListener("install", (event) => {
@@ -37,6 +39,11 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
   if (!event.request.url.startsWith(self.location.origin)) return;
 
+  // Keep installability metadata fresh; avoid caching manifest/SW files.
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.endsWith("manifest.json")) return;
+  if (requestUrl.pathname.endsWith("sw.js")) return;
+
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
@@ -52,7 +59,7 @@ self.addEventListener("fetch", (event) => {
         .catch(() => {
           // Fallback to index.html for navigation requests (SPA routing)
           if (event.request.mode === "navigate") {
-            return caches.match("/index.html");
+            return caches.match(INDEX_URL);
           }
         });
     })
