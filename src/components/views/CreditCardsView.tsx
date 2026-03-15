@@ -1,46 +1,45 @@
+import { Trash2 } from "lucide-react";
 import { useApp } from "@/context/AppContext";
 import { fmt, fmtDate, daysFromNow } from "@/utils/format";
-import { T } from "@/components/ui/tokens";
-import { Card, Btn, EmptyState, ProgressBar } from "@/components/ui/primitives";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { EmptyState } from "@/components/ui/empty-state";
 import { EntityView } from "./EntityView";
 import { CreditCardForm } from "@/components/forms";
 
 export function CreditCardsView() {
   const { state, remove } = useApp();
-  const totalDebt = state.creditCards.reduce((s, c) => s + (c.outstanding ?? 0), 0);
+  const totalDebt = state.creditCards.reduce((s,c)=>s+(c.outstanding??0),0);
 
   return (
-    <EntityView
-      title="Credit Cards"
-      sub={`Total debt: ${fmt(totalDebt)}`}
-      entity="creditCards"
-      FormComp={CreditCardForm}
-    >
-      {state.creditCards.length === 0 ? (
-        <EmptyState icon="💳" title="No credit cards" subtitle="Track balances, limits, and due dates" />
-      ) : (
-        state.creditCards.map(c => {
-          const util = ((c.outstanding ?? 0) / Math.max(c.limit ?? 1, 1)) * 100;
-          const days = daysFromNow(c.dueDate);
-          return (
-            <Card key={c.id}>
-              <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
-                <div style={{ fontSize:15, fontWeight:700, color:T.text }}>{c.name}</div>
-                <Btn variant="danger" small onClick={() => remove("creditCards", c.id)}>✕</Btn>
-              </div>
-              <div style={{ fontFamily:T.mono, fontSize:20, fontWeight:800, color:T.red }}>{fmt(c.outstanding)}</div>
-              <div style={{ fontSize:12, color:T.textDim, marginTop:2, marginBottom:10 }}>of {fmt(c.limit)} limit</div>
-              <ProgressBar value={util} color={util > 70 ? T.red : util > 40 ? T.yellow : T.green} height={6} />
-              <div style={{ display:"flex", justifyContent:"space-between", marginTop:7, fontSize:12 }}>
-                <span style={{ color:T.textDim }}>{util.toFixed(0)}% utilised</span>
-                <span style={{ color: days <= 3 ? T.red : T.textMuted }}>
-                  Due {days <= 0 ? "today" : `in ${days}d`} · {fmtDate(c.dueDate)}
-                </span>
-              </div>
-            </Card>
-          );
-        })
-      )}
+    <EntityView title="Credit Cards" subtitle={`Total outstanding: ${fmt(totalDebt)}`} entity="creditCards" FormComp={CreditCardForm}>
+      {state.creditCards.length===0
+        ? <EmptyState icon="💳" title="No credit cards" description="Track balances, limits, and due dates"/>
+        : state.creditCards.map(c=>{
+            const util=((c.outstanding??0)/Math.max(c.limit??1,1))*100;
+            const days=daysFromNow(c.dueDate);
+            return (
+              <Card key={c.id}>
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <p className="font-semibold">{c.name}</p>
+                    <Button size="icon-sm" variant="destructive" onClick={()=>remove("creditCards",c.id)}><Trash2 className="h-3.5 w-3.5"/></Button>
+                  </div>
+                  <p className="font-mono text-2xl font-bold text-loss">{fmt(c.outstanding)}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 mb-3">of {fmt(c.limit)} limit</p>
+                  <Progress value={util} className="h-2" indicatorClassName={util>70?"bg-loss":util>40?"bg-warning":"bg-profit"}/>
+                  <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+                    <span>{util.toFixed(0)}% utilised</span>
+                    <span className={days<=3?"text-loss":"text-muted-foreground"}>
+                      Due {days<=0?"today":`in ${days}d`} · {fmtDate(c.dueDate)}
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })
+      }
     </EntityView>
   );
 }

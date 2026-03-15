@@ -2,15 +2,10 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { registerServiceWorker } from "@/utils/pwa";
 import App from "./App";
+import "./index.css";
 
-// Register the PWA service worker
 registerServiceWorker();
 
 const root = document.getElementById("root");
-if (!root) throw new Error("#root element not found");
-
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+if (!root) throw new Error("#root not found");
+createRoot(root).render(<StrictMode><App/></StrictMode>);

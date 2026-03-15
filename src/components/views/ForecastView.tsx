@@ -2,8 +2,9 @@ import { useMemo } from "react";
 import { useApp } from "@/context/AppContext";
 import { buildForecast } from "@/utils/forecast";
 import { fmt, fmtDate, fmtDateFull } from "@/utils/format";
-import { T } from "@/components/ui/tokens";
-import { Card, Badge, EmptyState } from "@/components/ui/primitives";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ForecastChart } from "@/components/charts";
 
 export function ForecastView() {
@@ -11,41 +12,42 @@ export function ForecastView() {
   const { timeline, shortfall } = useMemo(() => buildForecast(state, 90), [state]);
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-        <h2 style={{ margin:0, fontSize:19, fontWeight:800, color:T.text }}>Forecast</h2>
-        <Badge color={shortfall ? T.red : T.green}>
-          {shortfall ? `⚠ Shortfall ${fmtDate(shortfall.date)}` : "✓ 90d Stable"}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h2 className="font-display text-xl font-bold">90-Day Forecast</h2>
+        <Badge variant={shortfall?"destructive":"profit"}>
+          {shortfall ? `⚠ Shortfall ${fmtDate(shortfall.date)}` : "✓ Stable"}
         </Badge>
       </div>
 
       {timeline.length > 0 && (
         <Card>
-          <ForecastChart timeline={timeline} height={150} />
+          <CardContent className="pt-4">
+            <ForecastChart timeline={timeline} height={160}/>
+          </CardContent>
         </Card>
       )}
 
-      {timeline.length === 0 ? (
-        <EmptyState icon="🔮" title="Nothing to forecast yet" subtitle="Add income, loans, or recurring payments" />
-      ) : (
-        timeline.map((t, i) => (
-          <Card key={i} style={{ borderLeft: `3px solid ${t.balance < 0 ? T.red : T.cyan}` }}>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-              <span style={{ fontSize:13, color:T.textMuted, fontWeight:600 }}>{fmtDateFull(t.date)}</span>
-              <span style={{ fontFamily:T.mono, fontWeight:700, color: t.balance < 0 ? T.red : T.green, fontSize:14 }}>
-                {fmt(t.balance)}
-              </span>
-            </div>
-            {t.events.map((e, j) => (
-              <div key={j} style={{ display:"flex", alignItems:"center", gap:6, marginTop:5, fontSize:12, color: e.amount > 0 ? T.green : T.red }}>
-                <span>{e.amount > 0 ? "▲" : "▼"}</span>
-                <span style={{ color:T.textMuted }}>{e.label}</span>
-                <span style={{ fontFamily:T.mono, marginLeft:"auto" }}>{fmt(Math.abs(e.amount))}</span>
+      {timeline.length===0
+        ? <EmptyState icon="🔮" title="Nothing to forecast" description="Add recurring income, payments, or loan EMIs to build a forecast"/>
+        : timeline.map((t,i)=>(
+          <Card key={i} className={`border-l-2 ${t.balance<0?"border-l-loss":"border-l-primary"}`}>
+            <CardContent className="p-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-semibold text-muted-foreground">{fmtDateFull(t.date)}</span>
+                <span className={`font-mono font-bold ${t.balance<0?"text-loss":"text-profit"}`}>{fmt(t.balance)}</span>
               </div>
-            ))}
+              {t.events.map((e,j)=>(
+                <div key={j} className="flex items-center gap-2 mt-2 text-xs">
+                  <span className={e.amount>0?"text-profit":"text-loss"}>{e.amount>0?"▲":"▼"}</span>
+                  <span className="text-muted-foreground">{e.label}</span>
+                  <span className="font-mono ml-auto">{fmt(Math.abs(e.amount))}</span>
+                </div>
+              ))}
+            </CardContent>
           </Card>
         ))
-      )}
+      }
     </div>
   );
 }

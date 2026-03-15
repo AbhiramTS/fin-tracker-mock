@@ -1,319 +1,175 @@
-import { useState, useEffect } from 'react';
-import { useApp } from '@/context/AppContext';
-import { T } from '@/components/ui/tokens';
-import { Card, Badge, Btn, FInput, QRCodeCanvas } from '@/components/ui/primitives';
-import { Modal } from '@/components/ui/Modal';
-import type { FirebaseConfig } from '@/types';
+import { useState, useEffect, useRef } from "react";
+import { useApp } from "@/context/AppContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { FormField } from "@/components/ui/form-field";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { renderQR } from "@/qr/qrcode";
+import type { FirebaseConfig } from "@/types";
 
-// ── Firebase config form ──────────────────────────────────────────────────────
-function FirebaseConfigForm({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void }) {
-	const [pasting, setPasting] = useState(false);
-	const [raw, setRaw] = useState('');
-	const [cfg, setCfg] = useState<Partial<FirebaseConfig>>({
-		apiKey: '',
-		authDomain: '',
-		projectId: '',
-		appId: '',
-	});
-	const [err, setErr] = useState('');
-
-	const go = () => {
-		try {
-			let parsed: Partial<FirebaseConfig> = cfg;
-			if (pasting) {
-				// Accept both JSON and JS object literal (e.g. copied from Firebase console)
-				const cleaned = raw
-					.trim()
-					.replace(/^const\s+\w+\s*=\s*/, '')
-					.replace(/;\s*$/, '')
-					.replace(/([{,]\s*[\r\n]*\s*)(\w+)\s*:/g, '$1"$2":')
-					.replace(/'/g, '"');
-				parsed = JSON.parse(cleaned) as Partial<FirebaseConfig>;
-			}
-			if (!parsed.apiKey || !parsed.projectId) {
-				setErr('apiKey and projectId are required');
-				return;
-			}
-			setErr('');
-			onConnect(parsed as FirebaseConfig);
-		} catch {
-			setErr('Parse error — paste the raw config object from Firebase Console.');
-		}
-	};
-
-	return (
-		<div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-			<div style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
-				{(['Fields', 'Paste JSON'] as const).map((label, i) => (
-					<button
-						key={label}
-						onClick={() => setPasting(i === 1)}
-						style={{
-							flex: 1,
-							background: pasting === (i === 1) ? T.cyan : 'transparent',
-							color: pasting === (i === 1) ? T.bg : T.textMuted,
-							border: `1px solid ${pasting === (i === 1) ? T.cyan : T.border}`,
-							borderRadius: 8,
-							padding: '6px',
-							fontSize: 12,
-							fontWeight: 700,
-							cursor: 'pointer',
-						}}>
-						{label}
-					</button>
-				))}
-			</div>
-
-			{pasting ? (
-				<div>
-					<label
-						style={{
-							fontSize: 11,
-							color: T.textMuted,
-							fontWeight: 700,
-							letterSpacing: 0.6,
-							textTransform: 'uppercase',
-							display: 'block',
-							marginBottom: 5,
-						}}>
-						Paste Firebase Config Object
-					</label>
-					<textarea
-						value={raw}
-						onChange={(e) => setRaw(e.target.value)}
-						placeholder={
-							'{\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "..."\n}'
-						}
-						style={{
-							background: T.surface,
-							border: `1px solid ${T.border}`,
-							borderRadius: 8,
-							padding: '9px 11px',
-							color: T.text,
-							fontSize: 12,
-							outline: 'none',
-							fontFamily: T.mono,
-							width: '100%',
-							boxSizing: 'border-box',
-							minHeight: 120,
-							resize: 'vertical',
-						}}
-					/>
-				</div>
-			) : (
-				<>
-					<FInput
-						label="API Key"
-						value={cfg.apiKey ?? ''}
-						onChange={(e) => setCfg({ ...cfg, apiKey: e.target.value })}
-						placeholder="AIzaSy..."
-					/>
-					<FInput
-						label="Auth Domain"
-						value={cfg.authDomain ?? ''}
-						onChange={(e) => setCfg({ ...cfg, authDomain: e.target.value })}
-						placeholder="app.firebaseapp.com"
-					/>
-					<FInput
-						label="Project ID"
-						value={cfg.projectId ?? ''}
-						onChange={(e) => setCfg({ ...cfg, projectId: e.target.value })}
-						placeholder="your-project-id"
-					/>
-					<FInput
-						label="App ID"
-						value={cfg.appId ?? ''}
-						onChange={(e) => setCfg({ ...cfg, appId: e.target.value })}
-						placeholder="1:123:web:abc"
-					/>
-				</>
-			)}
-
-			{err && <div style={{ fontSize: 12, color: T.red }}>{err}</div>}
-			<Btn
-				variant="firebase"
-				onClick={go}
-				full>
-				🔥 Connect Firebase
-			</Btn>
-			<div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.6 }}>
-				Firebase Console → Project Settings → Your apps → SDK setup &amp; configuration
-			</div>
-		</div>
-	);
+function QRCanvas({ data, size = 220 }: { data: string; size?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (ref.current && data) renderQR(ref.current, data, size).catch(console.error);
+  }, [data, size]);
+  return <canvas ref={ref} className="rounded-xl block"/>;
 }
 
-// ── SettingsView ──────────────────────────────────────────────────────────────
+function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void }) {
+  const [raw, setRaw] = useState("");
+  const [cfg, setCfg] = useState<Partial<FirebaseConfig>>({ apiKey:"", authDomain:"", projectId:"", appId:"" });
+  const [err, setErr] = useState("");
+  const [mode, setMode] = useState<"fields"|"paste">("fields");
+
+  const connect = () => {
+    try {
+      let parsed: Partial<FirebaseConfig> = cfg;
+      if (mode==="paste") {
+        const clean = raw.trim().replace(/^const\s+\w+\s*=\s*/,"").replace(/;$/,"")
+          .replace(/(\w+)\s*:/g,'"$1":').replace(/'/g,'"');
+        parsed = JSON.parse(clean);
+      }
+      if (!parsed.apiKey || !parsed.projectId) { setErr("apiKey and projectId are required"); return; }
+      setErr(""); onConnect(parsed as FirebaseConfig);
+    } catch { setErr("Could not parse config — try the Paste tab and paste the raw object."); }
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Tabs value={mode} onValueChange={v=>setMode(v as "fields"|"paste")}>
+        <TabsList className="w-full"><TabsTrigger value="fields" className="flex-1">Fields</TabsTrigger><TabsTrigger value="paste" className="flex-1">Paste JSON</TabsTrigger></TabsList>
+        <TabsContent value="fields">
+          <div className="flex flex-col gap-2">
+            <FormField label="API Key"><Input value={cfg.apiKey??""} onChange={e=>setCfg({...cfg,apiKey:e.target.value})} placeholder="AIzaSy..."/></FormField>
+            <FormField label="Auth Domain"><Input value={cfg.authDomain??""} onChange={e=>setCfg({...cfg,authDomain:e.target.value})} placeholder="app.firebaseapp.com"/></FormField>
+            <FormField label="Project ID"><Input value={cfg.projectId??""} onChange={e=>setCfg({...cfg,projectId:e.target.value})}/></FormField>
+            <FormField label="App ID"><Input value={cfg.appId??""} onChange={e=>setCfg({...cfg,appId:e.target.value})} placeholder="1:123:web:abc"/></FormField>
+          </div>
+        </TabsContent>
+        <TabsContent value="paste">
+          <Textarea value={raw} onChange={e=>setRaw(e.target.value)} rows={6} placeholder={'{\n  apiKey: "...",\n  authDomain: "...",\n  projectId: "..."\n}'}/>
+        </TabsContent>
+      </Tabs>
+      {err && <p className="text-xs text-destructive">{err}</p>}
+      <Button variant="firebase" onClick={connect} className="w-full">🔥 Connect Firebase</Button>
+      <p className="text-xs text-muted-foreground">Firebase Console → Project Settings → Your apps → SDK setup</p>
+    </div>
+  );
+}
+
 export function SettingsView() {
-	const { state, connectFirebase } = useApp();
-	const [connected, setConnected] = useState(() => !!localStorage.getItem('ft_firebase_config'));
-	const [showQR, setShowQR] = useState(false);
-	const [qrData, setQrData] = useState('');
+  const { state, connectFirebase } = useApp();
+  const [connected, setConnected]  = useState(()=>!!localStorage.getItem("ft_firebase_config"));
+  const [showQR,    setShowQR]     = useState(false);
+  const [qrData,    setQrData]     = useState("");
 
-	// On initial load, handle ?fbc= QR param (mobile auto-connect)
-	// (AppContext also handles this; this is just the UI feedback)
-	useEffect(() => {
-		if (localStorage.getItem('ft_firebase_config')) setConnected(true);
-	}, [state.syncStatus]);
+  const showQRModal = () => {
+    const cfg = localStorage.getItem("ft_firebase_config");
+    if (!cfg) return;
+    setQrData(`${window.location.href.split("?")[0]}?fbc=${btoa(cfg)}`);
+    setShowQR(true);
+  };
 
-	const showQRModal = () => {
-		const cfg = localStorage.getItem('ft_firebase_config');
-		if (!cfg) return;
-		const base = window.location.href.split('?')[0];
-		setQrData(`${base}?fbc=${btoa(cfg)}`);
-		setShowQR(true);
-	};
+  const disconnect = () => { localStorage.removeItem("ft_firebase_config"); setConnected(false); window.location.reload(); };
 
-	const disconnect = () => {
-		localStorage.removeItem('ft_firebase_config');
-		setConnected(false);
-		window.location.reload();
-	};
+  return (
+    <div className="flex flex-col gap-4">
+      <h2 className="font-display text-xl font-bold">Settings</h2>
 
-	return (
-		<div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-			<h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: T.text }}>Settings</h2>
+      {/* Firebase */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle>🔥 Firebase Sync</CardTitle>
+            {connected && <Badge variant="profit">Live</Badge>}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {connected ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">Real-time sync is active. Changes propagate to all connected devices instantly.</p>
+              <div className="flex gap-2">
+                <Button className="flex-1" onClick={showQRModal}>📱 QR Sync Code</Button>
+                <Button variant="destructive" onClick={disconnect}>Disconnect</Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-muted-foreground">Connect Firestore for real-time sync across all your devices. Data lives in IndexedDB first — Firebase is the cloud layer only.</p>
+              <FirebaseSetup onConnect={async cfg=>{await connectFirebase(cfg);setConnected(true);}}/>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-			{/* Firebase section */}
-			<Card>
-				<div
-					style={{
-						display: 'flex',
-						justifyContent: 'space-between',
-						alignItems: 'center',
-						marginBottom: 10,
-					}}>
-					<div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
-						🔥 Firebase Sync
-					</div>
-					{connected && <Badge color={T.green}>Live</Badge>}
-				</div>
+      {/* QR Modal */}
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Scan on Your Phone</DialogTitle></DialogHeader>
+          <div className="flex flex-col items-center gap-4 p-5">
+            <div className="rounded-2xl bg-white p-4 shadow-lg shadow-primary/20">
+              <QRCanvas data={qrData} size={220}/>
+            </div>
+            <div className="text-sm text-muted-foreground text-center space-y-2">
+              <p>Scan this QR to open FinTracker on your phone with Firebase already connected.</p>
+              <p className="text-warning font-semibold">⚠ Contains your Firebase config. Only scan on your own devices.</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-				{connected ? (
-					<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-						<div style={{ fontSize: 13, color: T.textMuted }}>
-							Real-time sync is active. Changes propagate to all devices instantly.
-						</div>
-						<div style={{ display: 'flex', gap: 8 }}>
-							<Btn
-								variant="primary"
-								onClick={showQRModal}
-								style={{ flex: 1 }}>
-								📱 Sync QR Code
-							</Btn>
-							<Btn
-								variant="danger"
-								onClick={disconnect}>
-								Disconnect
-							</Btn>
-						</div>
-					</div>
-				) : (
-					<>
-						<div
-							style={{
-								fontSize: 13,
-								color: T.textMuted,
-								marginBottom: 14,
-								lineHeight: 1.6,
-							}}>
-							Connect Firestore to sync across devices in real-time. Data is saved to
-							IndexedDB first — Firebase is the cloud layer only.
-						</div>
-						<FirebaseConfigForm
-							onConnect={async (cfg) => {
-								await connectFirebase(cfg);
-								setConnected(true);
-							}}
-						/>
-					</>
-				)}
-			</Card>
+      {/* PWA */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>📱 Install as App</CardTitle></CardHeader>
+        <CardContent>
+          <div className="text-sm text-muted-foreground space-y-1.5">
+            <p><span className="font-semibold text-foreground">iOS Safari:</span> Share → Add to Home Screen</p>
+            <p><span className="font-semibold text-foreground">Android Chrome:</span> ⋮ → Add to Home Screen</p>
+            <p><span className="font-semibold text-foreground">Desktop Chrome / Edge:</span> Install icon in address bar</p>
+          </div>
+        </CardContent>
+      </Card>
 
-			{/* QR modal */}
-			{showQR && (
-				<Modal
-					title="Scan on Mobile"
-					onClose={() => setShowQR(false)}>
-					<div
-						style={{
-							display: 'flex',
-							flexDirection: 'column',
-							alignItems: 'center',
-							gap: 16,
-							padding: '8px 0',
-						}}>
-						<div
-							style={{
-								background: '#fff',
-								padding: 16,
-								borderRadius: 16,
-								boxShadow: `0 0 40px ${T.cyan}30`,
-							}}>
-							<QRCodeCanvas
-								data={qrData}
-								size={220}
-							/>
-						</div>
-						<div
-							style={{
-								fontSize: 13,
-								color: T.textMuted,
-								textAlign: 'center',
-								lineHeight: 1.7,
-							}}>
-							Scan with your phone to open FinTracker with Firebase already connected.
-							<br />
-							<br />
-							<strong style={{ color: T.yellow }}>
-								⚠ Contains your Firebase config.
-							</strong>
-							<br />
-							Only share with your own devices.
-						</div>
-					</div>
-				</Modal>
-			)}
+      {/* Architecture */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>💾 Data & Storage</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground mb-3">All data is stored in <span className="text-cyan font-semibold">IndexedDB</span> on your device first. The app works fully offline. Firebase is an optional sync layer.</p>
+          <code className="text-xs text-cyan bg-muted rounded-md px-2 py-1 block font-mono">IDB → Repository → SyncQueue → Firebase</code>
+        </CardContent>
+      </Card>
 
-			{/* PWA install hints */}
-			<Card>
-				<div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 8 }}>
-					📱 Install as PWA
-				</div>
-				<div style={{ fontSize: 13, color: T.textMuted, lineHeight: 1.8 }}>
-					<strong style={{ color: T.text }}>iOS Safari:</strong> Share → Add to Home
-					Screen
-					<br />
-					<strong style={{ color: T.text }}>Android Chrome:</strong> ⋮ → Add to Home
-					Screen
-					<br />
-					<strong style={{ color: T.text }}>Desktop Chrome/Edge:</strong> Install icon in
-					address bar
-				</div>
-			</Card>
-
-			{/* Architecture note */}
-			<Card>
-				<div style={{ fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 8 }}>
-					💾 Architecture
-				</div>
-				<div style={{ fontSize: 13, color: T.textMuted, lineHeight: 1.8 }}>
-					All data lives in <strong style={{ color: T.cyan }}>IndexedDB</strong> first.
-					Firebase is the sync layer — not the primary store. Fully offline-capable.
-					<br />
-					<br />
-					<code
-						style={{
-							fontSize: 11,
-							color: T.cyan,
-							background: T.surface,
-							padding: '3px 7px',
-							borderRadius: 5,
-						}}>
-						IDB → Repository → SyncQueue → Firebase
-					</code>
-				</div>
-			</Card>
-		</div>
-	);
+      {/* Stats */}
+      <Card>
+        <CardHeader className="pb-2"><CardTitle>📊 Data Summary</CardTitle></CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            {[
+              ["Accounts", state.accounts.length],
+              ["Expenses", state.expenses.length],
+              ["Incomes", state.incomes.length],
+              ["Transfers", state.transfers.length],
+              ["Recurring Payments", state.recurringPayments.length],
+              ["Recurring Incomes", state.recurringIncomes.length],
+              ["Loans", state.loans.length],
+              ["Credit Cards", state.creditCards.length],
+              ["Receivables", state.receivables.length],
+              ["Investments", state.investments.length],
+              ["Goals", state.goals.length],
+              ["Reconciliations", state.reconciliations.length],
+            ].map(([label,count])=>(
+              <div key={label as string} className="flex justify-between rounded-lg bg-muted/40 px-3 py-2">
+                <span className="text-muted-foreground text-xs">{label}</span>
+                <span className="font-mono font-semibold text-xs">{count}</span>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

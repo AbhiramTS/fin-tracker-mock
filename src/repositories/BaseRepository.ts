@@ -1,7 +1,7 @@
 import { dbGetAll, dbPut, dbDelete } from "@/db/indexedDB";
-import { enqueueChange }             from "@/sync/syncQueue";
-import { generateId }                from "@/utils/id";
-import type { BaseRecord }           from "@/types";
+import { enqueueChange } from "@/sync/syncQueue";
+import { generateId } from "@/utils/id";
+import type { BaseRecord } from "@/types";
 
 export class BaseRepository<T extends BaseRecord> {
   constructor(protected readonly storeName: string) {}
@@ -13,7 +13,7 @@ export class BaseRepository<T extends BaseRecord> {
     const saved = {
       ...record,
       id:        record.id ?? generateId(),
-      createdAt: record.createdAt ?? new Date().toISOString(),
+      createdAt: (record as Partial<BaseRecord>).createdAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     } as T;
     await dbPut(this.storeName, saved);

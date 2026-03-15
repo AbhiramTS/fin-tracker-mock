@@ -1,57 +1,37 @@
-import {
-  createContext, useContext, useReducer, useEffect,
-  useCallback, type ReactNode,
-} from "react";
-import { openDB }                  from "@/db/indexedDB";
-import { Repos }                   from "@/repositories";
-import { registerSyncAdapter }     from "@/sync/syncQueue";
-import { FirebaseSyncAdapter }     from "@/sync/FirebaseSyncAdapter";
-import type {
-  AppState, AppAction, EntityName, BaseRecord, FirebaseConfig,
-} from "@/types";
-
-// ── Initial state ─────────────────────────────────────────────────────────────
+import { createContext, useContext, useReducer, useEffect, useCallback, type ReactNode } from "react";
+import { openDB } from "@/db/indexedDB";
+import { Repos } from "@/repositories";
+import { registerSyncAdapter } from "@/sync/syncQueue";
+import { FirebaseSyncAdapter } from "@/sync/FirebaseSyncAdapter";
+import type { AppState, AppAction, EntityName, BaseRecord, FirebaseConfig } from "@/types";
 
 const INITIAL: AppState = {
-  accounts: [], expenses: [], incomes: [], recurringPayments: [],
-  loans: [], creditCards: [], investments: [],
+  accounts: [], expenses: [], incomes: [], transfers: [],
+  recurringPayments: [], recurringIncomes: [],
+  loans: [], creditCards: [],
+  receivables: [], repaymentRecords: [],
+  investments: [], reconciliations: [], goals: [],
   loading: true, error: null, syncStatus: "idle",
 };
 
-// ── Reducer ───────────────────────────────────────────────────────────────────
-
 function reducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
-    case "LOAD_ALL":
-      return { ...state, ...action.payload, loading: false };
-    case "SET_ERROR":
-      return { ...state, error: action.payload, loading: false };
-    case "SET_SYNC":
-      return { ...state, syncStatus: action.payload };
+    case "LOAD_ALL":      return { ...state, ...action.payload, loading: false };
+    case "SET_ERROR":     return { ...state, error: action.payload, loading: false };
+    case "SET_SYNC":      return { ...state, syncStatus: action.payload };
     case "UPSERT": {
       const { entity, record } = action.payload;
-      const list = state[entity] as BaseRecord[];
+      const list = (state[entity] as BaseRecord[]) ?? [];
       const idx  = list.findIndex((r) => r.id === record.id);
-      return {
-        ...state,
-        [entity]: idx >= 0 ? list.map((r) => (r.id === record.id ? record : r)) : [...list, record],
-      };
+      return { ...state, [entity]: idx >= 0 ? list.map((r) => r.id === record.id ? record : r) : [...list, record] };
     }
     case "REMOVE":
-      return {
-        ...state,
-        [action.payload.entity]: (state[action.payload.entity] as BaseRecord[]).filter(
-          (r) => r.id !== action.payload.id,
-        ),
-      };
+      return { ...state, [action.payload.entity]: ((state[action.payload.entity] as BaseRecord[]) ?? []).filter((r) => r.id !== action.payload.id) };
     case "RELOAD_ENTITY":
       return { ...state, [action.payload.entity]: action.payload.records };
-    default:
-      return state;
+    default: return state;
   }
 }
-
-// ── Context interface ─────────────────────────────────────────────────────────
 
 interface AppContextValue {
   state: AppState;
@@ -61,8 +41,6 @@ interface AppContextValue {
 }
 
 const AppCtx = createContext<AppContextValue | null>(null);
-
-// ── Provider ──────────────────────────────────────────────────────────────────
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, INITIAL);
@@ -74,16 +52,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "RELOAD_ENTITY", payload: { entity: entity as EntityName, records } });
   }, []);
 
-  // Load all data from IndexedDB on mount + restore saved Firebase config
   useEffect(() => {
     (async () => {
       try {
         await openDB();
         const entries = await Promise.all(
-          Object.entries(Repos).map(async ([key, repo]) => [key, await repo.getAll()]),
+          Object.entries(Repos).map(async ([k, r]) => [k, await r.getAll()])
         );
         dispatch({ type: "LOAD_ALL", payload: Object.fromEntries(entries) });
 
+        // Restore saved Firebase config
         const saved = localStorage.getItem("ft_firebase_config");
         if (saved) {
           const cfg = JSON.parse(saved) as FirebaseConfig;
@@ -92,9 +70,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           dispatch({ type: "SET_SYNC", payload: "firebase" });
         }
 
-        // Handle ?fbc= QR link (mobile auto-connect)
-        const params = new URLSearchParams(window.location.search);
-        const fbc = params.get("fbc");
+        // Handle ?fbc= QR param (mobile auto-connect)
+        const fbc = new URLSearchParams(window.location.search).get("fbc");
         if (fbc && !saved) {
           try {
             const cfg = JSON.parse(atob(fbc)) as FirebaseConfig;

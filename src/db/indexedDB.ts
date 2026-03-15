@@ -1,21 +1,22 @@
-// ─────────────────────────────────────────────────────────────────────────────
-//  db/indexedDB.ts  –  Low-level IndexedDB wrapper
-//  All application code talks to Repositories, not this file directly.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DB_NAME    = "fintracker_v3";
+const DB_NAME = "fintracker_v4";
 const DB_VERSION = 1;
 
 interface StoreDef { keyPath: string; indexes: string[]; }
 
 export const STORE_DEFS: Record<string, StoreDef> = {
-  accounts:          { keyPath: "id",      indexes: [] },
-  expenses:          { keyPath: "id",      indexes: ["date", "accountId", "category"] },
-  incomes:           { keyPath: "id",      indexes: ["accountId"] },
-  recurringPayments: { keyPath: "id",      indexes: ["nextDate", "accountId"] },
-  loans:             { keyPath: "id",      indexes: ["accountId"] },
-  creditCards:       { keyPath: "id",      indexes: [] },
-  investments:       { keyPath: "id",      indexes: ["type"] },
+  accounts:          { keyPath: "id", indexes: [] },
+  expenses:          { keyPath: "id", indexes: ["date","accountId","category"] },
+  incomes:           { keyPath: "id", indexes: ["date","accountId"] },
+  transfers:         { keyPath: "id", indexes: ["date","fromAccountId","toAccountId"] },
+  recurringPayments: { keyPath: "id", indexes: ["nextDate","accountId"] },
+  recurringIncomes:  { keyPath: "id", indexes: ["nextDate","accountId"] },
+  loans:             { keyPath: "id", indexes: ["accountId","loanType"] },
+  creditCards:       { keyPath: "id", indexes: [] },
+  receivables:       { keyPath: "id", indexes: ["accountId"] },
+  repaymentRecords:  { keyPath: "id", indexes: ["receivableId","date"] },
+  investments:       { keyPath: "id", indexes: ["type"] },
+  reconciliations:   { keyPath: "id", indexes: ["accountId","reconciledDate"] },
+  goals:             { keyPath: "id", indexes: ["type","status"] },
   syncQueue:         { keyPath: "queueId", indexes: ["entity"] },
 };
 
@@ -29,8 +30,8 @@ export function openDB(): Promise<IDBDatabase> {
       const db = (e.target as IDBOpenDBRequest).result;
       for (const [name, cfg] of Object.entries(STORE_DEFS)) {
         if (!db.objectStoreNames.contains(name)) {
-          const store = db.createObjectStore(name, { keyPath: cfg.keyPath });
-          cfg.indexes.forEach((idx) => store.createIndex(idx, idx, { unique: false }));
+          const s = db.createObjectStore(name, { keyPath: cfg.keyPath });
+          cfg.indexes.forEach((idx) => s.createIndex(idx, idx, { unique: false }));
         }
       }
     };
@@ -39,21 +40,16 @@ export function openDB(): Promise<IDBDatabase> {
   });
 }
 
-function r2p<T>(request: IDBRequest<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    request.onsuccess = (e) => resolve((e.target as IDBRequest<T>).result);
-    request.onerror   = (e) => reject((e.target as IDBRequest).error);
-  });
-}
+const r2p = <T>(r: IDBRequest<T>) => new Promise<T>((res, rej) => {
+  r.onsuccess = (e) => res((e.target as IDBRequest<T>).result);
+  r.onerror   = (e) => rej((e.target as IDBRequest).error);
+});
 
-export async function dbGetAll<T>(store: string): Promise<T[]> {
-  return r2p((await openDB()).transaction(store).objectStore(store).getAll() as IDBRequest<T[]>);
-}
+export const dbGetAll = async <T>(s: string): Promise<T[]> =>
+  r2p((await openDB()).transaction(s).objectStore(s).getAll() as IDBRequest<T[]>);
 
-export async function dbPut<T>(store: string, record: T): Promise<IDBValidKey> {
-  return r2p((await openDB()).transaction(store, "readwrite").objectStore(store).put(record));
-}
+export const dbPut = async <T>(s: string, rec: T): Promise<IDBValidKey> =>
+  r2p((await openDB()).transaction(s, "readwrite").objectStore(s).put(rec));
 
-export async function dbDelete(store: string, key: IDBValidKey): Promise<undefined> {
-  return r2p((await openDB()).transaction(store, "readwrite").objectStore(store).delete(key) as IDBRequest<undefined>);
-}
+export const dbDelete = async (s: string, k: IDBValidKey): Promise<undefined> =>
+  r2p((await openDB()).transaction(s, "readwrite").objectStore(s).delete(k) as IDBRequest<undefined>);

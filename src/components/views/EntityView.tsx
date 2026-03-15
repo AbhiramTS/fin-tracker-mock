@@ -1,73 +1,56 @@
-import { useState, type ComponentType, type ReactNode } from 'react';
-import { Btn } from '@/components/ui/primitives';
-import { Modal } from '@/components/ui/Modal';
-import { T } from '@/components/ui/tokens';
-import { useApp } from '@/context/AppContext';
-import type { EntityName, BaseRecord } from '@/types';
+import { useState, type ComponentType, type ReactNode } from "react";
+import { Plus } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useApp } from "@/context/AppContext";
+import type { EntityName, BaseRecord } from "@/types";
 
-type BaseFormProps<TRecord extends BaseRecord> = {
-	initialData?: Partial<TRecord>;
-	onSave: (data: Partial<TRecord>) => void;
-	onCancel: () => void;
-};
-
-interface EntityViewProps<TRecord extends BaseRecord, TExtraFormProps extends object = {}> {
-	title: string;
-	sub?: string;
-	entity: EntityName;
-	FormComp: ComponentType<BaseFormProps<TRecord> & TExtraFormProps>;
-	formProps?: TExtraFormProps;
-	children: ReactNode;
+interface EntityViewProps<T extends BaseRecord> {
+  title: string;
+  subtitle?: string;
+  entity: EntityName;
+  FormComp: ComponentType<{ initialData?: Partial<T>; onSave: (d: Partial<T>) => void; onCancel: () => void; [k: string]: unknown }>;
+  formProps?: Record<string, unknown>;
+  formTitle?: string;
+  children: ReactNode;
+  headerRight?: ReactNode;
 }
 
-export function EntityView<TRecord extends BaseRecord, TExtraFormProps extends object = {}>({
-	title,
-	sub,
-	entity,
-	FormComp,
-	formProps = {} as TExtraFormProps,
-	children,
-}: EntityViewProps<TRecord, TExtraFormProps>) {
-	const { save } = useApp();
-	const [open, setOpen] = useState(false);
+export function EntityView<T extends BaseRecord>({ title, subtitle, entity, FormComp, formProps = {}, formTitle, children, headerRight }: EntityViewProps<T>) {
+  const { save } = useApp();
+  const [open, setOpen] = useState(false);
 
-	const handleSave = async (data: Partial<TRecord>) => {
-		await save(entity, data as Partial<BaseRecord>);
-		setOpen(false);
-	};
+  const handleSave = async (data: Partial<T>) => {
+    await save(entity, data as Partial<BaseRecord>);
+    setOpen(false);
+  };
 
-	return (
-		<div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-			<div
-				style={{
-					display: 'flex',
-					justifyContent: 'space-between',
-					alignItems: 'flex-start',
-				}}>
-				<div>
-					<h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, color: T.text }}>
-						{title}
-					</h2>
-					{sub && (
-						<div style={{ fontSize: 12, color: T.textMuted, marginTop: 2 }}>{sub}</div>
-					)}
-				</div>
-				<Btn onClick={() => setOpen(true)}>+ Add</Btn>
-			</div>
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="font-display text-xl font-bold text-foreground">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-sm text-muted-foreground">{subtitle}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          {headerRight}
+          <Button size="sm" onClick={() => setOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
+        </div>
+      </div>
 
-			{children}
+      {children}
 
-			{open && (
-				<Modal
-					title={`Add ${title}`}
-					onClose={() => setOpen(false)}>
-					<FormComp
-						{...(formProps as TExtraFormProps)}
-						onSave={handleSave}
-						onCancel={() => setOpen(false)}
-					/>
-				</Modal>
-			)}
-		</div>
-	);
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{formTitle ?? `Add ${title}`}</DialogTitle>
+          </DialogHeader>
+          <FormComp {...formProps} onSave={handleSave} onCancel={() => setOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }

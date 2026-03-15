@@ -1,121 +1,159 @@
 import { useState } from "react";
 import { useApp } from "@/context/AppContext";
 import { fmt } from "@/utils/format";
-import { T } from "@/components/ui/tokens";
-import { Card, FInput, Btn } from "@/components/ui/primitives";
+import { calculateEMI } from "@/utils/amortisation";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { FormField, FormGrid } from "@/components/ui/form-field";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
-interface SimResult {
-  safe: boolean;
-  newMonthly?: number;
-  bufferMonths?: number;
-  balanceAfter?: number;
-  monthsCovered?: number;
-}
+interface SimResult { safe: boolean; label: string; items: [string, string, string?][] }
 
 export function SimulatorView() {
   const { state } = useApp();
-  const [mode, setMode]     = useState<"loan" | "purchase">("loan");
-  const [emi, setEmi]       = useState("");
-  const [months, setMonths] = useState("");
-  const [purchase, setPurchase] = useState("");
-  const [result, setResult] = useState<SimResult | null>(null);
+  const totalBalance  = state.accounts.reduce((s,a)=>s+(a.balance??0),0);
+  const monthlyOut    = state.recurringPayments.filter(r=>r.isActive).reduce((s,r)=>s+(r.amount??0),0)
+                      + state.loans.reduce((s,l)=>s+(l.emi??0),0);
 
-  const totalBalance = state.accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
-  const monthlyOut   = state.recurringPayments.reduce((s, r) => s + (r.amount ?? 0), 0)
-                     + state.loans.reduce((s, l) => s + (l.emi ?? 0), 0);
+  // Loan simulator
+  const [lPrincipal, setLPrincipal] = useState("");
+  const [lRate,      setLRate]      = useState("");
+  const [lTenure,    setLTenure]    = useState("");
+  const [lResult,    setLResult]    = useState<SimResult|null>(null);
 
-  const simulate = () => {
-    if (mode === "loan") {
-      const emiVal = parseFloat(emi) || 0;
-      setResult({
-        newMonthly:   monthlyOut + emiVal,
-        bufferMonths: Math.floor(totalBalance / Math.max(emiVal, 1)),
-        safe:         emiVal < totalBalance * 0.15,
-      });
-    } else {
-      const spend = parseFloat(purchase) || 0;
-      const after = totalBalance - spend;
-      setResult({
-        balanceAfter:  after,
-        monthsCovered: Math.floor(after / Math.max(monthlyOut, 1)),
-        safe:          after > monthlyOut * 2,
-      });
-    }
+  // Purchase simulator
+  const [pAmount,  setPAmount]  = useState("");
+  const [pResult,  setPResult]  = useState<SimResult|null>(null);
+
+  // Recurring simulator
+  const [rAmount,  setRAmount]  = useState("");
+  const [rResult,  setRResult]  = useState<SimResult|null>(null);
+
+  const simulateLoan = () => {
+    const p = parseFloat(lPrincipal)||0, r = parseFloat(lRate)||0, t = parseInt(lTenure)||0;
+    if (!p||!t) return;
+    const emi = calculateEMI(p, r, t);
+    const newMonthly = monthlyOut + emi;
+    const bufferMonths = emi > 0 ? Math.floor(totalBalance / emi) : 999;
+    const safe = emi < totalBalance * 0.15 && bufferMonths > 6;
+    setLResult({ safe, label: safe ? "Manageable" : "Risky", items: [
+      ["Monthly EMI", fmt(emi), emi < totalBalance*0.1?"low":"high"],
+      ["New total monthly obligations", fmt(newMonthly)],
+      ["Buffer months (balance / EMI)", `${bufferMonths} months`, bufferMonths>6?"safe":"risky"],
+      ["Total interest payable", fmt(emi*t - p)],
+    ]});
   };
 
-  return (
-    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-      <h2 style={{ margin:0, fontSize:19, fontWeight:800, color:T.text }}>Simulator</h2>
+  const simulatePurchase = () => {
+    const spend = parseFloat(pAmount)||0;
+    if (!spend) return;
+    const after = totalBalance - spend;
+    const monthsCovered = monthlyOut > 0 ? Math.floor(after / monthlyOut) : 999;
+    const safe = after > monthlyOut * 3;
+    setPResult({ safe, label: safe ? "Manageable" : "Risky", items: [
+      ["Balance after purchase", fmt(after), after<0?"negative":"ok"],
+      ["Months of obligations covered", `${Math.max(0,monthsCovered)} months`, monthsCovered>3?"safe":"risky"],
+      ["Current monthly obligations", fmt(monthlyOut)],
+    ]});
+  };
 
-      <Card>
-        <div style={{ fontSize:13, color:T.textMuted, marginBottom:14 }}>
-          Model a financial decision before you commit to it.
+  const simulateRecurring = () => {
+    const amt = parseFloat(rAmount)||0;
+    if (!amt) return;
+    const newMonthly = monthlyOut + amt;
+    const safe = newMonthly < totalBalance * 0.4;
+    setRResult({ safe, label: safe ? "Manageable" : "Risky", items: [
+      ["New monthly total", fmt(newMonthly)],
+      ["% of balance per month", `${((newMonthly/Math.max(totalBalance,1))*100).toFixed(1)}%`, safe?"ok":"high"],
+      ["Annual cost", fmt(amt*12)],
+    ]});
+  };
+
+  const ResultCard = ({ result }: { result: SimResult }) => (
+    <Card className={`border-l-2 ${result.safe?"border-l-profit":"border-l-loss"}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-xl">{result.safe?"✅":"⚠️"}</span>
+          <p className={`font-bold text-lg ${result.safe?"text-profit":"text-loss"}`}>{result.label}</p>
         </div>
-
-        {/* Mode toggle */}
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {(["loan","purchase"] as const).map(m => (
-            <button key={m} onClick={() => { setMode(m); setResult(null); }} style={{
-              background: mode === m ? T.cyan : "transparent",
-              color:      mode === m ? T.bg   : T.textMuted,
-              border: `1px solid ${mode === m ? T.cyan : T.border}`,
-              borderRadius:100, padding:"5px 14px", fontSize:12, fontWeight:600, cursor:"pointer",
-            }}>
-              {m === "loan" ? "Take a Loan" : "Big Purchase"}
-            </button>
+        <div className="grid grid-cols-1 gap-2">
+          {result.items.map(([label, val, status])=>(
+            <div key={label} className="flex justify-between items-center rounded-lg bg-muted/40 p-2.5">
+              <span className="text-xs text-muted-foreground">{label}</span>
+              <span className={`font-mono text-sm font-bold ${status==="risky"||status==="high"||status==="negative"?"text-loss":status==="safe"||status==="ok"?"text-profit":"text-foreground"}`}>{val}</span>
+            </div>
           ))}
         </div>
+      </CardContent>
+    </Card>
+  );
 
-        {mode === "loan" ? (
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            <FInput label="Monthly EMI (₹)" type="number" value={emi} onChange={e => setEmi(e.target.value)} />
-            <FInput label="Tenure (months)" type="number" value={months} onChange={e => setMonths(e.target.value)} />
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h2 className="font-display text-xl font-bold">Financial Simulator</h2>
+        <p className="text-sm text-muted-foreground mt-0.5">Model the impact of decisions before you commit</p>
+      </div>
+
+      {/* Context */}
+      <Card>
+        <CardContent className="grid grid-cols-2 gap-3 p-4">
+          <div className="rounded-lg bg-muted/40 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Current Balance</p>
+            <p className="font-mono font-bold text-cyan mt-1">{fmt(totalBalance)}</p>
           </div>
-        ) : (
-          <FInput label="Purchase Amount (₹)" type="number" value={purchase} onChange={e => setPurchase(e.target.value)} />
-        )}
-
-        <Btn onClick={simulate} style={{ marginTop:14 }} full>🔮 Simulate</Btn>
+          <div className="rounded-lg bg-muted/40 p-3">
+            <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Monthly Out</p>
+            <p className="font-mono font-bold text-warning mt-1">{fmt(monthlyOut)}</p>
+          </div>
+        </CardContent>
       </Card>
 
-      {result && (
-        <Card style={{ border: `2px solid ${result.safe ? T.green : T.red}` }}>
-          <div style={{ display:"flex", gap:12, alignItems:"center", marginBottom:14 }}>
-            <span style={{ fontSize:28 }}>{result.safe ? "✅" : "⚠️"}</span>
-            <div>
-              <div style={{ fontSize:15, fontWeight:800, color: result.safe ? T.green : T.red }}>
-                {result.safe ? "Looks manageable" : "High risk"}
-              </div>
-              <div style={{ fontSize:12, color:T.textMuted }}>Based on your current data</div>
-            </div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            {mode === "loan" ? (
-              <>
-                <div style={{ background:T.surface, borderRadius:10, padding:12 }}>
-                  <div style={{ fontSize:10, color:T.textDim, textTransform:"uppercase", marginBottom:3 }}>New Monthly Out</div>
-                  <div style={{ fontFamily:T.mono, fontSize:16, fontWeight:800, color:T.yellow }}>{fmt(result.newMonthly)}</div>
-                </div>
-                <div style={{ background:T.surface, borderRadius:10, padding:12 }}>
-                  <div style={{ fontSize:10, color:T.textDim, textTransform:"uppercase", marginBottom:3 }}>Buffer Months</div>
-                  <div style={{ fontFamily:T.mono, fontSize:16, fontWeight:800, color: (result.bufferMonths ?? 0) > 3 ? T.green : T.red }}>{result.bufferMonths}</div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ background:T.surface, borderRadius:10, padding:12 }}>
-                  <div style={{ fontSize:10, color:T.textDim, textTransform:"uppercase", marginBottom:3 }}>Balance After</div>
-                  <div style={{ fontFamily:T.mono, fontSize:16, fontWeight:800, color: (result.balanceAfter ?? 0) < 0 ? T.red : T.green }}>{fmt(result.balanceAfter)}</div>
-                </div>
-                <div style={{ background:T.surface, borderRadius:10, padding:12 }}>
-                  <div style={{ fontSize:10, color:T.textDim, textTransform:"uppercase", marginBottom:3 }}>Months Covered</div>
-                  <div style={{ fontFamily:T.mono, fontSize:16, fontWeight:800, color: (result.monthsCovered ?? 0) > 2 ? T.green : T.red }}>{result.monthsCovered}</div>
-                </div>
-              </>
-            )}
-          </div>
-        </Card>
-      )}
+      <Tabs defaultValue="loan">
+        <TabsList className="w-full">
+          <TabsTrigger value="loan" className="flex-1">Loan</TabsTrigger>
+          <TabsTrigger value="purchase" className="flex-1">Purchase</TabsTrigger>
+          <TabsTrigger value="recurring" className="flex-1">Recurring</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="loan">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground mb-3">See the impact of taking a new loan or EMI commitment.</p>
+              <FormGrid>
+                <FormField label="Principal (₹)"><Input type="number" value={lPrincipal} onChange={e=>setLPrincipal(e.target.value)} placeholder="500000"/></FormField>
+                <FormField label="Rate (% p.a.)"><Input type="number" step="0.1" value={lRate} onChange={e=>setLRate(e.target.value)} placeholder="10.5"/></FormField>
+                <FormField label="Tenure (months)" span={2}><Input type="number" value={lTenure} onChange={e=>setLTenure(e.target.value)} placeholder="60"/></FormField>
+              </FormGrid>
+              <Button className="mt-3 w-full" onClick={simulateLoan}>🔮 Simulate Loan</Button>
+            </CardContent>
+          </Card>
+          {lResult && <ResultCard result={lResult}/>}
+        </TabsContent>
+
+        <TabsContent value="purchase">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground mb-3">Model a large one-off purchase and its impact on your buffer.</p>
+              <FormField label="Purchase Amount (₹)"><Input type="number" value={pAmount} onChange={e=>setPAmount(e.target.value)} placeholder="150000"/></FormField>
+              <Button className="mt-3 w-full" onClick={simulatePurchase}>🔮 Simulate Purchase</Button>
+            </CardContent>
+          </Card>
+          {pResult && <ResultCard result={pResult}/>}
+        </TabsContent>
+
+        <TabsContent value="recurring">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-sm text-muted-foreground mb-3">See what happens if you add a new monthly commitment.</p>
+              <FormField label="Monthly Amount (₹)"><Input type="number" value={rAmount} onChange={e=>setRAmount(e.target.value)} placeholder="5000"/></FormField>
+              <Button className="mt-3 w-full" onClick={simulateRecurring}>🔮 Simulate</Button>
+            </CardContent>
+          </Card>
+          {rResult && <ResultCard result={rResult}/>}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
