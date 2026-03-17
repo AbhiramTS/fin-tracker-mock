@@ -14,8 +14,9 @@ import {
 	Sliders,
 	Settings,
 	Menu,
-	X,
+	CalendarCheck,
 	Zap,
+	X,
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ import { ExpensesView } from '@/components/views/ExpensesView';
 import { IncomeView } from '@/components/views/IncomeView';
 import { TransfersView } from '@/components/views/TransfersView';
 import { RecurringView } from '@/components/views/RecurringView';
+import { PaymentsView } from '@/components/views/PaymentsView';
 import { LoansView } from '@/components/views/LoansView';
 import { CreditCardsView } from '@/components/views/CreditCardsView';
 import { ReceivablesView } from '@/components/views/ReceivablesView';
@@ -44,6 +46,7 @@ type TabId =
 	| 'income'
 	| 'transfers'
 	| 'recurring'
+	| 'payments'
 	| 'loans'
 	| 'cards'
 	| 'receivables'
@@ -64,6 +67,7 @@ interface NavItem {
 
 const NAV: NavItem[] = [
 	{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+	{ id: 'payments', label: 'Payments', icon: CalendarCheck },
 	{ id: 'forecast', label: 'Forecast', icon: TrendingUp },
 	{ id: 'simulator', label: 'Simulator', icon: Sliders },
 
@@ -76,28 +80,19 @@ const NAV: NavItem[] = [
 	{ id: 'loans', label: 'Loans & EMIs', icon: Landmark, group: 'Accounts' },
 	{ id: 'cards', label: 'Credit Cards', icon: CreditCard, group: 'Accounts' },
 	{ id: 'receivables', label: 'Money Lent', icon: Users, group: 'Accounts' },
-	{
-		id: 'investments',
-		label: 'Investments',
-		icon: BarChart3,
-		group: 'Accounts',
-	},
+	{ id: 'investments', label: 'Investments', icon: BarChart3, group: 'Accounts' },
 
 	{ id: 'goals', label: 'Goals', icon: Target, group: 'Planning' },
-	{
-		id: 'reconciliation',
-		label: 'Reconciliation',
-		icon: RefreshCw,
-		group: 'Planning',
-	},
+	{ id: 'reconciliation', label: 'Reconciliation', icon: RefreshCw, group: 'Planning' },
 
 	{ id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-const BOTTOM_IDS: TabId[] = ['dashboard', 'expenses', 'forecast', 'accounts', 'simulator'];
+const BOTTOM_IDS: TabId[] = ['dashboard', 'payments', 'expenses', 'accounts', 'forecast'];
 
 const VIEWS: Record<TabId, React.ComponentType> = {
 	dashboard: DashboardView,
+	payments: PaymentsView,
 	expenses: ExpensesView,
 	income: IncomeView,
 	transfers: TransfersView,

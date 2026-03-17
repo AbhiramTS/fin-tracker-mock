@@ -66,7 +66,7 @@ export interface RecurringPayment extends BaseRecord {
 	name: string;
 	amount: number;
 	frequency: Frequency;
-	nextDate: string;
+	nextDate: string; // next due date — advanced automatically on mark-paid
 	category: string;
 	accountId: string;
 	notes?: string;
@@ -77,10 +77,38 @@ export interface RecurringIncome extends BaseRecord {
 	name: string;
 	amount: number;
 	frequency: Frequency;
-	nextDate: string;
+	nextDate: string; // next due date — advanced automatically on mark-paid
 	accountId: string;
 	notes?: string;
 	isActive: boolean;
+}
+
+// ── Payment occurrences ───────────────────────────────────────────────────────
+// One record per scheduled payment instance (recurring, EMI, CC bill).
+// Occurrences are generated month-by-month and stored so the user can
+// mark them paid/skipped. Until marked, they remain "unpaid".
+
+export type PaymentOccurrenceStatus = 'unpaid' | 'paid' | 'skipped';
+
+export type PaymentOccurrenceKind =
+	| 'recurring_payment'
+	| 'recurring_income'
+	| 'loan_emi'
+	| 'credit_card_bill';
+
+export interface PaymentOccurrence extends BaseRecord {
+	kind: PaymentOccurrenceKind;
+	sourceId: string; // id of the RecurringPayment / Loan / CreditCard
+	dueDate: string; // yyyy-MM-dd
+	amount: number; // expected amount (positive)
+	status: PaymentOccurrenceStatus;
+	paidDate?: string; // yyyy-MM-dd, set when marked paid
+	paidAmount?: number; // actual amount paid (if different)
+	notes?: string;
+	// Denormalised display fields (avoid lookups in hot render path)
+	label: string; // e.g. "Netflix", "Home Loan EMI #7"
+	category?: string;
+	accountId?: string;
 }
 
 // ── Loans & amortisation ──────────────────────────────────────────────────────
@@ -90,13 +118,16 @@ export interface Loan extends BaseRecord {
 	name: string;
 	loanType: LoanType; // normal vs credit-card-linked (kept separate per FRD 4.4)
 	principalAmount: number;
-	interestRate: number; // annual % rate
+	interestRate: number; // annual % rate (pure interest, before tax)
 	tenureMonths: number;
 	startDate: string;
-	emi: number; // calculated or overridden
+	emi: number; // calculated or overridden (principal + interest, before tax)
 	paidMonths: number;
 	accountId: string; // bank account EMI is debited from
-	linkedCreditCardId?: string; // only for credit_card type
+	linkedCreditCardId?: string; // only for loanType "credit_card"
+	// Tax on interest component
+	taxRate?: number; // % tax levied on the interest portion (e.g. 18 for 18% GST)
+	taxIncludedInRate?: boolean; // true = interestRate already includes tax; false (default) = tax is on top
 	notes?: string;
 }
 
@@ -104,9 +135,11 @@ export interface AmortisationRow {
 	month: number;
 	date: string;
 	openingBalance: number;
-	emi: number;
+	emi: number; // base EMI (principal + interest, no tax)
 	principal: number;
 	interest: number;
+	tax: number; // tax on interest component for this period
+	totalPayable: number; // emi + tax — actual cash out for this period
 	closingBalance: number;
 	isPaid: boolean;
 }
@@ -115,10 +148,20 @@ export interface AmortisationRow {
 export interface CreditCard extends BaseRecord {
 	name: string;
 	limit: number;
-	outstanding: number; // current bill outstanding
-	dueDate: string;
-	statementDate: string; // billing cycle start
-	billingDay: number;
+	outstanding: number; // current statement outstanding (spend + CC-EMI principal)
+
+	// Billing cycle
+	statementDay: number; // day-of-month statement is generated (1–28)
+	billingCycleDays: number; // length of billing cycle in days (typically 30)
+	gracePeriodDays: number; // days after statement date to pay (typically 20–25)
+
+	// Computed / tracked
+	dueDate: string; // next payment due date (yyyy-MM-dd)
+	statementDate: string; // date of next/current statement (yyyy-MM-dd)
+
+	// Tax on interest/charges
+	taxRate?: number; // % tax on credit card interest charges (e.g. 18% GST)
+
 	notes?: string;
 }
 
@@ -245,7 +288,8 @@ export type EntityName =
 	| 'repaymentRecords'
 	| 'investments'
 	| 'reconciliations'
-	| 'goals';
+	| 'goals'
+	| 'paymentOccurrences';
 
 export type SyncStatus = 'idle' | 'firebase' | 'rest';
 
@@ -263,6 +307,7 @@ export interface AppState {
 	investments: Investment[];
 	reconciliations: Reconciliation[];
 	goals: Goal[];
+	paymentOccurrences: PaymentOccurrence[];
 	loading: boolean;
 	error: string | null;
 	syncStatus: SyncStatus;
@@ -274,10 +319,7 @@ export type AppAction =
 	| { type: 'SET_SYNC'; payload: SyncStatus }
 	| { type: 'UPSERT'; payload: { entity: EntityName; record: BaseRecord } }
 	| { type: 'REMOVE'; payload: { entity: EntityName; id: string } }
-	| {
-			type: 'RELOAD_ENTITY';
-			payload: { entity: EntityName; records: BaseRecord[] };
-	  };
+	| { type: 'RELOAD_ENTITY'; payload: { entity: EntityName; records: BaseRecord[] } };
 
 // ── Forecast types ────────────────────────────────────────────────────────────
 export interface ForecastEvent {

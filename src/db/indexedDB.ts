@@ -1,5 +1,5 @@
 const DB_NAME = 'fintracker_v4';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // bumped: added paymentOccurrences store
 
 interface StoreDef {
 	keyPath: string;
@@ -10,10 +10,7 @@ export const STORE_DEFS: Record<string, StoreDef> = {
 	accounts: { keyPath: 'id', indexes: [] },
 	expenses: { keyPath: 'id', indexes: ['date', 'accountId', 'category'] },
 	incomes: { keyPath: 'id', indexes: ['date', 'accountId'] },
-	transfers: {
-		keyPath: 'id',
-		indexes: ['date', 'fromAccountId', 'toAccountId'],
-	},
+	transfers: { keyPath: 'id', indexes: ['date', 'fromAccountId', 'toAccountId'] },
 	recurringPayments: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	recurringIncomes: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	loans: { keyPath: 'id', indexes: ['accountId', 'loanType'] },
@@ -23,6 +20,7 @@ export const STORE_DEFS: Record<string, StoreDef> = {
 	investments: { keyPath: 'id', indexes: ['type'] },
 	reconciliations: { keyPath: 'id', indexes: ['accountId', 'reconciledDate'] },
 	goals: { keyPath: 'id', indexes: ['type', 'status'] },
+	paymentOccurrences: { keyPath: 'id', indexes: ['dueDate', 'sourceId', 'status', 'kind'] },
 	syncQueue: { keyPath: 'queueId', indexes: ['entity'] },
 };
 

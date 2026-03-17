@@ -1,8 +1,10 @@
 import { useMemo } from 'react';
+import { format } from 'date-fns';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { buildForecast } from '@/utils/forecast';
-import { fmt, fmtDate, daysFromNow, fmtCompact } from '@/utils/format';
+import { fmt, fmtDate, daysFromNow, fmtCompact, todayStr } from '@/utils/format';
+import { getOccurrencesForMonth, urgencyClass, urgencyLabel } from '@/utils/recurring';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -36,30 +38,17 @@ export function DashboardView() {
 		.filter((r) => r.isActive)
 		.sort((a, b) => (a.nextDate ?? '').localeCompare(b.nextDate ?? ''))[0];
 
-	const upcoming = [
-		...state.recurringPayments
-			.filter((r) => r.isActive)
-			.map((r) => ({
-				name: r.name,
-				date: r.nextDate,
-				amount: r.amount,
-				type: 'payment',
-			})),
-		...state.creditCards.map((c) => ({
-			name: c.name + ' bill',
-			date: c.dueDate,
-			amount: c.outstanding,
-			type: 'credit',
-		})),
-		...state.loans.map((l) => ({
-			name: l.name + ' EMI',
-			date: l.startDate,
-			amount: l.emi,
-			type: 'emi',
-		})),
-	]
-		.filter((u) => u.date)
-		.sort((a, b) => a.date.localeCompare(b.date))
+	const today = new Date();
+	const thisMonthOccs = useMemo(
+		() => getOccurrencesForMonth(state, today.getFullYear(), today.getMonth()),
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+		[state]
+	);
+	const todayStr_ = todayStr();
+	// 5 soonest unpaid payment occurrences this month
+	const upcoming = thisMonthOccs
+		.filter((o) => o.kind !== 'recurring_income' && o.status === 'unpaid')
+		.sort((a, b) => a.dueDate.localeCompare(b.dueDate))
 		.slice(0, 5);
 
 	const activeGoals = state.goals.filter((g) => g.status === 'active');
@@ -301,27 +290,32 @@ export function DashboardView() {
 			{upcoming.length > 0 && (
 				<Card>
 					<CardHeader className="pb-0">
-						<CardTitle>Upcoming Payments</CardTitle>
+						<div className="flex items-center justify-between">
+							<CardTitle>Upcoming Payments</CardTitle>
+							<span className="text-xs text-muted-foreground">
+								{format(today, 'MMMM')}
+							</span>
+						</div>
 					</CardHeader>
-					<CardContent className="pt-3 flex flex-col gap-0">
-						{upcoming.map((u, i) => {
-							const days = daysFromNow(u.date);
+					<CardContent className="pt-3 flex flex-col gap-2">
+						{upcoming.map((o) => {
+							const { bg, border, text, dot } = urgencyClass(o.dueDate, o.status);
+							const label = urgencyLabel(o.dueDate);
 							return (
-								<div key={i}>
-									{i > 0 && <Separator className="my-2" />}
-									<div className="flex items-center justify-between">
-										<div>
-											<p className="text-sm font-medium">{u.name}</p>
-											<p
-												className={`text-xs ${days <= 3 ? 'text-loss' : 'text-muted-foreground'}`}>
-												{days <= 0 ? 'Today' : `In ${days}d`} ·{' '}
-												{fmtDate(u.date)}
-											</p>
-										</div>
-										<span className="font-mono text-sm font-bold text-loss">
-											{fmt(u.amount)}
-										</span>
+								<div
+									key={o.id}
+									className={`flex items-center gap-3 rounded-lg border p-3 ${bg} ${border}`}>
+									<div className={`h-2 w-2 rounded-full shrink-0 ${dot}`} />
+									<div className="flex-1 min-w-0">
+										<p className="text-sm font-medium truncate">{o.label}</p>
+										<p className={`text-[10px] font-semibold ${text}`}>
+											{label} · {fmtDate(o.dueDate)}
+										</p>
 									</div>
+									<span
+										className={`font-mono text-sm font-bold shrink-0 ${text}`}>
+										{fmt(o.amount)}
+									</span>
 								</div>
 							);
 						})}

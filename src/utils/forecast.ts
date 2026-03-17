@@ -1,5 +1,6 @@
-import { addDays, addMonths } from './format';
-import { nextEMIDate } from './amortisation';
+import { addDays } from './format';
+import { nextEMIDate, generateAmortisation, nextCreditCardDueDate } from './amortisation';
+import { format } from 'date-fns';
 import type { AppState, ForecastResult, ForecastDay, ForecastEvent } from '@/types';
 
 export function buildForecast(data: Partial<AppState>, horizonDays = 60): ForecastResult {
@@ -18,12 +19,7 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 			.filter((r) => r.isActive)
 			.forEach((inc) => {
 				if (inc.nextDate?.slice(0, 10) === ds)
-					events.push({
-						date: ds,
-						label: inc.name,
-						amount: inc.amount,
-						type: 'income',
-					});
+					events.push({ date: ds, label: inc.name, amount: inc.amount, type: 'income' });
 			});
 
 		// Recurring payments
@@ -39,27 +35,38 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 					});
 			});
 
-		// Loan EMIs
+		// Loan EMIs — use totalPayable (EMI + tax) for accurate cash-flow impact
 		(data.loans ?? []).forEach((l) => {
 			const nd = nextEMIDate(l);
-			if (nd === ds)
+			if (nd === ds) {
+				// Find the next unpaid row to get the exact totalPayable for that period
+				const nextRow = generateAmortisation(l).find((r) => !r.isPaid);
+				const outflow = nextRow ? nextRow.totalPayable : (l.emi ?? 0);
+				const taxNote =
+					(l.taxRate ?? 0) > 0 && nextRow?.tax
+						? ` (incl. ₹${nextRow.tax.toLocaleString('en-IN')} tax)`
+						: '';
 				events.push({
 					date: ds,
-					label: `${l.name} EMI`,
-					amount: -(l.emi ?? 0),
+					label: `${l.name} EMI${taxNote}`,
+					amount: -outflow,
 					type: 'emi',
 				});
+			}
 		});
 
-		// Credit card dues
+		// Credit card dues — use computed due date from billing cycle settings
 		(data.creditCards ?? []).forEach((cc) => {
-			if (cc.dueDate?.slice(0, 10) === ds)
+			// Use stored dueDate for the current cycle; fall back to computed
+			const dueDateStr = cc.dueDate?.slice(0, 10) ?? '';
+			if (dueDateStr === ds) {
 				events.push({
 					date: ds,
 					label: `${cc.name} bill`,
 					amount: -(cc.outstanding ?? 0),
 					type: 'credit',
 				});
+			}
 		});
 
 		// Goal contributions (if monthly contribution set)
@@ -90,11 +97,16 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 
 	const shortfall = timeline.find((t) => t.balance < 0) ?? null;
 
+	// Monthly obligations include EMI + tax (totalPayable) for loans
 	const monthlyObligations =
 		(data.recurringPayments ?? [])
 			.filter((r) => r.isActive)
 			.reduce((s, r) => s + (r.amount ?? 0), 0) +
-		(data.loans ?? []).reduce((s, l) => s + (l.emi ?? 0), 0) +
+		(data.loans ?? []).reduce((s, l) => {
+			// Use next period's totalPayable for an accurate obligation figure
+			const nextRow = generateAmortisation(l).find((r) => !r.isPaid);
+			return s + (nextRow ? nextRow.totalPayable : (l.emi ?? 0));
+		}, 0) +
 		(data.goals ?? [])
 			.filter((g) => g.status === 'active')
 			.reduce((s, g) => s + (g.monthlyContribution ?? 0), 0);

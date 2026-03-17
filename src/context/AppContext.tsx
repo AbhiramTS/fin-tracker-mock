@@ -26,6 +26,7 @@ const INITIAL: AppState = {
 	investments: [],
 	reconciliations: [],
 	goals: [],
+	paymentOccurrences: [],
 	loading: true,
 	error: null,
 	syncStatus: 'idle',
@@ -82,10 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		const repo = Repos[entity as EntityName];
 		if (!repo) return;
 		const records = await repo.getAll();
-		dispatch({
-			type: 'RELOAD_ENTITY',
-			payload: { entity: entity as EntityName, records },
-		});
+		dispatch({ type: 'RELOAD_ENTITY', payload: { entity: entity as EntityName, records } });
 	}, []);
 
 	useEffect(() => {

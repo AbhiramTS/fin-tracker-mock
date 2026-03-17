@@ -11,7 +11,7 @@ import {
 import { FormField, FormGrid, FormActions } from '@/components/ui/form-field';
 import { Label } from '@/components/ui/label';
 import { todayStr } from '@/utils/format';
-import { calculateEMI } from '@/utils/amortisation';
+import { calculateEMI, nextStatementDate, dueFromStatement } from '@/utils/amortisation';
 import type {
 	Account,
 	Expense,
@@ -104,11 +104,7 @@ export const GOAL_ICONS: Record<GoalType, string> = {
 };
 
 // ── Generic form props ────────────────────────────────────────────────────────
-type FP<T> = {
-	initialData?: Partial<T>;
-	onSave: (d: Partial<T>) => void;
-	onCancel: () => void;
-};
+type FP<T> = { initialData?: Partial<T>; onSave: (d: Partial<T>) => void; onCancel: () => void };
 type WithAccounts<T> = FP<T> & { accounts: Account[] };
 
 // ── AccountForm ───────────────────────────────────────────────────────────────
@@ -706,17 +702,29 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 		startDate: todayStr(),
 		accountId: accounts[0]?.id ?? '',
 		emi: 0,
+		taxRate: undefined,
+		taxIncludedInRate: false,
 		...initialData,
 	});
+
 	const computedEMI =
 		f.principalAmount && f.interestRate !== undefined && f.tenureMonths
 			? calculateEMI(f.principalAmount, f.interestRate, f.tenureMonths)
 			: 0;
+	const effectiveEMI = f.emi || computedEMI;
+	// Show estimated tax per EMI for a rough preview
+	const estMonthlyInterest =
+		computedEMI > 0 && f.principalAmount
+			? Math.round((f.principalAmount * (f.interestRate ?? 0)) / 12 / 100)
+			: 0;
+	const estTaxPerEMI =
+		f.taxRate && estMonthlyInterest ? Math.round((estMonthlyInterest * f.taxRate) / 100) : 0;
+
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.principalAmount && f.tenureMonths)
-			onSave({ ...f, emi: f.emi || computedEMI });
+		if (f.name && f.principalAmount && f.tenureMonths) onSave({ ...f, emi: effectiveEMI });
 	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -751,10 +759,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						min="0"
 						value={f.principalAmount ?? ''}
 						onChange={(e) =>
-							setF({
-								...f,
-								principalAmount: parseFloat(e.target.value) || undefined,
-							})
+							setF({ ...f, principalAmount: parseFloat(e.target.value) || undefined })
 						}
 						required
 					/>
@@ -766,10 +771,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						step="0.01"
 						value={f.interestRate ?? ''}
 						onChange={(e) =>
-							setF({
-								...f,
-								interestRate: parseFloat(e.target.value) || undefined,
-							})
+							setF({ ...f, interestRate: parseFloat(e.target.value) || undefined })
 						}
 					/>
 				</FormField>
@@ -779,10 +781,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						min="1"
 						value={f.tenureMonths ?? ''}
 						onChange={(e) =>
-							setF({
-								...f,
-								tenureMonths: parseInt(e.target.value) || undefined,
-							})
+							setF({ ...f, tenureMonths: parseInt(e.target.value) || undefined })
 						}
 						required
 					/>
@@ -812,6 +811,53 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						required
 					/>
 				</FormField>
+
+				{/* Tax section */}
+				<FormField
+					label="Tax on Interest (%)"
+					hint="e.g. 18 for 18% GST on interest. Leave blank if none.">
+					<Input
+						type="number"
+						min="0"
+						max="50"
+						step="0.01"
+						value={f.taxRate ?? ''}
+						onChange={(e) =>
+							setF({ ...f, taxRate: parseFloat(e.target.value) || undefined })
+						}
+						placeholder="e.g. 18"
+					/>
+				</FormField>
+				<FormField
+					label="Tax Included in Rate?"
+					hint="Yes = your stated rate already includes tax">
+					<Select
+						value={f.taxIncludedInRate ? 'yes' : 'no'}
+						onValueChange={(v) => setF({ ...f, taxIncludedInRate: v === 'yes' })}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="no">No — tax added on top</SelectItem>
+							<SelectItem value="yes">Yes — rate includes tax</SelectItem>
+						</SelectContent>
+					</Select>
+				</FormField>
+
+				{/* Live tax preview */}
+				{estTaxPerEMI > 0 && (
+					<div className="col-span-2 rounded-lg bg-warning/10 border border-warning/25 p-3 text-xs text-warning">
+						Estimated tax per EMI:{' '}
+						<span className="font-mono font-bold">
+							₹{estTaxPerEMI.toLocaleString('en-IN')}
+						</span>{' '}
+						· Total monthly outflow:{' '}
+						<span className="font-mono font-bold">
+							₹{(effectiveEMI + estTaxPerEMI).toLocaleString('en-IN')}
+						</span>
+					</div>
+				)}
+
 				<FormField
 					label="Debit Account"
 					span={2}>
@@ -853,15 +899,47 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 		name: '',
 		limit: undefined,
 		outstanding: 0,
+		statementDay: 1,
+		billingCycleDays: 30,
+		gracePeriodDays: 20,
 		dueDate: todayStr(),
 		statementDate: todayStr(),
-		billingDay: 1,
+		taxRate: undefined,
 		...initialData,
 	});
+
+	// Auto-derive the next due date whenever billing settings change
+	const previewDueDate: string | null =
+		f.statementDay && f.gracePeriodDays
+			? (() => {
+					const stmt = nextStatementDate({
+						statementDay: f.statementDay!,
+						billingCycleDays: f.billingCycleDays ?? 30,
+					});
+					const due = dueFromStatement(stmt, f.gracePeriodDays!);
+					return due.toISOString().split('T')[0];
+				})()
+			: null;
+
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.limit) onSave(f);
+		if (f.name && f.limit) {
+			const stmtDate = f.statementDay
+				? nextStatementDate({
+						statementDay: f.statementDay,
+						billingCycleDays: f.billingCycleDays ?? 30,
+					})
+						.toISOString()
+						.split('T')[0]
+				: (f.statementDate ?? todayStr());
+			onSave({
+				...f,
+				dueDate: previewDueDate ?? f.dueDate ?? todayStr(),
+				statementDate: stmtDate,
+			});
+		}
 	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -888,7 +966,7 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						required
 					/>
 				</FormField>
-				<FormField label="Outstanding (₹)">
+				<FormField label="Current Outstanding (₹)">
 					<Input
 						type="number"
 						min="0"
@@ -898,31 +976,87 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						}
 					/>
 				</FormField>
-				<FormField label="Due Date">
-					<Input
-						type="date"
-						value={f.dueDate ?? ''}
-						onChange={(e) => setF({ ...f, dueDate: e.target.value })}
-						required
-					/>
-				</FormField>
-				<FormField label="Statement Date">
-					<Input
-						type="date"
-						value={f.statementDate ?? ''}
-						onChange={(e) => setF({ ...f, statementDate: e.target.value })}
-					/>
-				</FormField>
-				<FormField label="Billing Day (1–28)">
+
+				{/* Billing cycle */}
+				<FormField
+					label="Statement Day (1–28)"
+					hint="Day of month your statement is generated">
 					<Input
 						type="number"
 						min="1"
 						max="28"
-						value={f.billingDay ?? 1}
-						onChange={(e) => setF({ ...f, billingDay: parseInt(e.target.value) || 1 })}
+						value={f.statementDay ?? 1}
+						onChange={(e) =>
+							setF({ ...f, statementDay: parseInt(e.target.value) || 1 })
+						}
 					/>
 				</FormField>
-				<FormField label="Notes (optional)">
+				<FormField
+					label="Billing Cycle (days)"
+					hint="Typically 30">
+					<Input
+						type="number"
+						min="1"
+						max="45"
+						value={f.billingCycleDays ?? 30}
+						onChange={(e) =>
+							setF({ ...f, billingCycleDays: parseInt(e.target.value) || 30 })
+						}
+					/>
+				</FormField>
+				<FormField
+					label="Grace Period (days)"
+					hint="Days from statement to due date (typically 20–25)">
+					<Input
+						type="number"
+						min="1"
+						max="60"
+						value={f.gracePeriodDays ?? 20}
+						onChange={(e) =>
+							setF({ ...f, gracePeriodDays: parseInt(e.target.value) || 20 })
+						}
+					/>
+				</FormField>
+				<FormField
+					label="Tax on Charges (%)"
+					hint="e.g. 18% GST on finance charges / late fees">
+					<Input
+						type="number"
+						min="0"
+						max="50"
+						step="0.01"
+						value={f.taxRate ?? ''}
+						onChange={(e) =>
+							setF({ ...f, taxRate: parseFloat(e.target.value) || undefined })
+						}
+						placeholder="e.g. 18"
+					/>
+				</FormField>
+
+				{/* Preview computed dates */}
+				{previewDueDate && (
+					<div className="col-span-2 rounded-lg bg-muted/50 border border-border p-3 text-xs text-muted-foreground space-y-1">
+						<p>
+							Statement generated on day{' '}
+							<span className="font-semibold text-foreground">{f.statementDay}</span>{' '}
+							of each month
+						</p>
+						<p>
+							Payment due{' '}
+							<span className="font-semibold text-foreground">
+								{f.gracePeriodDays} days
+							</span>{' '}
+							after statement → next due:{' '}
+							<span className="font-mono font-bold text-foreground">
+								{previewDueDate}
+							</span>
+						</p>
+					</div>
+				)}
+
+				<FormField
+					label="Notes (optional)"
+					span={2}>
 					<Input
 						value={f.notes ?? ''}
 						onChange={(e) => setF({ ...f, notes: e.target.value })}
@@ -975,10 +1109,7 @@ export function ReceivableForm({
 						min="0"
 						value={f.amountLent ?? ''}
 						onChange={(e) =>
-							setF({
-								...f,
-								amountLent: parseFloat(e.target.value) || undefined,
-							})
+							setF({ ...f, amountLent: parseFloat(e.target.value) || undefined })
 						}
 						required
 					/>
@@ -1318,10 +1449,7 @@ export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 						min="0"
 						value={f.targetAmount ?? ''}
 						onChange={(e) =>
-							setF({
-								...f,
-								targetAmount: parseFloat(e.target.value) || undefined,
-							})
+							setF({ ...f, targetAmount: parseFloat(e.target.value) || undefined })
 						}
 						required
 					/>

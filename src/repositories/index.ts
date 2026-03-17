@@ -13,6 +13,7 @@ import type {
 	Investment,
 	Reconciliation,
 	Goal,
+	PaymentOccurrence,
 	BaseRecord,
 	EntityName,
 } from '@/types';
@@ -30,6 +31,7 @@ export const repaymentRecordRepo = new BaseRepository<RepaymentRecord>('repaymen
 export const investmentRepo = new BaseRepository<Investment>('investments');
 export const reconciliationRepo = new BaseRepository<Reconciliation>('reconciliations');
 export const goalRepo = new BaseRepository<Goal>('goals');
+export const paymentOccurrenceRepo = new BaseRepository<PaymentOccurrence>('paymentOccurrences');
 
 export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	accounts: accountRepo as BaseRepository<BaseRecord>,
@@ -45,4 +47,5 @@ export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	investments: investmentRepo as BaseRepository<BaseRecord>,
 	reconciliations: reconciliationRepo as BaseRepository<BaseRecord>,
 	goals: goalRepo as BaseRepository<BaseRecord>,
+	paymentOccurrences: paymentOccurrenceRepo as BaseRepository<BaseRecord>,
 };
