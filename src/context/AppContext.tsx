@@ -82,7 +82,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		const repo = Repos[entity as EntityName];
 		if (!repo) return;
 		const records = await repo.getAll();
-		dispatch({ type: 'RELOAD_ENTITY', payload: { entity: entity as EntityName, records } });
+		dispatch({
+			type: 'RELOAD_ENTITY',
+			payload: { entity: entity as EntityName, records },
+		});
 	}, []);
 
 	useEffect(() => {
@@ -90,7 +93,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			try {
 				await openDB();
 				const entries = await Promise.all(
-					Object.entries(Repos).map(async ([k, r]) => [k, await r.getAll()]),
+					Object.entries(Repos).map(async ([k, r]) => [k, await r.getAll()])
 				);
 				dispatch({ type: 'LOAD_ALL', payload: Object.fromEntries(entries) });
 
@@ -142,7 +145,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			registerSyncAdapter(adapter, reloadEntity);
 			dispatch({ type: 'SET_SYNC', payload: 'firebase' });
 		},
-		[reloadEntity],
+		[reloadEntity]
 	);
 
 	return (

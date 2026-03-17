@@ -1,11 +1,15 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-import { registerServiceWorker } from "@/utils/pwa";
-import App from "./App";
-import "./index.css";
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { registerServiceWorker } from '@/utils/pwa';
+import App from './App';
+import './index.css';
 
 registerServiceWorker();
 
-const root = document.getElementById("root");
-if (!root) throw new Error("#root not found");
-createRoot(root).render(<StrictMode><App/></StrictMode>);
+const root = document.getElementById('root');
+if (!root) throw new Error('#root not found');
+createRoot(root).render(
+	<StrictMode>
+		<App />
+	</StrictMode>
+);

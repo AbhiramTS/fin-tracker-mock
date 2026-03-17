@@ -4,26 +4,26 @@ A local-first, mobile-friendly personal finance app. Fully offline-capable, with
 
 ## What's covered (BRD/PRD/FRD reconciled)
 
-| Feature | Status |
-|---|---|
-| Manual expense, income, transfer entry | ✅ |
-| Recurring income & payments (separate) | ✅ |
-| Account management (6 types) | ✅ |
-| Loan tracking with full amortisation schedule | ✅ |
-| Credit card EMIs (separate from normal loans) | ✅ |
-| Money lent / Receivables with repayment tracking | ✅ |
-| Investment portfolio with P&L | ✅ |
-| Financial Goals (6 types, completion estimate) | ✅ |
-| Account Reconciliation (tracked vs actual) | ✅ |
-| 90-day balance forecast with shortfall detection | ✅ |
-| Financial Simulator (loan / purchase / recurring) | ✅ |
-| Safe-to-spend calculation | ✅ |
-| Charts: forecast, donut, monthly bars, net worth | ✅ |
-| Double-entry accounting foundation | ✅ (types + IDB schema) |
-| Firebase real-time sync (Firestore) | ✅ |
-| QR code desktop→mobile sync | ✅ |
-| PWA (installable, offline, service worker) | ✅ |
-| shadcn UI with Radix primitives | ✅ |
+| Feature                                           | Status                  |
+| ------------------------------------------------- | ----------------------- |
+| Manual expense, income, transfer entry            | ✅                      |
+| Recurring income & payments (separate)            | ✅                      |
+| Account management (6 types)                      | ✅                      |
+| Loan tracking with full amortisation schedule     | ✅                      |
+| Credit card EMIs (separate from normal loans)     | ✅                      |
+| Money lent / Receivables with repayment tracking  | ✅                      |
+| Investment portfolio with P&L                     | ✅                      |
+| Financial Goals (6 types, completion estimate)    | ✅                      |
+| Account Reconciliation (tracked vs actual)        | ✅                      |
+| 90-day balance forecast with shortfall detection  | ✅                      |
+| Financial Simulator (loan / purchase / recurring) | ✅                      |
+| Safe-to-spend calculation                         | ✅                      |
+| Charts: forecast, donut, monthly bars, net worth  | ✅                      |
+| Double-entry accounting foundation                | ✅ (types + IDB schema) |
+| Firebase real-time sync (Firestore)               | ✅                      |
+| QR code desktop→mobile sync                       | ✅                      |
+| PWA (installable, offline, service worker)        | ✅                      |
+| shadcn UI with Radix primitives                   | ✅                      |
 
 ## Tech stack
 

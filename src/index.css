@@ -5,80 +5,120 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* shadcn dark theme — deep navy */
-    --background:  222 47% 5%;
-    --foreground:  210 40% 92%;
+	:root {
+		/* shadcn dark theme — deep navy */
+		--background: 222 47% 5%;
+		--foreground: 210 40% 92%;
 
-    --card:        222 47% 8%;
-    --card-foreground: 210 40% 92%;
+		--card: 222 47% 8%;
+		--card-foreground: 210 40% 92%;
 
-    --popover:     222 47% 8%;
-    --popover-foreground: 210 40% 92%;
+		--popover: 222 47% 8%;
+		--popover-foreground: 210 40% 92%;
 
-    --primary:     191 100% 47%;   /* cyan #00d4f5 */
-    --primary-foreground: 222 47% 5%;
+		--primary: 191 100% 47%; /* cyan #00d4f5 */
+		--primary-foreground: 222 47% 5%;
 
-    --secondary:   222 40% 14%;
-    --secondary-foreground: 210 40% 82%;
+		--secondary: 222 40% 14%;
+		--secondary-foreground: 210 40% 82%;
 
-    --muted:       222 40% 12%;
-    --muted-foreground: 215 25% 45%;
+		--muted: 222 40% 12%;
+		--muted-foreground: 215 25% 45%;
 
-    --accent:      222 40% 16%;
-    --accent-foreground: 210 40% 92%;
+		--accent: 222 40% 16%;
+		--accent-foreground: 210 40% 92%;
 
-    --destructive: 350 85% 60%;
-    --destructive-foreground: 210 40% 98%;
+		--destructive: 350 85% 60%;
+		--destructive-foreground: 210 40% 98%;
 
-    --border:      220 35% 16%;
-    --input:       220 35% 14%;
-    --ring:        191 100% 47%;
+		--border: 220 35% 16%;
+		--input: 220 35% 14%;
+		--ring: 191 100% 47%;
 
-    --radius: 0.75rem;
+		--radius: 0.75rem;
 
-    /* Finance semantic */
-    --profit:          158 84% 44%;   /* green */
-    --profit-foreground: 222 47% 5%;
-    --loss:            350 85% 60%;   /* red */
-    --loss-foreground: 210 40% 98%;
-    --warning:         38 95% 55%;    /* amber */
-    --warning-foreground: 222 47% 5%;
-    --cyan:            191 100% 47%;
-    --cyan-foreground: 222 47% 5%;
-  }
+		/* Finance semantic */
+		--profit: 158 84% 44%; /* green */
+		--profit-foreground: 222 47% 5%;
+		--loss: 350 85% 60%; /* red */
+		--loss-foreground: 210 40% 98%;
+		--warning: 38 95% 55%; /* amber */
+		--warning-foreground: 222 47% 5%;
+		--cyan: 191 100% 47%;
+		--cyan-foreground: 222 47% 5%;
+	}
 }
 
 @layer base {
-  * { @apply border-border; }
-  body {
-    @apply bg-background text-foreground font-sans;
-    overscroll-behavior: none;
-    -webkit-tap-highlight-color: transparent;
-  }
+	* {
+		@apply border-border;
+	}
+	body {
+		@apply bg-background text-foreground font-sans;
+		overscroll-behavior: none;
+		-webkit-tap-highlight-color: transparent;
+	}
 
-  /* Custom scrollbar */
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+	/* Custom scrollbar */
+	::-webkit-scrollbar {
+		width: 4px;
+		height: 4px;
+	}
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+	::-webkit-scrollbar-thumb {
+		@apply bg-border rounded-full;
+	}
 }
 
 @layer utilities {
-  .font-mono-nums { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
-  .text-profit   { color: hsl(var(--profit)); }
-  .text-loss     { color: hsl(var(--loss)); }
-  .text-warning  { color: hsl(var(--warning)); }
-  .text-cyan     { color: hsl(var(--cyan)); }
-  .bg-profit\/10 { background-color: hsl(var(--profit) / 0.1); }
-  .bg-loss\/10   { background-color: hsl(var(--loss)   / 0.1); }
-  .bg-warning\/10 { background-color: hsl(var(--warning) / 0.1); }
-  .bg-cyan\/10   { background-color: hsl(var(--cyan)   / 0.1); }
-  .border-profit { border-color: hsl(var(--profit)); }
-  .border-loss   { border-color: hsl(var(--loss)); }
-  .border-warning { border-color: hsl(var(--warning)); }
-  .border-cyan   { border-color: hsl(var(--cyan)); }
+	.font-mono-nums {
+		font-family: 'JetBrains Mono', monospace;
+		font-variant-numeric: tabular-nums;
+	}
+	.text-profit {
+		color: hsl(var(--profit));
+	}
+	.text-loss {
+		color: hsl(var(--loss));
+	}
+	.text-warning {
+		color: hsl(var(--warning));
+	}
+	.text-cyan {
+		color: hsl(var(--cyan));
+	}
+	.bg-profit\/10 {
+		background-color: hsl(var(--profit) / 0.1);
+	}
+	.bg-loss\/10 {
+		background-color: hsl(var(--loss) / 0.1);
+	}
+	.bg-warning\/10 {
+		background-color: hsl(var(--warning) / 0.1);
+	}
+	.bg-cyan\/10 {
+		background-color: hsl(var(--cyan) / 0.1);
+	}
+	.border-profit {
+		border-color: hsl(var(--profit));
+	}
+	.border-loss {
+		border-color: hsl(var(--loss));
+	}
+	.border-warning {
+		border-color: hsl(var(--warning));
+	}
+	.border-cyan {
+		border-color: hsl(var(--cyan));
+	}
 
-  /* Safe area helpers for mobile */
-  .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
-  .h-safe  { height: env(safe-area-inset-bottom, 0px); }
+	/* Safe area helpers for mobile */
+	.pb-safe {
+		padding-bottom: env(safe-area-inset-bottom, 0px);
+	}
+	.h-safe {
+		height: env(safe-area-inset-bottom, 0px);
+	}
 }
