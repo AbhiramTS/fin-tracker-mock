@@ -154,7 +154,7 @@ function Sidebar({
 						<h1 className="font-display text-lg font-bold text-foreground">
 							FinTracker
 						</h1>
-						<span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+						<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
 							v{APP_VERSION}
 						</span>
 					</div>
@@ -288,16 +288,18 @@ function AppShell() {
 						className="rounded-lg p-1.5 hover:bg-accent transition-colors">
 						<Menu className="h-5 w-5" />
 					</button>
-					<div className="flex items-center gap-2">
+					<div className="flex items-center gap-1.5">
 						{state.syncStatus === 'firebase' && (
 							<div className="h-1.5 w-1.5 rounded-full bg-profit animate-pulse" />
 						)}
 						<span className="font-display font-bold text-base">
 							{activeItem?.label ?? 'FinTracker'}
 						</span>
-						<span className="rounded-full border border-border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-							v{APP_VERSION}
-						</span>
+						{tab === 'dashboard' && (
+							<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
+								v{APP_VERSION}
+							</span>
+						)}
 					</div>
 					<div className="w-8" />
 				</header>
