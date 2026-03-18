@@ -2,8 +2,8 @@
 	"name": "FinTracker",
 	"short_name": "FinTracker",
 	"description": "Local-first personal finance — forecasting, goals, reconciliation, Firebase sync",
-	"start_url": "/",
-	"scope": "/",
+	"start_url": "./",
+	"scope": "./",
 	"display": "standalone",
 	"background_color": "#07090f",
 	"theme_color": "#07090f",
@@ -14,25 +14,25 @@
 	],
 	"icons": [
 		{
-			"src": "/icon-192.png",
+			"src": "./icon-192.png",
 			"sizes": "192x192",
 			"type": "image/png",
 			"purpose": "any"
 		},
 		{
-			"src": "/icon-192.png",
+			"src": "./icon-192.png",
 			"sizes": "192x192",
 			"type": "image/png",
 			"purpose": "maskable"
 		},
 		{
-			"src": "/icon-512.png",
+			"src": "./icon-512.png",
 			"sizes": "512x512",
 			"type": "image/png",
 			"purpose": "any"
 		},
 		{
-			"src": "/icon-512.png",
+			"src": "./icon-512.png",
 			"sizes": "512x512",
 			"type": "image/png",
 			"purpose": "maskable"
@@ -40,7 +40,7 @@
 	],
 	"screenshots": [
 		{
-			"src": "/icon-512.png",
+			"src": "./icon-512.png",
 			"sizes": "512x512",
 			"type": "image/png",
 			"form_factor": "narrow",
@@ -50,33 +50,33 @@
 	"shortcuts": [
 		{
 			"name": "Add Expense",
-			"url": "/?tab=expenses",
+			"url": "./?tab=expenses",
 			"description": "Log a new expense",
 			"icons": [
 				{
-					"src": "/icon-192.png",
+					"src": "./icon-192.png",
 					"sizes": "192x192"
 				}
 			]
 		},
 		{
 			"name": "Dashboard",
-			"url": "/?tab=dashboard",
+			"url": "./?tab=dashboard",
 			"description": "View your dashboard",
 			"icons": [
 				{
-					"src": "/icon-192.png",
+					"src": "./icon-192.png",
 					"sizes": "192x192"
 				}
 			]
 		},
 		{
 			"name": "Payments",
-			"url": "/?tab=payments",
+			"url": "./?tab=payments",
 			"description": "This month's payments",
 			"icons": [
 				{
-					"src": "/icon-192.png",
+					"src": "./icon-192.png",
 					"sizes": "192x192"
 				}
 			]

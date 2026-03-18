@@ -9,7 +9,7 @@
 
 const CACHE_VERSION = '__CACHE_VERSION__'; // replaced at build time by vite.config.ts
 const CACHE = `fintracker-${CACHE_VERSION}`;
-const OFFLINE_PAGE = '/index.html';
+const OFFLINE_PAGE = './index.html';
 
 // Assets Vite fingerprints — safe to cache forever
 const isFingerprinted = (url) =>

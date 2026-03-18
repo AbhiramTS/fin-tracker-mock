@@ -11,7 +11,8 @@ export function registerServiceWorker(): void {
 
 	window.addEventListener('load', async () => {
 		try {
-			const registration = await navigator.serviceWorker.register('/sw.js');
+			const swUrl = `${import.meta.env.BASE_URL}sw.js`;
+			const registration = await navigator.serviceWorker.register(swUrl);
 			console.info('[SW] registered:', registration.scope);
 
 			// Handle the case where there's already a waiting SW on first load

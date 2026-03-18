@@ -31,7 +31,7 @@ export default defineConfig({
 	},
 	// For GitHub Pages with custom domain: base: "/"
 	// For github.io/<repo>: base: "/fintracker/"
-	base: '/fin-tracker-mock',
+	base: '/fin-tracker-mock/',
 	build: {
 		outDir: 'dist',
 		sourcemap: false,
