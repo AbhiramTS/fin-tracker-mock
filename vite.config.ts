@@ -2,9 +2,27 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { resolve } from 'path';
 import packageJson from './package.json';
+import fs from 'fs';
+
+// Inject a unique build stamp into sw.js so every build gets a fresh cache name.
+// Without this, the service worker cache never expires and users see stale builds.
+function injectSwVersion() {
+	const stamp = Date.now().toString(36); // e.g. "lxyz123"
+	return {
+		name: 'inject-sw-version',
+		writeBundle() {
+			const swPath = resolve(__dirname, 'dist/sw.js');
+			if (fs.existsSync(swPath)) {
+				const content = fs.readFileSync(swPath, 'utf-8');
+				fs.writeFileSync(swPath, content.replace('__CACHE_VERSION__', `v4-${stamp}`));
+				console.info(`[sw] cache version → v4-${stamp}`);
+			}
+		},
+	};
+}
 
 export default defineConfig({
-	plugins: [react()],
+	plugins: [react(), injectSwVersion()],
 	define: {
 		__APP_VERSION__: JSON.stringify(packageJson.version),
 	},
