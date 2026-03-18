@@ -103,7 +103,8 @@ export interface PaymentOccurrence extends BaseRecord {
 	amount: number; // expected amount (positive)
 	status: PaymentOccurrenceStatus;
 	paidDate?: string; // yyyy-MM-dd, set when marked paid
-	paidAmount?: number; // actual amount paid (if different)
+	paidAmount?: number; // actual amount paid (if different from amount)
+	transactionId?: string; // id of the Expense/Income created on mark-paid
 	notes?: string;
 	// Denormalised display fields (avoid lookups in hot render path)
 	label: string; // e.g. "Netflix", "Home Loan EMI #7"
