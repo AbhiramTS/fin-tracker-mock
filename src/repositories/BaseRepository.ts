@@ -32,11 +32,7 @@ export class BaseRepository<T extends BaseRecord> {
 
 	async delete(id: string): Promise<string> {
 		await dbDelete(this.storeName, id);
-		await enqueueChange({
-			entity: this.storeName,
-			type: 'delete',
-			payload: { id },
-		});
+		await enqueueChange({ entity: this.storeName, type: 'delete', payload: { id } });
 		return id;
 	}
 }

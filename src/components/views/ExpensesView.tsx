@@ -1,19 +1,33 @@
 import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { EmptyState } from '@/components/ui/empty-state';
-import { MonthlyBarsChart, SpendingDonut } from '@/components/charts';
+import { RowActions, useEditDelete } from './EntityView';
 import { EntityView } from './EntityView';
 import { ExpenseForm } from '@/components/forms';
+import { MonthlyBarsChart } from '@/components/charts';
+import type { Expense } from '@/types';
+
+const COLORS = [
+	'hsl(191 100% 47%)',
+	'hsl(158 84% 44%)',
+	'#a78bfa',
+	'hsl(38 95% 55%)',
+	'hsl(350 85% 60%)',
+	'#fb923c',
+];
 
 export function ExpensesView() {
-	const { state, remove } = useApp();
+	const { state } = useApp();
 	const [cat, setCat] = useState('all');
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Expense>({
+		entity: 'expenses',
+		FormComp: ExpenseForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Expense',
+	});
 
 	const allCats = ['all', ...new Set(state.expenses.map((e) => e.category))];
 	const filtered =
@@ -27,15 +41,7 @@ export function ExpensesView() {
 	}, {});
 	const topCats = Object.entries(catTotals)
 		.sort((a, b) => b[1] - a[1])
-		.slice(0, 6);
-	const COLORS = [
-		'hsl(191 100% 47%)',
-		'hsl(158 84% 44%)',
-		'#a78bfa',
-		'hsl(38 95% 55%)',
-		'hsl(350 85% 60%)',
-		'#fb923c',
-	];
+		.slice(0, 5);
 
 	return (
 		<EntityView
@@ -92,13 +98,12 @@ export function ExpensesView() {
 				</>
 			)}
 
-			{/* Category pills */}
-			<div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+			<div className="flex gap-2 overflow-x-auto pb-1">
 				{allCats.map((c) => (
 					<button
 						key={c}
 						onClick={() => setCat(c)}
-						className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${cat === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-primary/50'}`}>
+						className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${cat === c ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-foreground'}`}>
 						{c}
 					</button>
 				))}
@@ -127,18 +132,17 @@ export function ExpensesView() {
 									<span className="font-mono font-bold text-loss">
 										{fmt(e.amount)}
 									</span>
-									<Button
-										size="icon-sm"
-										variant="destructive"
-										onClick={() => remove('expenses', e.id)}>
-										<Trash2 className="h-3.5 w-3.5" />
-									</Button>
+									<RowActions
+										onEdit={() => startEdit(e)}
+										onDelete={() => doRemove(e.id)}
+									/>
 								</div>
 							</CardContent>
 						</Card>
 					))}
 				</div>
 			)}
+			{EditDialog}
 		</EntityView>
 	);
 }

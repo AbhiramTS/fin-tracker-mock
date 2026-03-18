@@ -23,10 +23,7 @@ export default {
 					DEFAULT: 'hsl(var(--destructive))',
 					foreground: 'hsl(var(--destructive-foreground))',
 				},
-				muted: {
-					DEFAULT: 'hsl(var(--muted))',
-					foreground: 'hsl(var(--muted-foreground))',
-				},
+				muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
 				accent: {
 					DEFAULT: 'hsl(var(--accent))',
 					foreground: 'hsl(var(--accent-foreground))',
@@ -35,27 +32,18 @@ export default {
 					DEFAULT: 'hsl(var(--popover))',
 					foreground: 'hsl(var(--popover-foreground))',
 				},
-				card: {
-					DEFAULT: 'hsl(var(--card))',
-					foreground: 'hsl(var(--card-foreground))',
-				},
+				card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
 				// Finance semantic colours
 				profit: {
 					DEFAULT: 'hsl(var(--profit))',
 					foreground: 'hsl(var(--profit-foreground))',
 				},
-				loss: {
-					DEFAULT: 'hsl(var(--loss))',
-					foreground: 'hsl(var(--loss-foreground))',
-				},
+				loss: { DEFAULT: 'hsl(var(--loss))', foreground: 'hsl(var(--loss-foreground))' },
 				warning: {
 					DEFAULT: 'hsl(var(--warning))',
 					foreground: 'hsl(var(--warning-foreground))',
 				},
-				cyan: {
-					DEFAULT: 'hsl(var(--cyan))',
-					foreground: 'hsl(var(--cyan-foreground))',
-				},
+				cyan: { DEFAULT: 'hsl(var(--cyan))', foreground: 'hsl(var(--cyan-foreground))' },
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/ui/empty-state';
+import { RowActions, useEditDelete } from './EntityView';
 import { IncomeForm, RecurringIncomeForm } from '@/components/forms';
+import type { Income, RecurringIncome } from '@/types';
 
 const FREQ_MULT: Record<string, number> = {
 	daily: 30,
@@ -20,13 +22,34 @@ const FREQ_MULT: Record<string, number> = {
 };
 
 export function IncomeView() {
-	const { state, save, remove } = useApp();
+	const { state, save } = useApp();
 	const [addRecurring, setAddRecurring] = useState(false);
 	const [addOneoff, setAddOneoff] = useState(false);
 
 	const monthlyRecurring = state.recurringIncomes
 		.filter((r) => r.isActive)
 		.reduce((s, i) => s + (i.amount ?? 0) * (FREQ_MULT[i.frequency] ?? 1), 0);
+
+	const {
+		startEdit: startEditInc,
+		doRemove: removeInc,
+		EditDialog: EditIncDialog,
+	} = useEditDelete<Income>({
+		entity: 'incomes',
+		FormComp: IncomeForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Income',
+	});
+	const {
+		startEdit: startEditRI,
+		doRemove: removeRI,
+		EditDialog: EditRIDialog,
+	} = useEditDelete<RecurringIncome>({
+		entity: 'recurringIncomes',
+		FormComp: RecurringIncomeForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Recurring Income',
+	});
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -36,7 +59,6 @@ export function IncomeView() {
 					~{fmt(monthlyRecurring)}/month recurring
 				</p>
 			</div>
-
 			<Tabs defaultValue="recurring">
 				<TabsList className="w-full">
 					<TabsTrigger
@@ -86,12 +108,10 @@ export function IncomeView() {
 											<span className="font-mono font-bold text-profit">
 												{fmt(inc.amount)}
 											</span>
-											<Button
-												size="icon-sm"
-												variant="destructive"
-												onClick={() => remove('recurringIncomes', inc.id)}>
-												<Trash2 className="h-3.5 w-3.5" />
-											</Button>
+											<RowActions
+												onEdit={() => startEditRI(inc)}
+												onDelete={() => removeRI(inc.id)}
+											/>
 										</div>
 									</CardContent>
 								</Card>
@@ -134,12 +154,10 @@ export function IncomeView() {
 												<span className="font-mono font-bold text-profit">
 													{fmt(inc.amount)}
 												</span>
-												<Button
-													size="icon-sm"
-													variant="destructive"
-													onClick={() => remove('incomes', inc.id)}>
-													<Trash2 className="h-3.5 w-3.5" />
-												</Button>
+												<RowActions
+													onEdit={() => startEditInc(inc)}
+													onDelete={() => removeInc(inc.id)}
+												/>
 											</div>
 										</CardContent>
 									</Card>
@@ -149,7 +167,9 @@ export function IncomeView() {
 				</TabsContent>
 			</Tabs>
 
-			{/* Dialogs */}
+			{EditIncDialog}
+			{EditRIDialog}
+
 			<Dialog
 				open={addRecurring}
 				onOpenChange={setAddRecurring}>
@@ -167,7 +187,6 @@ export function IncomeView() {
 					/>
 				</DialogContent>
 			</Dialog>
-
 			<Dialog
 				open={addOneoff}
 				onOpenChange={setAddOneoff}>

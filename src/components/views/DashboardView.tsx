@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { buildForecast } from '@/utils/forecast';
-import { fmt, fmtDate, daysFromNow, fmtCompact, todayStr } from '@/utils/format';
+import { fmt, fmtDate, fmtCompact, todayStr } from '@/utils/format';
 import { getOccurrencesForMonth, urgencyClass, urgencyLabel } from '@/utils/recurring';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

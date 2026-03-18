@@ -1,13 +1,12 @@
-import { Trash2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtPct } from '@/utils/format';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PortfolioDonut } from '@/components/charts';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { InvestmentForm } from '@/components/forms';
+import type { Investment } from '@/types';
 
 const TYPE_COLORS: Record<string, string> = {
 	stocks: 'text-cyan',
@@ -22,11 +21,16 @@ const TYPE_COLORS: Record<string, string> = {
 };
 
 export function InvestmentsView() {
-	const { state, remove } = useApp();
+	const { state } = useApp();
 	const total = state.investments.reduce((s, i) => s + (i.value ?? 0), 0);
 	const totalCost = state.investments.reduce((s, i) => s + (i.costBasis ?? i.value ?? 0), 0);
 	const totalPnL = total - totalCost;
-	const pnlPct = totalCost > 0 ? (totalPnL / totalCost) * 100 : 0;
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Investment>({
+		entity: 'investments',
+		FormComp: InvestmentForm,
+		formTitle: 'Investment',
+	});
 
 	return (
 		<EntityView
@@ -128,18 +132,17 @@ export function InvestmentsView() {
 									<span className="font-mono font-bold text-profit">
 										{fmt(inv.value)}
 									</span>
-									<Button
-										size="icon-sm"
-										variant="destructive"
-										onClick={() => remove('investments', inv.id)}>
-										<Trash2 className="h-3.5 w-3.5" />
-									</Button>
+									<RowActions
+										onEdit={() => startEdit(inv)}
+										onDelete={() => doRemove(inv.id)}
+									/>
 								</div>
 							</CardContent>
 						</Card>
 					);
 				})
 			)}
+			{EditDialog}
 		</EntityView>
 	);
 }

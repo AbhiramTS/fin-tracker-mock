@@ -1,17 +1,23 @@
-import { Trash2 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { RecurringPaymentForm } from '@/components/forms';
+import type { RecurringPayment } from '@/types';
 
 export function RecurringView() {
-	const { state, remove } = useApp();
+	const { state } = useApp();
 	const active = state.recurringPayments.filter((r) => r.isActive);
 	const monthly = active.reduce((s, r) => s + (r.amount ?? 0), 0);
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<RecurringPayment>({
+		entity: 'recurringPayments',
+		FormComp: RecurringPaymentForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Recurring Payment',
+	});
 
 	return (
 		<EntityView
@@ -54,12 +60,10 @@ export function RecurringView() {
 												{fmtDate(r.nextDate)}
 											</p>
 										</div>
-										<Button
-											size="icon-sm"
-											variant="destructive"
-											onClick={() => remove('recurringPayments', r.id)}>
-											<Trash2 className="h-3.5 w-3.5" />
-										</Button>
+										<RowActions
+											onEdit={() => startEdit(r)}
+											onDelete={() => doRemove(r.id)}
+										/>
 									</div>
 								</div>
 							</CardContent>
@@ -67,6 +71,7 @@ export function RecurringView() {
 					);
 				})
 			)}
+			{EditDialog}
 		</EntityView>
 	);
 }

@@ -37,12 +37,10 @@ export const addDays = (date: Date, n: number) => {
 /** Format a percentage with 1 decimal place */
 export const fmtPct = (n: number) => `${n.toFixed(1)}%`;
 
-/** Abbreviate large numbers: 1,20,000 → ₹1.2L */
+/** Show exact INR value up to ₹1Cr; abbreviate only above that. */
 export const fmtCompact = (n: number): string => {
 	const abs = Math.abs(n);
 	const sign = n < 0 ? '−' : '';
-	if (abs >= 1_00_00_000) return `${sign}₹${(abs / 1_00_00_000).toFixed(1)}Cr`;
-	if (abs >= 1_00_000) return `${sign}₹${(abs / 1_00_000).toFixed(1)}L`;
-	if (abs >= 1_000) return `${sign}₹${(abs / 1_000).toFixed(0)}K`;
+	if (abs >= 1_00_00_000) return `${sign}₹${(abs / 1_00_00_000).toFixed(2)}Cr`;
 	return fmt(n);
 };

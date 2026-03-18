@@ -39,6 +39,8 @@ import { AccountsView } from '@/components/views/AccountsView';
 import { ReconciliationView } from '@/components/views/ReconciliationView';
 import { SettingsView } from '@/components/views/SettingsView';
 
+const APP_VERSION = __APP_VERSION__;
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 type TabId =
 	| 'dashboard'
@@ -148,7 +150,14 @@ function Sidebar({
 		<div className="flex h-full flex-col">
 			<div className="flex items-center justify-between p-5 pb-4">
 				<div>
-					<h1 className="font-display text-lg font-bold text-foreground">FinTracker</h1>
+					<div className="flex items-center gap-2">
+						<h1 className="font-display text-lg font-bold text-foreground">
+							FinTracker
+						</h1>
+						<span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+							v{APP_VERSION}
+						</span>
+					</div>
 					<p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-0.5">
 						Personal Finance
 					</p>
@@ -285,6 +294,9 @@ function AppShell() {
 						)}
 						<span className="font-display font-bold text-base">
 							{activeItem?.label ?? 'FinTracker'}
+						</span>
+						<span className="rounded-full border border-border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+							v{APP_VERSION}
 						</span>
 					</div>
 					<div className="w-8" />

@@ -1,24 +1,31 @@
 import { useState } from 'react';
-import { Trash2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Separator } from '@/components/ui/separator';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { ReceivableForm, RepaymentForm } from '@/components/forms';
+import type { Receivable } from '@/types';
 
 export function ReceivablesView() {
-	const { state, save, remove } = useApp();
+	const { state, save } = useApp();
 	const [repayFor, setRepayFor] = useState<string | null>(null);
 
 	const active = state.receivables.filter((r) => !r.isSettled);
 	const settled = state.receivables.filter((r) => r.isSettled);
 	const totalOut = active.reduce((s, r) => s + (r.amountLent - r.amountRepaid), 0);
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Receivable>({
+		entity: 'receivables',
+		FormComp: ReceivableForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Receivable',
+	});
 
 	const handleRepayment = async (data: Record<string, unknown>) => {
 		const receivable = state.receivables.find((r) => r.id === repayFor);
@@ -26,11 +33,7 @@ export function ReceivablesView() {
 		await save('repaymentRecords', data);
 		const newRepaid = (receivable.amountRepaid ?? 0) + (data.amount as number);
 		const isSettled = newRepaid >= receivable.amountLent;
-		await save('receivables', {
-			...receivable,
-			amountRepaid: newRepaid,
-			isSettled,
-		});
+		await save('receivables', { ...receivable, amountRepaid: newRepaid, isSettled });
 		setRepayFor(null);
 	};
 
@@ -84,15 +87,12 @@ export function ReceivablesView() {
 													outstanding
 												</p>
 											</div>
-											<Button
-												size="icon-sm"
-												variant="destructive"
-												onClick={() => remove('receivables', r.id)}>
-												<Trash2 className="h-3.5 w-3.5" />
-											</Button>
+											<RowActions
+												onEdit={() => startEdit(r)}
+												onDelete={() => doRemove(r.id)}
+											/>
 										</div>
 									</div>
-
 									<div className="flex justify-between text-xs text-muted-foreground mb-1">
 										<span>
 											Lent: {fmt(r.amountLent)} on {fmtDate(r.dateLent)}
@@ -104,7 +104,6 @@ export function ReceivablesView() {
 										className="h-1.5"
 										indicatorClassName="bg-profit"
 									/>
-
 									{days !== null && (
 										<p
 											className={`text-xs mt-2 ${days < 0 ? 'text-loss' : days <= 7 ? 'text-warning' : 'text-muted-foreground'}`}>
@@ -116,7 +115,6 @@ export function ReceivablesView() {
 											· {fmtDate(r.expectedRepaymentDate)}
 										</p>
 									)}
-
 									{repayments.length > 0 && (
 										<div className="mt-3">
 											<p className="text-xs text-muted-foreground mb-1.5">
@@ -136,7 +134,6 @@ export function ReceivablesView() {
 											))}
 										</div>
 									)}
-
 									<Button
 										size="sm"
 										variant="profit"
@@ -167,12 +164,20 @@ export function ReceivablesView() {
 										{fmt(r.amountLent)} · {fmtDate(r.dateLent)}
 									</p>
 								</div>
-								<Badge variant="profit">Settled</Badge>
+								<div className="flex items-center gap-2">
+									<Badge variant="profit">Settled</Badge>
+									<RowActions
+										onEdit={() => startEdit(r)}
+										onDelete={() => doRemove(r.id)}
+									/>
+								</div>
 							</CardContent>
 						</Card>
 					))}
 				</div>
 			)}
+
+			{EditDialog}
 
 			<Dialog
 				open={!!repayFor}

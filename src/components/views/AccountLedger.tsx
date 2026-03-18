@@ -21,13 +21,13 @@ import {
 } from 'date-fns';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
-import { generateAmortisation, nextEMIDate } from '@/utils/amortisation';
+import { generateAmortisation } from '@/utils/amortisation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Button } from '@/components/ui/button';
-import type { Account, Loan, CreditCard as CCType, AppState } from '@/types';
+import type { Account, Loan, CreditCard as CCType } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Transaction row model

@@ -1,9 +1,8 @@
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDateFull } from '@/utils/format';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { Separator } from '@/components/ui/separator';
 
 export function ReconciliationView() {
 	const { state } = useApp();

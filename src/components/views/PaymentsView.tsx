@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
 	CheckCircle2,
 	Circle,
@@ -16,7 +16,6 @@ import {
 	urgencyClass,
 	urgencyLabel,
 } from '@/utils/recurring';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -225,16 +224,17 @@ export function PaymentsView() {
 		[state, year, month]
 	);
 
-	// Save any newly-generated occurrences (ones not yet in state)
+	// Persist any newly-generated (unsaved) occurrences.
+	// useEffect is correct here — this is a side effect, not a computation.
+	// Because ids are deterministic, repeated saves are safe no-op upserts.
 	const storedIds = useMemo(
 		() => new Set((state.paymentOccurrences ?? []).map((o) => o.id)),
 		[state.paymentOccurrences]
 	);
 
-	// Auto-save new occurrences when they appear
-	useMemo(() => {
+	useEffect(() => {
 		allOccs
-			.filter((o) => !storedIds.has(o.id) && o.status !== 'paid') // don't re-save pre-populated paid EMIs
+			.filter((o) => !storedIds.has(o.id) && o.status !== 'paid')
 			.forEach((o) => {
 				save('paymentOccurrences', o as unknown as Record<string, unknown>).catch(() => {});
 			});

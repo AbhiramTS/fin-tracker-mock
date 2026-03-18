@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import {
@@ -12,11 +12,9 @@ import {
 } from '@/utils/amortisation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Separator } from '@/components/ui/separator';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { LoanForm } from '@/components/forms';
 import { LoanLedgerDialog } from './AccountLedger';
 import type { Loan } from '@/types';
@@ -144,12 +142,14 @@ function AmortisationTable({ loan }: { loan: Loan }) {
 function LoanCard({
 	l,
 	onRemove,
+	onEdit,
 	expanded,
 	onToggle,
 	onViewHistory,
 }: {
 	l: Loan;
 	onRemove: () => void;
+	onEdit: () => void;
 	expanded: boolean;
 	onToggle: () => void;
 	onViewHistory: () => void;
@@ -205,12 +205,10 @@ function LoanCard({
 							<p className="font-mono font-bold text-loss">{fmt(outstanding)}</p>
 							<p className="text-xs text-muted-foreground">outstanding</p>
 						</div>
-						<Button
-							size="icon-sm"
-							variant="destructive"
-							onClick={onRemove}>
-							<Trash2 className="h-3.5 w-3.5" />
-						</Button>
+						<RowActions
+							onEdit={onEdit}
+							onDelete={onRemove}
+						/>
 						<button
 							onClick={onViewHistory}
 							className="self-center">
@@ -283,6 +281,13 @@ export function LoansView() {
 	const [expanded, setExpanded] = useState<string | null>(null);
 	const [ledgerLoan, setLedgerLoan] = useState<Loan | null>(null);
 
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Loan>({
+		entity: 'loans',
+		FormComp: LoanForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Loan',
+	});
+
 	const normalLoans = state.loans.filter((l) => l.loanType === 'normal');
 	const ccLoans = state.loans.filter((l) => l.loanType === 'credit_card');
 	const totalDebt = state.loans.reduce((s, l) => s + outstandingPrincipal(l), 0);
@@ -312,7 +317,8 @@ export function LoansView() {
 						<LoanCard
 							key={l.id}
 							l={l}
-							onRemove={() => remove('loans', l.id)}
+							onRemove={() => doRemove(l.id)}
+							onEdit={() => startEdit(l)}
 							expanded={expanded === l.id}
 							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
 							onViewHistory={() => setLedgerLoan(l)}
@@ -330,7 +336,8 @@ export function LoansView() {
 						<LoanCard
 							key={l.id}
 							l={l}
-							onRemove={() => remove('loans', l.id)}
+							onRemove={() => doRemove(l.id)}
+							onEdit={() => startEdit(l)}
 							expanded={expanded === l.id}
 							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
 							onViewHistory={() => setLedgerLoan(l)}
@@ -339,6 +346,7 @@ export function LoansView() {
 				</div>
 			)}
 
+			{EditDialog}
 			<LoanLedgerDialog
 				loan={ledgerLoan}
 				onClose={() => setLedgerLoan(null)}

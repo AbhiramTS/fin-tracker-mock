@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Trash2, RefreshCw, ChevronRight } from 'lucide-react';
+import { RefreshCw, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
@@ -7,24 +7,30 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { AccountForm, ReconciliationForm } from '@/components/forms';
 import { AccountLedgerDialog } from './AccountLedger';
 import type { Account } from '@/types';
 
 export function AccountsView() {
-	const { state, save, remove } = useApp();
+	const { state, save } = useApp();
 	const total = state.accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
 
-	const [reconAccount, setReconAccount] = useState<string | null>(null);
+	const [reconId, setReconId] = useState<string | null>(null);
 	const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null);
 
-	const recon = state.accounts.find((a) => a.id === reconAccount);
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Account>({
+		entity: 'accounts',
+		FormComp: AccountForm,
+		formTitle: 'Account',
+	});
+
+	const recon = state.accounts.find((a) => a.id === reconId);
 
 	return (
 		<EntityView
 			title="Accounts"
-			subtitle={`Total tracked: ${fmt(total)}`}
+			subtitle={`Total: ${fmt(total)}`}
 			entity="accounts"
 			FormComp={AccountForm}>
 			{state.accounts.length === 0 ? (
@@ -54,8 +60,8 @@ export function AccountsView() {
 									</Badge>
 								</div>
 							</div>
-							<div className="flex items-center gap-1 shrink-0 ml-3">
-								<span className="font-mono font-bold text-cyan mr-1">
+							<div className="flex items-center gap-2 ml-3">
+								<span className="font-mono font-bold text-cyan">
 									{fmt(a.balance)}
 								</span>
 								<Button
@@ -64,36 +70,30 @@ export function AccountsView() {
 									title="Reconcile"
 									onClick={(e) => {
 										e.stopPropagation();
-										setReconAccount(a.id);
+										setReconId(a.id);
 									}}>
 									<RefreshCw className="h-3.5 w-3.5" />
 								</Button>
-								<Button
-									size="icon-sm"
-									variant="destructive"
-									onClick={(e) => {
-										e.stopPropagation();
-										remove('accounts', a.id);
-									}}>
-									<Trash2 className="h-3.5 w-3.5" />
-								</Button>
-								<ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-1" />
+								<RowActions
+									onEdit={() => startEdit(a)}
+									onDelete={() => doRemove(a.id)}
+								/>
+								<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
 							</div>
 						</CardContent>
 					</Card>
 				))
 			)}
 
-			{/* Transaction ledger */}
+			{EditDialog}
 			<AccountLedgerDialog
 				account={ledgerAccount}
 				onClose={() => setLedgerAccount(null)}
 			/>
 
-			{/* Reconciliation dialog */}
 			<Dialog
-				open={!!reconAccount}
-				onOpenChange={(o) => !o && setReconAccount(null)}>
+				open={!!reconId}
+				onOpenChange={(o) => !o && setReconId(null)}>
 				<DialogContent>
 					<DialogHeader>
 						<DialogTitle>Reconcile Account</DialogTitle>
@@ -104,15 +104,14 @@ export function AccountsView() {
 							trackedBalance={recon.balance}
 							onSave={async (d) => {
 								await save('reconciliations', d);
-								if (d.difference && d.difference !== 0) {
+								if (d.difference && d.difference !== 0)
 									await save('accounts', {
 										...recon,
 										balance: d.actualBalance ?? recon.balance,
 									});
-								}
-								setReconAccount(null);
+								setReconId(null);
 							}}
-							onCancel={() => setReconAccount(null)}
+							onCancel={() => setReconId(null)}
 						/>
 					)}
 				</DialogContent>

@@ -1,14 +1,20 @@
-import { Trash2, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { TransferForm } from '@/components/forms';
+import type { Transfer } from '@/types';
 
 export function TransfersView() {
-	const { state, remove } = useApp();
+	const { state } = useApp();
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Transfer>({
+		entity: 'transfers',
+		FormComp: TransferForm,
+		formProps: { accounts: state.accounts },
+		formTitle: 'Transfer',
+	});
 	const sorted = [...state.transfers].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
 
 	return (
@@ -32,13 +38,13 @@ export function TransfersView() {
 						<Card key={t.id}>
 							<CardContent className="flex items-center justify-between p-4">
 								<div className="flex items-center gap-2 min-w-0">
-									<div className="text-sm font-medium text-muted-foreground truncate max-w-[90px]">
+									<span className="text-sm font-medium text-muted-foreground truncate max-w-[80px]">
 										{from?.name ?? '?'}
-									</div>
+									</span>
 									<ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-									<div className="text-sm font-medium truncate max-w-[90px]">
+									<span className="text-sm font-medium truncate max-w-[80px]">
 										{to?.name ?? '?'}
-									</div>
+									</span>
 								</div>
 								<div className="flex items-center gap-2 ml-2">
 									<div className="text-right">
@@ -47,18 +53,17 @@ export function TransfersView() {
 											{fmtDate(t.date)}
 										</p>
 									</div>
-									<Button
-										size="icon-sm"
-										variant="destructive"
-										onClick={() => remove('transfers', t.id)}>
-										<Trash2 className="h-3.5 w-3.5" />
-									</Button>
+									<RowActions
+										onEdit={() => startEdit(t)}
+										onDelete={() => doRemove(t.id)}
+									/>
 								</div>
 							</CardContent>
 						</Card>
 					);
 				})
 			)}
+			{EditDialog}
 		</EntityView>
 	);
 }

@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
 import { buildForecast } from '@/utils/forecast';
 import { fmt, fmtDate, fmtDateFull } from '@/utils/format';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { ForecastChart } from '@/components/charts';

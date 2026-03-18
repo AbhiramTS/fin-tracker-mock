@@ -13,7 +13,7 @@ import {
 	Tooltip,
 	ResponsiveContainer,
 } from 'recharts';
-import { fmt, fmtShort, fmtCompact } from '@/utils/format';
+import { fmt, fmtShort } from '@/utils/format';
 import type { ForecastDay, Expense, Investment, Account, Loan, CreditCard } from '@/types';
 
 const CHART_COLORS = [
@@ -48,10 +48,7 @@ export function ForecastChart({
 				Add income &amp; recurring payments to see your forecast
 			</div>
 		);
-	const data = timeline.map((t) => ({
-		name: fmtShort(t.date),
-		v: Math.round(t.balance / 1000),
-	}));
+	const data = timeline.map((t) => ({ name: fmtShort(t.date), v: Math.round(t.balance / 1000) }));
 	const hasShortfall = timeline.some((t) => t.balance < 0);
 	const color = hasShortfall ? 'hsl(350 85% 60%)' : 'hsl(191 100% 47%)';
 	return (
@@ -164,10 +161,7 @@ export function MonthlyBarsChart({
 	for (let i = 5; i >= 0; i--) {
 		const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
 		const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-		months[key] = {
-			label: d.toLocaleDateString('en-IN', { month: 'short' }),
-			v: 0,
-		};
+		months[key] = { label: d.toLocaleDateString('en-IN', { month: 'short' }), v: 0 };
 	}
 	expenses.forEach((e) => {
 		const k = e.date?.slice(0, 7);

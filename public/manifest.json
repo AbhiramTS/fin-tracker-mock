@@ -23,15 +23,7 @@
 		}
 	],
 	"shortcuts": [
-		{
-			"name": "Add Expense",
-			"url": "/?tab=expenses",
-			"description": "Log a new expense"
-		},
-		{
-			"name": "Dashboard",
-			"url": "/?tab=dashboard",
-			"description": "View your dashboard"
-		}
+		{ "name": "Add Expense", "url": "/?tab=expenses", "description": "Log a new expense" },
+		{ "name": "Dashboard", "url": "/?tab=dashboard", "description": "View your dashboard" }
 	]
 }

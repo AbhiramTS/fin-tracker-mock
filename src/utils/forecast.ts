@@ -1,6 +1,5 @@
 import { addDays } from './format';
-import { nextEMIDate, generateAmortisation, nextCreditCardDueDate } from './amortisation';
-import { format } from 'date-fns';
+import { nextEMIDate, generateAmortisation } from './amortisation';
 import type { AppState, ForecastResult, ForecastDay, ForecastEvent } from '@/types';
 
 export function buildForecast(data: Partial<AppState>, horizonDays = 60): ForecastResult {

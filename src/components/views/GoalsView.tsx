@@ -1,15 +1,12 @@
-import { Trash2 } from 'lucide-react';
-
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDateFull, todayStr } from '@/utils/format';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView } from './EntityView';
-import { GoalForm } from '@/components/forms';
-import { GOAL_ICONS } from '@/components/forms';
+import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { GoalForm, GOAL_ICONS } from '@/components/forms';
 import type { Goal } from '@/types';
 
 function estimateCompletion(g: Goal): string | null {
@@ -23,10 +20,16 @@ function estimateCompletion(g: Goal): string | null {
 }
 
 export function GoalsView() {
-	const { state, remove, save } = useApp();
+	const { state, save } = useApp();
 	const active = state.goals.filter((g) => g.status === 'active');
 	const completed = state.goals.filter((g) => g.status === 'completed');
 	const paused = state.goals.filter((g) => g.status === 'paused');
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Goal>({
+		entity: 'goals',
+		FormComp: GoalForm,
+		formTitle: 'Goal',
+	});
 
 	const GoalCard = ({ g }: { g: Goal }) => {
 		const pct = Math.min(100, (g.currentAmount / Math.max(g.targetAmount, 1)) * 100);
@@ -54,12 +57,10 @@ export function GoalsView() {
 								</div>
 							</div>
 						</div>
-						<Button
-							size="icon-sm"
-							variant="destructive"
-							onClick={() => remove('goals', g.id)}>
-							<Trash2 className="h-3.5 w-3.5" />
-						</Button>
+						<RowActions
+							onEdit={() => startEdit(g)}
+							onDelete={() => doRemove(g.id)}
+						/>
 					</div>
 
 					<div className="flex justify-between text-xs text-muted-foreground mb-1">
@@ -128,7 +129,6 @@ export function GoalsView() {
 					description="Set targets for emergency fund, house down payment, vacation, debt payoff…"
 				/>
 			)}
-
 			{active.length > 0 && (
 				<div className="flex flex-col gap-3">
 					{active.map((g) => (
@@ -139,7 +139,6 @@ export function GoalsView() {
 					))}
 				</div>
 			)}
-
 			{paused.length > 0 && (
 				<>
 					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
@@ -155,7 +154,6 @@ export function GoalsView() {
 					</div>
 				</>
 			)}
-
 			{completed.length > 0 && (
 				<>
 					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
@@ -171,6 +169,7 @@ export function GoalsView() {
 					</div>
 				</>
 			)}
+			{EditDialog}
 		</EntityView>
 	);
 }

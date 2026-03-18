@@ -1,14 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  utils/recurring.ts
-//  Utilities for generating and managing PaymentOccurrences.
-//
-//  Model:
-//    - Each RecurringPayment / RecurringIncome / Loan / CreditCard produces
-//      PaymentOccurrence records — one per due-date in a calendar month.
-//    - Occurrences are stored in IDB so the user can mark them paid/skipped.
-//    - When generating for a month, we first check for an existing stored
-//      occurrence (same sourceId + dueDate) and skip if found.
-//    - On mark-paid, the nextDate of the source is advanced by its frequency.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -24,22 +15,10 @@ import {
 	isWithinInterval,
 } from 'date-fns';
 import { generateAmortisation } from './amortisation';
-import { generateId } from './id';
-import { todayStr } from './format';
-import type {
-	AppState,
-	Frequency,
-	PaymentOccurrence,
-	PaymentOccurrenceKind,
-	RecurringPayment,
-	RecurringIncome,
-	Loan,
-	CreditCard,
-} from '@/types';
+import type { AppState, Frequency, PaymentOccurrence, PaymentOccurrenceKind } from '@/types';
 
 // ── Frequency advancement ─────────────────────────────────────────────────────
 
-/** Given a date string and frequency, return the next occurrence date string. */
 export function advanceByFrequency(dateStr: string, frequency: Frequency): string {
 	const d = parseISO(dateStr);
 	switch (frequency) {
@@ -58,49 +37,34 @@ export function advanceByFrequency(dateStr: string, frequency: Frequency): strin
 	}
 }
 
-// ── Occurrence builders ───────────────────────────────────────────────────────
-
-function makeOccurrence(
-	kind: PaymentOccurrenceKind,
-	sourceId: string,
-	dueDate: string,
-	amount: number,
-	label: string,
-	category?: string,
-	accountId?: string
-): Omit<PaymentOccurrence, 'id' | 'createdAt' | 'updatedAt'> {
-	return { kind, sourceId, dueDate, amount, label, category, accountId, status: 'unpaid' };
+// ── Deterministic occurrence id ───────────────────────────────────────────────
+// Derived from sourceId + dueDate so it is identical across every render.
+// This means markPaid always addresses the correct IDB record regardless of
+// whether the auto-save has completed yet.
+export function occurrenceId(sourceId: string, dueDate: string): string {
+	return `occ_${sourceId}_${dueDate.replace(/-/g, '')}`;
 }
 
 // ── Generate occurrences for a calendar month ─────────────────────────────────
 
-/**
- * Returns the full list of PaymentOccurrences that should exist for the
- * given year/month, merging with any already stored in state.
- *
- * For occurrences not yet in state, returns new (unsaved) records so the
- * caller can save them. Stored occurrences (by sourceId + dueDate) are
- * returned as-is (preserving paid/skipped status).
- */
 export function getOccurrencesForMonth(
 	state: Partial<AppState>,
 	year: number,
-	month: number // 0-based
+	month: number // 0-based (Jan = 0)
 ): PaymentOccurrence[] {
 	const start = startOfMonth(new Date(year, month, 1));
 	const end = endOfMonth(start);
 	const interval = { start, end };
-	const now = new Date();
+	const now_iso = new Date().toISOString();
 
-	// Index existing stored occurrences by "sourceId|dueDate" for O(1) lookup
+	// Index stored occurrences by deterministic id for O(1) lookup
 	const stored = new Map<string, PaymentOccurrence>();
-	(state.paymentOccurrences ?? []).forEach((o) => {
-		stored.set(`${o.sourceId}|${o.dueDate}`, o);
-	});
+	(state.paymentOccurrences ?? []).forEach((o) => stored.set(o.id, o));
 
 	const result: PaymentOccurrence[] = [];
 
-	const addOcc = (
+	/** Produce one occurrence, reusing stored version if it exists */
+	const add = (
 		kind: PaymentOccurrenceKind,
 		sourceId: string,
 		dueDate: string,
@@ -110,14 +74,10 @@ export function getOccurrencesForMonth(
 		accountId?: string
 	) => {
 		if (!isWithinInterval(parseISO(dueDate), interval)) return;
-		const key = `${sourceId}|${dueDate}`;
-		if (stored.has(key)) {
-			result.push(stored.get(key)!);
-		} else {
-			// New occurrence — mark as unpaid, assign a stable id
-			const now_iso = new Date().toISOString();
-			result.push({
-				id: generateId(),
+		const id = occurrenceId(sourceId, dueDate);
+		result.push(
+			stored.get(id) ?? {
+				id,
 				createdAt: now_iso,
 				updatedAt: now_iso,
 				kind,
@@ -128,62 +88,54 @@ export function getOccurrencesForMonth(
 				category,
 				accountId,
 				status: 'unpaid',
-			});
-		}
+			}
+		);
 	};
 
-	// ── Recurring payments ────────────────────────────────────────────────────
-	// Walk from nextDate backwards to find all occurrences in the month.
-	// We do this by projecting forward from the earliest possible date.
+	// Recurring payments
 	(state.recurringPayments ?? [])
 		.filter((r) => r.isActive)
-		.forEach((r) => {
+		.forEach((r) =>
 			projectDatesInMonth(r.nextDate, r.frequency, interval).forEach((d) =>
-				addOcc('recurring_payment', r.id, d, r.amount, r.name, r.category, r.accountId)
-			);
-		});
+				add('recurring_payment', r.id, d, r.amount, r.name, r.category, r.accountId)
+			)
+		);
 
-	// ── Recurring incomes ─────────────────────────────────────────────────────
+	// Recurring incomes
 	(state.recurringIncomes ?? [])
 		.filter((r) => r.isActive)
-		.forEach((r) => {
+		.forEach((r) =>
 			projectDatesInMonth(r.nextDate, r.frequency, interval).forEach((d) =>
-				addOcc('recurring_income', r.id, d, r.amount, r.name, undefined, r.accountId)
-			);
-		});
+				add('recurring_income', r.id, d, r.amount, r.name, undefined, r.accountId)
+			)
+		);
 
-	// ── Loan EMIs ─────────────────────────────────────────────────────────────
+	// Loan EMIs — use isPaid from amortisation as initial status
 	(state.loans ?? []).forEach((l) => {
 		generateAmortisation(l).forEach((row) => {
-			if (isWithinInterval(parseISO(row.date), interval)) {
-				const label = `${l.name} — EMI #${row.month}`;
-				const key = `${l.id}|${row.date}`;
-				if (stored.has(key)) {
-					result.push(stored.get(key)!);
-				} else {
-					const now_iso = new Date().toISOString();
-					result.push({
-						id: generateId(),
-						createdAt: now_iso,
-						updatedAt: now_iso,
-						kind: 'loan_emi',
-						sourceId: l.id,
-						dueDate: row.date,
-						amount: row.totalPayable,
-						label,
-						accountId: l.accountId,
-						// Pre-populate paid status from paidMonths
-						status: row.isPaid ? 'paid' : 'unpaid',
-					});
+			if (!isWithinInterval(parseISO(row.date), interval)) return;
+			const id = occurrenceId(l.id, row.date);
+			result.push(
+				stored.get(id) ?? {
+					id,
+					createdAt: now_iso,
+					updatedAt: now_iso,
+					kind: 'loan_emi',
+					sourceId: l.id,
+					dueDate: row.date,
+					amount: row.totalPayable,
+					label: `${l.name} — EMI #${row.month}`,
+					accountId: l.accountId,
+					status: row.isPaid ? 'paid' : 'unpaid',
 				}
-			}
+			);
 		});
 	});
 
-	// ── Credit card bills ─────────────────────────────────────────────────────
+	// Credit card bills
 	(state.creditCards ?? []).forEach((cc) => {
-		if (cc.dueDate && isWithinInterval(parseISO(cc.dueDate), interval)) {
-			addOcc(
+		if (cc.dueDate && isWithinInterval(parseISO(cc.dueDate), interval))
+			add(
 				'credit_card_bill',
 				cc.id,
 				cc.dueDate,
@@ -191,54 +143,37 @@ export function getOccurrencesForMonth(
 				`${cc.name} bill`,
 				'Credit Card'
 			);
-		}
 	});
 
 	return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
 
-// ── Project dates in a month for a recurring item ────────────────────────────
+// ── Project recurring dates into a month ──────────────────────────────────────
 
-/**
- * Given a known anchor date and frequency, find all occurrences within
- * the given interval. Works both forwards (future months) and backwards
- * (past months) from the anchor.
- */
 function projectDatesInMonth(
 	anchorDate: string,
 	frequency: Frequency,
 	interval: { start: Date; end: Date }
 ): string[] {
-	const anchor = parseISO(anchorDate);
-	const results: string[] = [];
+	const results = new Set<string>();
 
-	// Walk forward from anchor until past end of interval
-	let cur = anchor;
+	// Walk forward from anchor
+	let cur = parseISO(anchorDate);
 	while (cur <= interval.end) {
-		if (cur >= interval.start) results.push(format(cur, 'yyyy-MM-dd'));
+		if (cur >= interval.start) results.add(format(cur, 'yyyy-MM-dd'));
 		cur = parseISO(advanceByFrequency(format(cur, 'yyyy-MM-dd'), frequency));
 	}
 
-	// Also walk backward from anchor in case the interval is in the past
-	cur = parseISO(
-		advanceByFrequency(
-			// Step back one frequency unit from anchor
-			format(anchor, 'yyyy-MM-dd'),
-			frequency
-		)
-	);
-	// Actually step backward: find the period *before* the anchor
-	// Do this by stepping back with inverse durations
+	// Walk backward from anchor to cover past months
 	let back = stepBack(anchorDate, frequency);
 	while (parseISO(back) >= interval.start) {
-		if (parseISO(back) <= interval.end) results.push(back);
+		if (parseISO(back) <= interval.end) results.add(back);
 		back = stepBack(back, frequency);
 	}
 
-	return [...new Set(results)].sort();
+	return [...results].sort();
 }
 
-/** Step backward one frequency unit */
 function stepBack(dateStr: string, frequency: Frequency): string {
 	const d = parseISO(dateStr);
 	switch (frequency) {
@@ -259,15 +194,6 @@ function stepBack(dateStr: string, frequency: Frequency): string {
 
 // ── Urgency colour helper ─────────────────────────────────────────────────────
 
-/**
- * Returns a Tailwind colour class for an unpaid occurrence based on
- * how many days remain until due date.
- *
- *  > 7 days  → yellow / warning
- *  3–7 days  → amber / orange
- *  0–2 days  → red
- *  overdue   → red (darker)
- */
 export function urgencyClass(
 	dueDate: string,
 	status: string
@@ -316,7 +242,6 @@ export function urgencyClass(
 	};
 }
 
-/** Human-readable urgency label */
 export function urgencyLabel(dueDate: string): string {
 	const today = new Date();
 	today.setHours(0, 0, 0, 0);
