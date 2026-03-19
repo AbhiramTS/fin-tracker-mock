@@ -67,7 +67,9 @@ function PayDialog({ occ, accounts, onConfirm, onCancel }: PayDialogProps) {
 		setAccountId(occ.accountId ?? accounts[0]?.id ?? '');
 		setTopUp(false);
 		setTopUpAmount('');
-	}, [occ, accounts]);
+	}, [occ?.id]);
+
+	if (!occ) return null;
 
 	const amount = parseFloat(paidAmount) || 0;
 	const account = accounts.find((a) => a.id === accountId);
@@ -92,8 +94,6 @@ function PayDialog({ occ, accounts, onConfirm, onCancel }: PayDialogProps) {
 		if (shortfall) setTopUpAmount(String(shortfallAmt));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [shortfall, accountId, paidAmount]);
-
-	if (!occ) return null;
 
 	const handleConfirm = async () => {
 		if (!accountId || amount <= 0) return;
@@ -607,9 +607,8 @@ export function PaymentsView() {
 			const { paidDate, paidAmount, accountId, topUpAmount } = opts;
 			const isIncome = occ.kind === 'recurring_income';
 
-			// 0. If topping up: record the specified top-up income first
-			let account = state.accounts.find((a) => a.id === accountId);
-			if (topUpAmount > 0 && account) {
+			// 0. Top-up income if requested — save() auto-credits the account
+			if (topUpAmount > 0) {
 				await save('incomes', {
 					name: `Top-up for ${occ.label}`,
 					amount: topUpAmount,
@@ -618,11 +617,9 @@ export function PaymentsView() {
 					category: 'Top-up',
 					notes: `Top-up to cover ${occ.label} payment`,
 				});
-				account = { ...account, balance: account.balance + topUpAmount };
-				await save('accounts', { ...account } as unknown as Record<string, unknown>);
 			}
 
-			// 1. Create the transaction (Expense or Income)
+			// 1. Create the transaction — save() auto-debits/credits the account
 			let txId: string | undefined;
 			if (!isIncome) {
 				const expense = await save('expenses', {
@@ -646,18 +643,7 @@ export function PaymentsView() {
 				txId = income.id;
 			}
 
-			// 2. Update account balance
-			if (account) {
-				const newBalance = isIncome
-					? account.balance + paidAmount
-					: account.balance - paidAmount;
-				await save('accounts', { ...account, balance: newBalance } as unknown as Record<
-					string,
-					unknown
-				>);
-			}
-
-			// 3. Mark occurrence paid with transaction reference
+			// 2. Mark occurrence paid with transaction reference
 			const updated: PaymentOccurrence = {
 				...occ,
 				status: 'paid',
@@ -740,7 +726,7 @@ export function PaymentsView() {
 		async (occ: PaymentOccurrence) => {
 			const isIncome = occ.kind === 'recurring_income';
 
-			// 1. Delete the linked transaction
+			// Delete the linked transaction — remove() auto-restores the account balance
 			if (occ.transactionId) {
 				try {
 					await remove(isIncome ? 'incomes' : 'expenses', occ.transactionId);
@@ -749,21 +735,7 @@ export function PaymentsView() {
 				}
 			}
 
-			// 2. Restore account balance
-			if (occ.accountId && occ.paidAmount !== undefined) {
-				const account = state.accounts.find((a) => a.id === occ.accountId);
-				if (account) {
-					const restoredBalance = isIncome
-						? account.balance - occ.paidAmount
-						: account.balance + occ.paidAmount;
-					await save('accounts', {
-						...account,
-						balance: restoredBalance,
-					} as unknown as Record<string, unknown>);
-				}
-			}
-
-			// 3. Revert occurrence
+			// Revert occurrence
 			const updated: PaymentOccurrence = {
 				...occ,
 				status: 'unpaid',

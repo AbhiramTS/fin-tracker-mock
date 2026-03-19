@@ -17,6 +17,7 @@ import {
 	CalendarCheck,
 	Zap,
 	X,
+	BookOpen,
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
@@ -37,9 +38,8 @@ import { ForecastView } from '@/components/views/ForecastView';
 import { SimulatorView } from '@/components/views/SimulatorView';
 import { AccountsView } from '@/components/views/AccountsView';
 import { ReconciliationView } from '@/components/views/ReconciliationView';
+import { LedgerView } from '@/components/views/LedgerView';
 import { SettingsView } from '@/components/views/SettingsView';
-
-const APP_VERSION = __APP_VERSION__;
 
 // ── Nav config ────────────────────────────────────────────────────────────────
 type TabId =
@@ -58,6 +58,7 @@ type TabId =
 	| 'simulator'
 	| 'accounts'
 	| 'reconciliation'
+	| 'ledger'
 	| 'settings';
 
 interface NavItem {
@@ -77,6 +78,7 @@ const NAV: NavItem[] = [
 	{ id: 'income', label: 'Income', icon: Zap, group: 'Money' },
 	{ id: 'transfers', label: 'Transfers', icon: ArrowLeftRight, group: 'Money' },
 	{ id: 'recurring', label: 'Recurring', icon: RefreshCw, group: 'Money' },
+	{ id: 'ledger', label: 'Account Book', icon: BookOpen, group: 'Money' },
 
 	{ id: 'accounts', label: 'Accounts', icon: Wallet, group: 'Accounts' },
 	{ id: 'loans', label: 'Loans & EMIs', icon: Landmark, group: 'Accounts' },
@@ -99,6 +101,7 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	income: IncomeView,
 	transfers: TransfersView,
 	recurring: RecurringView,
+	ledger: LedgerView,
 	loans: LoansView,
 	cards: CreditCardsView,
 	receivables: ReceivablesView,
@@ -155,7 +158,7 @@ function Sidebar({
 							FinTracker
 						</h1>
 						<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
-							v{APP_VERSION}
+							v4.0
 						</span>
 					</div>
 					<p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-0.5">
@@ -297,7 +300,7 @@ function AppShell() {
 						</span>
 						{tab === 'dashboard' && (
 							<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
-								v{APP_VERSION}
+								v4.0
 							</span>
 						)}
 					</div>
