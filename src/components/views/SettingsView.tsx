@@ -954,6 +954,10 @@ function ClearDataSection() {
 	const selectedEntities: EntityName[] = [...selected].flatMap((i) => CLEAR_GROUPS[i].entities);
 
 	const selectedGroups = [...selected].map((i) => CLEAR_GROUPS[i].label);
+	const selectedGroupsSummary =
+		selectedGroups.length <= 2
+			? selectedGroups.join(', ')
+			: `${selectedGroups.slice(0, 2).join(', ')} +${selectedGroups.length - 2} more`;
 
 	const scopeLabel =
 		scope === 'local'
@@ -1119,9 +1123,11 @@ function ClearDataSection() {
 					setConfirmText('');
 					setShowConfirm(true);
 				}}
-				className="w-full gap-2">
-				<Trash2 className="h-4 w-4" />
-				Clear {selected.size > 0 ? selectedGroups.join(', ') : 'selected data'}
+				className="w-full h-auto items-center justify-center gap-2 whitespace-normal py-2">
+				<Trash2 className="h-4 w-4 shrink-0" />
+				<span className="text-center leading-snug break-words">
+					Clear {selected.size > 0 ? selectedGroupsSummary : 'selected data'}
+				</span>
 			</Button>
 
 			{/* Confirmation dialog */}
