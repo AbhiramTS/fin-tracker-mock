@@ -24,6 +24,22 @@
 			"name": "Cash Wallet",
 			"type": "cash",
 			"openingBalance": 2000
+		},
+		{
+			"_comment": "Liability account: credit card with card-specific properties",
+			"name": "HDFC Regalia",
+			"type": "credit_card",
+			"openingBalance": -18500,
+			"creditCard": {
+				"limit": 200000,
+				"outstanding": 18500,
+				"statementDay": 15,
+				"billingCycleDays": 30,
+				"gracePeriodDays": 20,
+				"dueDate": "2026-04-04",
+				"statementDate": "2026-03-15"
+			},
+			"notes": "Rewards card. If you import legacy creditCards[], FinTracker auto-converts to this shape."
 		}
 	],
 	"journalEntries": [
@@ -122,18 +138,6 @@
 			"account": "ICICI Savings",
 			"emi": 12450,
 			"notes": "Override EMI with exact bank figure"
-		}
-	],
-	"creditCards": [
-		{
-			"_comment": "Liability: Credit card with cycle/grace period. Auto-calculates statement and due dates.",
-			"name": "HDFC Regalia",
-			"limit": 200000,
-			"outstanding": 18500,
-			"statementDay": 15,
-			"billingCycleDays": 30,
-			"gracePeriodDays": 20,
-			"notes": "Rewards card. Statement defaults: day 1, 30d cycle, 20d grace if omitted."
 		}
 	]
 }

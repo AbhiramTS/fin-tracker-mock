@@ -56,18 +56,21 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 		});
 
 		// Credit card dues — use computed due date from billing cycle settings
-		(data.creditCards ?? []).forEach((cc) => {
-			// Use stored dueDate for the current cycle; fall back to computed
-			const dueDateStr = cc.dueDate?.slice(0, 10) ?? '';
-			if (dueDateStr === ds) {
-				events.push({
-					date: ds,
-					label: `${cc.name} bill`,
-					amount: -(cc.outstanding ?? 0),
-					type: 'credit',
-				});
-			}
-		});
+		(data.accounts ?? [])
+			.filter((a) => a.type === 'credit_card' && a.creditCard)
+			.forEach((a) => {
+				const cc = a.creditCard!;
+				// Use stored dueDate for the current cycle
+				const dueDateStr = cc.dueDate?.slice(0, 10) ?? '';
+				if (dueDateStr === ds) {
+					events.push({
+						date: ds,
+						label: `${a.name} bill`,
+						amount: -(cc.outstanding ?? 0),
+						type: 'credit',
+					});
+				}
+			});
 
 		// Goal contributions (if monthly contribution set)
 		(data.goals ?? [])

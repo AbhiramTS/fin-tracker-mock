@@ -20,7 +20,6 @@ import type {
 	Investment,
 	Account,
 	Loan,
-	CreditCard,
 	ComputedBalances,
 } from '@/types';
 
@@ -217,14 +216,12 @@ export function NetWorthChart({
 	accounts,
 	investments,
 	loans,
-	creditCards,
 	computedBalances = {},
 	height = 110,
 }: {
 	accounts: Account[];
 	investments: Investment[];
 	loans: Loan[];
-	creditCards: CreditCard[];
 	computedBalances?: ComputedBalances;
 	height?: number;
 }) {
@@ -235,7 +232,10 @@ export function NetWorthChart({
 			(s, l) =>
 				s + Math.max(0, (l.principalAmount ?? 0) - (l.emi ?? 0) * (l.paidMonths ?? 0)),
 			0
-		) + creditCards.reduce((s, c) => s + (c.outstanding ?? 0), 0);
+		) +
+		accounts
+			.filter((a) => a.type === 'credit_card')
+			.reduce((s, a) => s + (a.creditCard?.outstanding ?? 0), 0);
 	const nw = bal + inv - debt;
 	const data = Array.from({ length: 6 }, (_, i) => {
 		const d = new Date();

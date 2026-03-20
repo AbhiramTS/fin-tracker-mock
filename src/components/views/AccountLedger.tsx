@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { fmt } from '@/utils/format';
 import { useApp } from '@/context/AppContext';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
-import type { Account, Loan, CreditCard } from '@/types';
+import type { Account, Loan } from '@/types';
 
 // ── Account ledger dialog ─────────────────────────────────────────────────────
 export function AccountLedgerDialog({
@@ -85,10 +85,13 @@ export function CreditCardLedgerDialog({
 	card,
 	onClose,
 }: {
-	card: CreditCard | null;
+	card: Account | null;
 	onClose: () => void;
 }) {
 	if (!card) return null;
+	const details = card.creditCard;
+	const limit = details?.limit ?? 0;
+	const outstanding = details?.outstanding ?? Math.max(0, -(card.openingBalance ?? 0));
 	return (
 		<Dialog
 			open={!!card}
@@ -98,13 +101,9 @@ export function CreditCardLedgerDialog({
 					<DialogTitle>{card.name}</DialogTitle>
 					<p className="text-sm text-muted-foreground">
 						Credit limit:{' '}
-						<span className="font-mono font-bold text-foreground">
-							{fmt(card.limit)}
-						</span>
+						<span className="font-mono font-bold text-foreground">{fmt(limit)}</span>
 						{' · '}Outstanding:{' '}
-						<span className="font-mono font-bold text-loss">
-							{fmt(card.outstanding)}
-						</span>
+						<span className="font-mono font-bold text-loss">{fmt(outstanding)}</span>
 					</p>
 				</DialogHeader>
 				<div className="flex-1 overflow-y-auto p-5">

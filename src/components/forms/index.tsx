@@ -24,7 +24,6 @@ import type {
 	RecurringPayment,
 	RecurringIncome,
 	Loan,
-	CreditCard,
 	Receivable,
 	RepaymentRecord,
 	Investment,
@@ -1089,41 +1088,57 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 }
 
 // ── CreditCardForm ────────────────────────────────────────────────────────────
-export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>) {
-	const [f, setF] = useState<Partial<CreditCard>>({
+export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
+	const existingCard = initialData?.creditCard;
+	const [f, setF] = useState<Partial<Account>>({
 		name: '',
-		limit: undefined,
-		outstanding: 0,
-		statementDay: 1,
-		billingCycleDays: 30,
-		gracePeriodDays: 20,
-		dueDate: todayStr(),
-		statementDate: todayStr(),
-		taxRate: undefined,
+		type: 'credit_card',
+		openingBalance: 0,
+		creditCard: {
+			limit: existingCard?.limit ?? 0,
+			outstanding: existingCard?.outstanding ?? 0,
+			statementDay: existingCard?.statementDay ?? 1,
+			billingCycleDays: existingCard?.billingCycleDays ?? 30,
+			gracePeriodDays: existingCard?.gracePeriodDays ?? 20,
+			dueDate: existingCard?.dueDate ?? todayStr(),
+			statementDate: existingCard?.statementDate ?? todayStr(),
+			taxRate: existingCard?.taxRate,
+		},
 		...initialData,
 	});
+	const cc = f.creditCard;
 	const previewDueDate: string | null =
-		f.statementDay && f.gracePeriodDays
+		cc?.statementDay && cc.gracePeriodDays !== undefined
 			? (() => {
 					const s = nextStatementDate({
-						statementDay: f.statementDay!,
-						billingCycleDays: f.billingCycleDays ?? 30,
+						statementDay: cc.statementDay,
+						billingCycleDays: cc.billingCycleDays ?? 30,
 					});
-					return dueFromStatement(s, f.gracePeriodDays!).toISOString().split('T')[0];
+					return dueFromStatement(s, cc.gracePeriodDays).toISOString().split('T')[0];
 				})()
 			: null;
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.limit) {
-			const sd = f.statementDay
+		if (f.name && cc && cc.limit !== undefined) {
+			const sd = cc.statementDay
 				? nextStatementDate({
-						statementDay: f.statementDay,
-						billingCycleDays: f.billingCycleDays ?? 30,
+						statementDay: cc.statementDay,
+						billingCycleDays: cc.billingCycleDays ?? 30,
 					})
 						.toISOString()
 						.split('T')[0]
-				: (f.statementDate ?? todayStr());
-			onSave({ ...f, dueDate: previewDueDate ?? f.dueDate ?? todayStr(), statementDate: sd });
+				: (cc.statementDate ?? todayStr());
+
+			onSave({
+				...f,
+				type: 'credit_card',
+				openingBalance: f.openingBalance ?? -(cc.outstanding ?? 0),
+				creditCard: {
+					...cc,
+					dueDate: previewDueDate ?? cc.dueDate ?? todayStr(),
+					statementDate: sd,
+				},
+			});
 		}
 	};
 	return (
@@ -1145,9 +1160,23 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 					<Input
 						type="number"
 						min="0"
-						value={f.limit ?? ''}
+						value={cc?.limit ?? ''}
 						onChange={(e) =>
-							setF({ ...f, limit: parseFloat(e.target.value) || undefined })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										outstanding: 0,
+										statementDay: 1,
+										billingCycleDays: 30,
+										gracePeriodDays: 20,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+										limit: 0,
+									}),
+									limit: parseFloat(e.target.value) || 0,
+								},
+							})
 						}
 						required
 					/>
@@ -1156,9 +1185,24 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 					<Input
 						type="number"
 						min="0"
-						value={f.outstanding ?? ''}
+						value={cc?.outstanding ?? ''}
 						onChange={(e) =>
-							setF({ ...f, outstanding: parseFloat(e.target.value) || 0 })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										limit: 0,
+										statementDay: 1,
+										billingCycleDays: 30,
+										gracePeriodDays: 20,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+										outstanding: 0,
+									}),
+									outstanding: parseFloat(e.target.value) || 0,
+								},
+								openingBalance: -(parseFloat(e.target.value) || 0),
+							})
 						}
 					/>
 				</FormField>
@@ -1167,9 +1211,23 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						type="number"
 						min="1"
 						max="28"
-						value={f.statementDay ?? 1}
+						value={cc?.statementDay ?? 1}
 						onChange={(e) =>
-							setF({ ...f, statementDay: parseInt(e.target.value) || 1 })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										limit: 0,
+										outstanding: 0,
+										billingCycleDays: 30,
+										gracePeriodDays: 20,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+										statementDay: 1,
+									}),
+									statementDay: parseInt(e.target.value) || 1,
+								},
+							})
 						}
 					/>
 				</FormField>
@@ -1177,9 +1235,23 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 					<Input
 						type="number"
 						min="1"
-						value={f.billingCycleDays ?? 30}
+						value={cc?.billingCycleDays ?? 30}
 						onChange={(e) =>
-							setF({ ...f, billingCycleDays: parseInt(e.target.value) || 30 })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										limit: 0,
+										outstanding: 0,
+										statementDay: 1,
+										gracePeriodDays: 20,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+										billingCycleDays: 30,
+									}),
+									billingCycleDays: parseInt(e.target.value) || 30,
+								},
+							})
 						}
 					/>
 				</FormField>
@@ -1187,9 +1259,23 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 					<Input
 						type="number"
 						min="0"
-						value={f.gracePeriodDays ?? 20}
+						value={cc?.gracePeriodDays ?? 20}
 						onChange={(e) =>
-							setF({ ...f, gracePeriodDays: parseInt(e.target.value) || 20 })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										limit: 0,
+										outstanding: 0,
+										statementDay: 1,
+										billingCycleDays: 30,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+										gracePeriodDays: 20,
+									}),
+									gracePeriodDays: parseInt(e.target.value) || 20,
+								},
+							})
 						}
 					/>
 				</FormField>
@@ -1202,9 +1288,23 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 					<Input
 						type="number"
 						min="0"
-						value={f.taxRate ?? ''}
+						value={cc?.taxRate ?? ''}
 						onChange={(e) =>
-							setF({ ...f, taxRate: parseFloat(e.target.value) || undefined })
+							setF({
+								...f,
+								creditCard: {
+									...(f.creditCard ?? {
+										limit: 0,
+										outstanding: 0,
+										statementDay: 1,
+										billingCycleDays: 30,
+										gracePeriodDays: 20,
+										dueDate: todayStr(),
+										statementDate: todayStr(),
+									}),
+									taxRate: parseFloat(e.target.value) || undefined,
+								},
+							})
 						}
 					/>
 				</FormField>

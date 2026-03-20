@@ -8,7 +8,7 @@ import {
 	type ReactNode,
 } from 'react';
 import { openDB, dbClear } from '@/db/indexedDB';
-import { Repos } from '@/repositories';
+import { Repos, legacyCreditCardRepo } from '@/repositories';
 import {
 	registerSyncAdapter,
 	getAdapter,
@@ -28,10 +28,22 @@ import type {
 	ComputedBalances,
 	SyncState,
 	Account,
-	CreditCard,
 	Loan,
 } from '@/types';
 import { ROOT_HEADS, rootHeadForAccountType } from '@/types';
+
+type LegacyCreditCardRecord = BaseRecord & {
+	name: string;
+	limit: number;
+	outstanding: number;
+	statementDay: number;
+	billingCycleDays: number;
+	gracePeriodDays: number;
+	dueDate: string;
+	statementDate: string;
+	taxRate?: number;
+	notes?: string;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 const INITIAL_SYNC: SyncState = {
@@ -50,7 +62,6 @@ const INITIAL: AppState = {
 	recurringPayments: [],
 	recurringIncomes: [],
 	loans: [],
-	creditCards: [],
 	receivables: [],
 	repaymentRecords: [],
 	investments: [],
@@ -119,7 +130,7 @@ interface AppContextValue {
 const AppCtx = createContext<AppContextValue | null>(null);
 
 // ── AccountHead mirror helpers ────────────────────────────────────────────────
-// Every Account, CreditCard, Loan is ALSO an AccountHead (same id, isAccount: true).
+// Every Account and Loan is ALSO an AccountHead (same id, isAccount: true).
 // These helpers sync the AccountHead when the underlying entity changes.
 
 function accountToHead(a: Account): AccountHead {
@@ -137,17 +148,26 @@ function accountToHead(a: Account): AccountHead {
 	};
 }
 
-function creditCardToHead(c: CreditCard): AccountHead {
-	const now = new Date().toISOString();
+function creditCardToAccount(c: LegacyCreditCardRecord, existingAccountIds: Set<string>): Account {
+	const id = existingAccountIds.has(c.id) ? `${c.id}_cc` : c.id;
 	return {
-		id: c.id,
+		id,
 		name: c.name,
-		type: 'liability',
-		parentId: 'head_liability',
-		isSystem: false,
-		isAccount: true,
-		createdAt: (c as unknown as Record<string, string>).createdAt ?? now,
-		updatedAt: now,
+		type: 'credit_card',
+		openingBalance: -(c.outstanding ?? 0),
+		creditCard: {
+			limit: c.limit ?? 0,
+			outstanding: c.outstanding ?? 0,
+			statementDay: c.statementDay ?? 1,
+			billingCycleDays: c.billingCycleDays ?? 30,
+			gracePeriodDays: c.gracePeriodDays ?? 20,
+			dueDate: c.dueDate,
+			statementDate: c.statementDate,
+			taxRate: c.taxRate,
+		},
+		notes: c.notes,
+		createdAt: c.createdAt,
+		updatedAt: c.updatedAt,
 	};
 }
 
@@ -259,6 +279,69 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		dispatch({ type: 'RELOAD_ENTITY', payload: { entity: entity as EntityName, records } });
 	}, []);
 
+	const migrateLegacyCreditCards = useCallback(
+		async (accounts: Account[], heads: AccountHead[], cards: LegacyCreditCardRecord[]) => {
+			if (!cards.length) return;
+
+			const accountById = new Map(accounts.map((a) => [a.id, a]));
+			const accountByName = new Map(accounts.map((a) => [a.name.toLowerCase(), a]));
+			const existingIds = new Set(accounts.map((a) => a.id));
+			const headIds = new Set(heads.map((h) => h.id));
+
+			for (const card of cards) {
+				const matched =
+					accountById.get(card.id) ?? accountByName.get(card.name.toLowerCase()) ?? null;
+
+				if (matched) {
+					if (matched.type !== 'credit_card' || matched.creditCard) continue;
+					const updated: Account = {
+						...matched,
+						type: 'credit_card',
+						creditCard: {
+							limit: card.limit ?? 0,
+							outstanding: card.outstanding ?? 0,
+							statementDay: card.statementDay ?? 1,
+							billingCycleDays: card.billingCycleDays ?? 30,
+							gracePeriodDays: card.gracePeriodDays ?? 20,
+							dueDate: card.dueDate,
+							statementDate: card.statementDate,
+							taxRate: card.taxRate,
+						},
+						notes: matched.notes ?? card.notes,
+						updatedAt: new Date().toISOString(),
+					};
+					await Repos.accounts.save(updated as Parameters<typeof Repos.accounts.save>[0]);
+					dispatch({ type: 'UPSERT', payload: { entity: 'accounts', record: updated } });
+
+					const head = accountToHead(updated);
+					await Repos.accountHeads.save(
+						head as Parameters<typeof Repos.accountHeads.save>[0]
+					);
+					dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+					continue;
+				}
+
+				const account = creditCardToAccount(card, existingIds);
+				existingIds.add(account.id);
+				await Repos.accounts.save(account as Parameters<typeof Repos.accounts.save>[0]);
+				dispatch({ type: 'UPSERT', payload: { entity: 'accounts', record: account } });
+
+				if (!headIds.has(account.id)) {
+					const head = accountToHead(account);
+					await Repos.accountHeads.save(
+						head as Parameters<typeof Repos.accountHeads.save>[0]
+					);
+					headIds.add(account.id);
+					dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+				}
+			}
+
+			// Legacy store is no longer used after unified account migration.
+			await dbClear('creditCards').catch(() => {});
+		},
+		[]
+	);
+
 	// ── Initial load ──────────────────────────────────────────────────────────
 	useEffect(() => {
 		(async () => {
@@ -270,6 +353,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				const payload = Object.fromEntries(entries) as Partial<AppState>;
 				dispatch({ type: 'LOAD_ALL', payload });
 				await seedAccountHeads((payload.accountHeads ?? []) as AccountHead[]);
+				const legacyCards = await legacyCreditCardRepo.getAll().catch(() => []);
+				await migrateLegacyCreditCards(
+					(payload.accounts ?? []) as Account[],
+					(payload.accountHeads ?? []) as AccountHead[],
+					legacyCards
+				);
 
 				const saved = localStorage.getItem('ft_firebase_config');
 				if (saved) {
@@ -295,10 +384,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				dispatch({ type: 'SET_ERROR', payload: (err as Error).message });
 			}
 		})();
-	}, [reloadEntity, seedAccountHeads]);
+	}, [migrateLegacyCreditCards, reloadEntity, seedAccountHeads]);
 
 	// ── Save ──────────────────────────────────────────────────────────────────
-	// When saving an Account, CreditCard, or Loan → also upsert its AccountHead mirror.
+	// When saving an Account or Loan → also upsert its AccountHead mirror.
 	const save = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const saved = await Repos[entity].save(record as any);
@@ -307,10 +396,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		// Mirror to AccountHead
 		if (entity === 'accounts') {
 			const head = accountToHead(saved as unknown as Account);
-			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
-			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
-		} else if (entity === 'creditCards') {
-			const head = creditCardToHead(saved as unknown as CreditCard);
 			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
 			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
 		} else if (entity === 'loans') {
@@ -326,12 +411,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	// ── Remove ────────────────────────────────────────────────────────────────
-	// When removing an Account, CreditCard, or Loan → also remove its AccountHead mirror.
+	// When removing an Account or Loan → also remove its AccountHead mirror.
 	const remove = useCallback(async (entity: EntityName, id: string) => {
 		await Repos[entity].delete(id);
 		dispatch({ type: 'REMOVE', payload: { entity, id } });
 
-		if (entity === 'accounts' || entity === 'creditCards' || entity === 'loans') {
+		if (entity === 'accounts' || entity === 'loans') {
 			await Repos.accountHeads.delete(id);
 			dispatch({ type: 'REMOVE', payload: { entity: 'accountHeads', id } });
 		}

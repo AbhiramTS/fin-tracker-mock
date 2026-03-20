@@ -547,7 +547,6 @@ const EXPORT_ENTITIES: EntityName[] = [
 	'recurringPayments',
 	'recurringIncomes',
 	'loans',
-	'creditCards',
 	'receivables',
 	'repaymentRecords',
 	'investments',
@@ -755,9 +754,6 @@ function DataPortability() {
 				...plan.cleanLoans.map(
 					(r) => ['loans', r] as [EntityName, Record<string, unknown>]
 				),
-				...plan.cleanCreditCards.map(
-					(r) => ['creditCards', r] as [EntityName, Record<string, unknown>]
-				),
 				...plan.cleanJournalEntries.map(
 					(r) => ['journalEntries', r] as [EntityName, Record<string, unknown>]
 				),
@@ -822,8 +818,9 @@ function DataPortability() {
 				{step === 'saving' ? 'Importing…' : 'Import from JSON'}
 			</Button>
 			<p className="text-xs text-muted-foreground -mt-1">
-				Supported: accounts, incomes, expenses, loans, credit cards. IDs are generated
-				automatically. Account names are used as identifiers.
+				Supported: accounts, incomes, expenses, loans. Credit cards are imported as account
+				type "credit_card" with card details. IDs are generated automatically. Account names
+				are used as identifiers.
 			</p>
 
 			{importError && (
@@ -907,7 +904,7 @@ const CLEAR_GROUPS: { label: string; description: string; icon: string; entities
 			label: 'Loans & Credit Cards',
 			description: 'Loans, EMI schedules, credit cards, payment occurrences',
 			icon: '🏠',
-			entities: ['loans', 'creditCards', 'paymentOccurrences'],
+			entities: ['loans', 'paymentOccurrences'],
 		},
 		{
 			label: 'Recurring',
@@ -1504,7 +1501,10 @@ export function SettingsView() {
 										.length,
 								],
 								['Loans', state.loans.length],
-								['Credit Cards', state.creditCards.length],
+								[
+									'Credit Cards',
+									state.accounts.filter((a) => a.type === 'credit_card').length,
+								],
 								['Investments', state.investments.length],
 								['Goals', state.goals.length],
 								['Import Reviews', state.importReviews.length],

@@ -6,7 +6,6 @@ import type {
 	RecurringPayment,
 	RecurringIncome,
 	Loan,
-	CreditCard,
 	Receivable,
 	RepaymentRecord,
 	Investment,
@@ -18,13 +17,26 @@ import type {
 	EntityName,
 } from '@/types';
 
+type LegacyCreditCardRecord = BaseRecord & {
+	name: string;
+	limit: number;
+	outstanding: number;
+	statementDay: number;
+	billingCycleDays: number;
+	gracePeriodDays: number;
+	dueDate: string;
+	statementDate: string;
+	taxRate?: number;
+	notes?: string;
+};
+
 export const accountRepo = new BaseRepository<Account>('accounts');
 export const accountHeadRepo = new BaseRepository<AccountHead>('accountHeads');
 export const journalEntryRepo = new BaseRepository<JournalEntry>('journalEntries');
 export const recurringPaymentRepo = new BaseRepository<RecurringPayment>('recurringPayments');
 export const recurringIncomeRepo = new BaseRepository<RecurringIncome>('recurringIncomes');
 export const loanRepo = new BaseRepository<Loan>('loans');
-export const creditCardRepo = new BaseRepository<CreditCard>('creditCards');
+export const legacyCreditCardRepo = new BaseRepository<LegacyCreditCardRecord>('creditCards');
 export const receivableRepo = new BaseRepository<Receivable>('receivables');
 export const repaymentRecordRepo = new BaseRepository<RepaymentRecord>('repaymentRecords');
 export const investmentRepo = new BaseRepository<Investment>('investments');
@@ -40,7 +52,6 @@ export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	recurringPayments: recurringPaymentRepo as BaseRepository<BaseRecord>,
 	recurringIncomes: recurringIncomeRepo as BaseRepository<BaseRecord>,
 	loans: loanRepo as BaseRepository<BaseRecord>,
-	creditCards: creditCardRepo as BaseRepository<BaseRecord>,
 	receivables: receivableRepo as BaseRepository<BaseRecord>,
 	repaymentRecords: repaymentRecordRepo as BaseRepository<BaseRecord>,
 	investments: investmentRepo as BaseRepository<BaseRecord>,

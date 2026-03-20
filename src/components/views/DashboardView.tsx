@@ -20,12 +20,15 @@ export function DashboardView() {
 	);
 
 	const totalInv = state.investments.reduce((s, i) => s + (i.value ?? 0), 0);
+	const unifiedCardDebt = state.accounts
+		.filter((a) => a.type === 'credit_card')
+		.reduce((s, a) => s + (a.creditCard?.outstanding ?? 0), 0);
 	const totalDebt =
 		state.loans.reduce(
 			(s, l) =>
 				s + Math.max(0, (l.principalAmount ?? 0) - (l.emi ?? 0) * (l.paidMonths ?? 0)),
 			0
-		) + state.creditCards.reduce((s, c) => s + (c.outstanding ?? 0), 0);
+		) + unifiedCardDebt;
 	const netWorth = totalBalance + totalInv - totalDebt;
 	const outstandingReceivables = state.receivables
 		.filter((r) => !r.isSettled)
@@ -292,7 +295,6 @@ export function DashboardView() {
 							accounts={state.accounts}
 							investments={state.investments}
 							loans={state.loans}
-							creditCards={state.creditCards}
 							computedBalances={state.computedBalances}
 							height={110}
 						/>

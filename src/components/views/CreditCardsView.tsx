@@ -12,15 +12,32 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { CreditCardForm } from '@/components/forms';
 import { CreditCardLedgerDialog } from './AccountLedger';
-import type { CreditCard } from '@/types';
+import type { Account } from '@/types';
 
 export function CreditCardsView() {
 	const { state } = useApp();
-	const totalDebt = state.creditCards.reduce((s, c) => s + (c.outstanding ?? 0), 0);
-	const [ledgerCard, setLedgerCard] = useState<CreditCard | null>(null);
+	const creditCardAccounts = state.accounts.filter((a) => a.type === 'credit_card');
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<CreditCard>({
-		entity: 'creditCards',
+	const detailsForAccount = (account: Account) => {
+		const trackedBalance = state.computedBalances[account.id] ?? account.openingBalance ?? 0;
+		const fromAccount = account.creditCard;
+		return {
+			limit: fromAccount?.limit ?? 0,
+			outstanding: fromAccount?.outstanding ?? Math.max(0, -trackedBalance),
+			statementDay: fromAccount?.statementDay ?? 1,
+			billingCycleDays: fromAccount?.billingCycleDays ?? 30,
+			gracePeriodDays: fromAccount?.gracePeriodDays ?? 20,
+			dueDate: fromAccount?.dueDate ?? new Date().toISOString().split('T')[0],
+			statementDate: fromAccount?.statementDate ?? new Date().toISOString().split('T')[0],
+			taxRate: fromAccount?.taxRate,
+		};
+	};
+
+	const totalDebt = creditCardAccounts.reduce((s, a) => s + detailsForAccount(a).outstanding, 0);
+	const [ledgerCard, setLedgerCard] = useState<Account | null>(null);
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<Account>({
+		entity: 'accounts',
 		FormComp: CreditCardForm,
 		formTitle: 'Credit Card',
 	});
@@ -29,16 +46,17 @@ export function CreditCardsView() {
 		<EntityView
 			title="Credit Cards"
 			subtitle={`Total outstanding: ${fmt(totalDebt)}`}
-			entity="creditCards"
+			entity="accounts"
 			FormComp={CreditCardForm}>
-			{state.creditCards.length === 0 ? (
+			{creditCardAccounts.length === 0 ? (
 				<EmptyState
 					icon="💳"
 					title="No credit cards"
 					description="Track balances, billing cycles, and due dates"
 				/>
 			) : (
-				state.creditCards.map((c) => {
+				creditCardAccounts.map((a) => {
+					const c = detailsForAccount(a);
 					const util = ((c.outstanding ?? 0) / Math.max(c.limit ?? 1, 1)) * 100;
 					const days = daysFromNow(c.dueDate);
 					const stmtDate = nextStatementDate({
@@ -49,9 +67,9 @@ export function CreditCardsView() {
 
 					return (
 						<Card
-							key={c.id}
+							key={a.id}
 							className="cursor-pointer hover:border-primary/40 transition-colors"
-							onClick={() => setLedgerCard(c)}>
+							onClick={() => setLedgerCard(a)}>
 							<CardContent className="p-4">
 								<div className="flex items-start justify-between mb-3">
 									<div>
@@ -70,8 +88,8 @@ export function CreditCardsView() {
 									</div>
 									<div className="flex items-center gap-1">
 										<RowActions
-											onEdit={() => startEdit(c)}
-											onDelete={() => doRemove(c.id)}
+											onEdit={() => startEdit(a)}
+											onDelete={() => doRemove(a.id)}
 										/>
 										<ChevronRight className="h-3.5 w-3.5 text-muted-foreground ml-1" />
 									</div>
@@ -134,7 +152,7 @@ export function CreditCardsView() {
 									const ccLoans = state.loans.filter(
 										(l) =>
 											l.loanType === 'credit_card' &&
-											l.linkedCreditCardId === c.id
+											l.linkedCreditCardId === a.id
 									);
 									if (!ccLoans.length) return null;
 									return (

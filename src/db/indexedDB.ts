@@ -16,7 +16,6 @@ export const STORE_DEFS: Record<string, StoreDef> = {
 	recurringPayments: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	recurringIncomes: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	loans: { keyPath: 'id', indexes: ['accountId', 'loanType'] },
-	creditCards: { keyPath: 'id', indexes: [] },
 	receivables: { keyPath: 'id', indexes: ['accountId'] },
 	repaymentRecords: { keyPath: 'id', indexes: ['receivableId', 'date'] },
 	investments: { keyPath: 'id', indexes: ['type'] },

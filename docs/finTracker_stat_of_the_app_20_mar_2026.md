@@ -74,35 +74,35 @@ Browser
 
 ### Key files
 
-| File | Role |
-|---|---|
-| `src/types.ts` | All TypeScript interfaces and constants |
-| `src/context/AppContext.tsx` | Global state, reducer, save/remove with AccountHead mirroring |
-| `src/db/indexedDB.ts` | IDB wrapper (openDB, dbGetAll, dbPut, dbDelete, dbClear) |
-| `src/repositories/BaseRepository.ts` | Typed CRUD over IDB |
-| `src/workers/balanceWorker.ts` | Off-thread double-entry balance calculation |
-| `src/sync/syncQueue.ts` | Change queue, flush, onFlushResult callback |
-| `src/sync/FirebaseSyncAdapter.ts` | Firestore push/pull/realtime |
-| `src/utils/recurring.ts` | Payment occurrence generation |
-| `src/utils/forecast.ts` | 60-day cash-flow forecast |
-| `src/utils/importEngine.ts` | JSON import parser with duplicate detection |
-| `src/App.tsx` | Hash router, nav config, shell layout |
+| File                                 | Role                                                          |
+| ------------------------------------ | ------------------------------------------------------------- |
+| `src/types.ts`                       | All TypeScript interfaces and constants                       |
+| `src/context/AppContext.tsx`         | Global state, reducer, save/remove with AccountHead mirroring |
+| `src/db/indexedDB.ts`                | IDB wrapper (openDB, dbGetAll, dbPut, dbDelete, dbClear)      |
+| `src/repositories/BaseRepository.ts` | Typed CRUD over IDB                                           |
+| `src/workers/balanceWorker.ts`       | Off-thread double-entry balance calculation                   |
+| `src/sync/syncQueue.ts`              | Change queue, flush, onFlushResult callback                   |
+| `src/sync/FirebaseSyncAdapter.ts`    | Firestore push/pull/realtime                                  |
+| `src/utils/recurring.ts`             | Payment occurrence generation                                 |
+| `src/utils/forecast.ts`              | 60-day cash-flow forecast                                     |
+| `src/utils/importEngine.ts`          | JSON import parser with duplicate detection                   |
+| `src/App.tsx`                        | Hash router, nav config, shell layout                         |
 
 ### Technology stack
 
-| Concern | Library |
-|---|---|
-| UI framework | React 18 + TypeScript |
-| Build | Vite |
-| Styling | Tailwind CSS (dark theme, `bg #07090f`) |
-| Component base | Radix UI primitives (shadcn pattern) |
-| Charts | Recharts |
-| Date math | date-fns |
-| Icons | Lucide React |
-| Fonts | DM Sans (body), JetBrains Mono (numbers), Syne (display) |
-| Offline DB | IndexedDB (custom wrapper, no Dexie) |
-| Cloud sync | Firebase JS SDK v10 (Firestore) |
-| PWA | Custom service worker (network-first nav, cache-first assets) |
+| Concern        | Library                                                       |
+| -------------- | ------------------------------------------------------------- |
+| UI framework   | React 18 + TypeScript                                         |
+| Build          | Vite                                                          |
+| Styling        | Tailwind CSS (dark theme, `bg #07090f`)                       |
+| Component base | Radix UI primitives (shadcn pattern)                          |
+| Charts         | Recharts                                                      |
+| Date math      | date-fns                                                      |
+| Icons          | Lucide React                                                  |
+| Fonts          | DM Sans (body), JetBrains Mono (numbers), Syne (display)      |
+| Offline DB     | IndexedDB (custom wrapper, no Dexie)                          |
+| Cloud sync     | Firebase JS SDK v10 (Firestore)                               |
+| PWA            | Custom service worker (network-first nav, cache-first assets) |
 
 ---
 
@@ -124,46 +124,46 @@ Nav links are `<a href="#/...">` elements (not buttons) so right-click → "Open
 
 **Ungrouped (top of sidebar):**
 
-| Route | Label | Icon |
-|---|---|---|
+| Route          | Label     | Icon            |
+| -------------- | --------- | --------------- |
 | `/#/dashboard` | Dashboard | LayoutDashboard |
-| `/#/payments` | Payments | CalendarCheck |
-| `/#/forecast` | Forecast | TrendingUp |
-| `/#/simulator` | Simulator | Sliders |
+| `/#/payments`  | Payments  | CalendarCheck   |
+| `/#/forecast`  | Forecast  | TrendingUp      |
+| `/#/simulator` | Simulator | Sliders         |
 
 **Money group:**
 
-| Route | Label |
-|---|---|
-| `/#/expenses` | Expenses |
-| `/#/income` | Income |
-| `/#/transfers` | Transfers |
-| `/#/recurring` | Recurring |
-| `/#/ledger` | Account Book |
+| Route              | Label          |
+| ------------------ | -------------- |
+| `/#/expenses`      | Expenses       |
+| `/#/income`        | Income         |
+| `/#/transfers`     | Transfers      |
+| `/#/recurring`     | Recurring      |
+| `/#/ledger`        | Account Book   |
 | `/#/journalledger` | Journal Ledger |
 
 **Accounts group:**
 
-| Route | Label |
-|---|---|
-| `/#/accounts` | Accounts |
-| `/#/loans` | Loans & EMIs |
-| `/#/cards` | Credit Cards |
-| `/#/receivables` | Money Lent |
-| `/#/investments` | Investments |
+| Route            | Label        |
+| ---------------- | ------------ |
+| `/#/accounts`    | Accounts     |
+| `/#/loans`       | Loans & EMIs |
+| `/#/cards`       | Credit Cards |
+| `/#/receivables` | Money Lent   |
+| `/#/investments` | Investments  |
 
 **Planning group:**
 
-| Route | Label |
-|---|---|
-| `/#/goals` | Goals |
+| Route               | Label          |
+| ------------------- | -------------- |
+| `/#/goals`          | Goals          |
 | `/#/reconciliation` | Reconciliation |
-| `/#/accountheads` | Account Heads |
+| `/#/accountheads`   | Account Heads  |
 
 **Bottom of sidebar (ungrouped):**
 
-| Route | Label |
-|---|---|
+| Route         | Label    |
+| ------------- | -------- |
 | `/#/settings` | Settings |
 
 **Mobile bottom nav (5 shortcuts + More):**
@@ -181,25 +181,24 @@ The bottom of the sidebar shows a pulsing green dot when Firebase sync is active
 
 ```typescript
 interface AppState {
-  accounts:           Account[];
-  accountHeads:       AccountHead[];
-  journalEntries:     JournalEntry[];
-  recurringPayments:  RecurringPayment[];
-  recurringIncomes:   RecurringIncome[];
-  loans:              Loan[];
-  creditCards:        CreditCard[];
-  receivables:        Receivable[];
-  repaymentRecords:   RepaymentRecord[];
-  investments:        Investment[];
-  reconciliations:    Reconciliation[];
-  goals:              Goal[];
-  paymentOccurrences: PaymentOccurrence[];
-  importReviews:      ImportReview[];
-  computedBalances:   ComputedBalances;   // derived, never stored
-  loading:            boolean;
-  error:              string | null;
-  syncStatus:         SyncStatus;         // "idle" | "firebase" | "rest"
-  sync:               SyncState;          // detailed sync telemetry
+	accounts: Account[];
+	accountHeads: AccountHead[];
+	journalEntries: JournalEntry[];
+	recurringPayments: RecurringPayment[];
+	recurringIncomes: RecurringIncome[];
+	loans: Loan[];
+	receivables: Receivable[];
+	repaymentRecords: RepaymentRecord[];
+	investments: Investment[];
+	reconciliations: Reconciliation[];
+	goals: Goal[];
+	paymentOccurrences: PaymentOccurrence[];
+	importReviews: ImportReview[];
+	computedBalances: ComputedBalances; // derived, never stored
+	loading: boolean;
+	error: string | null;
+	syncStatus: SyncStatus; // "idle" | "firebase" | "rest"
+	sync: SyncState; // detailed sync telemetry
 }
 ```
 
@@ -209,23 +208,22 @@ interface AppState {
 
 Database name: `fintracker_v4`, current version: **4**
 
-| Store | Key | Indexes |
-|---|---|---|
-| `accounts` | `id` | — |
-| `accountHeads` | `id` | type, parentId, isAccount |
-| `journalEntries` | `id` | date, type, debitAccountHeadId, creditAccountHeadId |
-| `recurringPayments` | `id` | nextDate, accountId |
-| `recurringIncomes` | `id` | nextDate, accountId |
-| `loans` | `id` | accountId, loanType |
-| `creditCards` | `id` | — |
-| `receivables` | `id` | accountId |
-| `repaymentRecords` | `id` | receivableId, date |
-| `investments` | `id` | type |
-| `reconciliations` | `id` | accountId, reconciledDate |
-| `goals` | `id` | type, status |
-| `paymentOccurrences` | `id` | dueDate, sourceId, status, kind |
-| `importReviews` | `id` | sessionId, status, entity |
-| `syncQueue` | `queueId` | entity |
+| Store                | Key       | Indexes                                             |
+| -------------------- | --------- | --------------------------------------------------- |
+| `accounts`           | `id`      | —                                                   |
+| `accountHeads`       | `id`      | type, parentId, isAccount                           |
+| `journalEntries`     | `id`      | date, type, debitAccountHeadId, creditAccountHeadId |
+| `recurringPayments`  | `id`      | nextDate, accountId                                 |
+| `recurringIncomes`   | `id`      | nextDate, accountId                                 |
+| `loans`              | `id`      | accountId, loanType                                 |
+| `receivables`        | `id`      | accountId                                           |
+| `repaymentRecords`   | `id`      | receivableId, date                                  |
+| `investments`        | `id`      | type                                                |
+| `reconciliations`    | `id`      | accountId, reconciledDate                           |
+| `goals`              | `id`      | type, status                                        |
+| `paymentOccurrences` | `id`      | dueDate, sourceId, status, kind                     |
+| `importReviews`      | `id`      | sessionId, status, entity                           |
+| `syncQueue`          | `queueId` | entity                                              |
 
 ### Migration history
 
@@ -239,19 +237,20 @@ Database name: `fintracker_v4`, current version: **4**
 
 ### Five root heads (immutable)
 
-| ID | Name | Type | Behaviour |
-|---|---|---|---|
-| `head_asset` | Assets | asset | Bank accounts, cash, investments, receivables live here |
-| `head_liability` | Liabilities | liability | Credit cards, loans live here |
-| `head_income` | Income | income | Income sub-heads (Salary, Freelance, etc.) |
-| `head_expense` | Expenses | expense | Expense sub-heads (Food, Bills, Netflix, etc.) |
-| `head_equity` | Equity | equity | Opening balances, adjustment entries |
+| ID               | Name        | Type      | Behaviour                                               |
+| ---------------- | ----------- | --------- | ------------------------------------------------------- |
+| `head_asset`     | Assets      | asset     | Bank accounts, cash, investments, receivables live here |
+| `head_liability` | Liabilities | liability | Credit cards, loans live here                           |
+| `head_income`    | Income      | income    | Income sub-heads (Salary, Freelance, etc.)              |
+| `head_expense`   | Expenses    | expense   | Expense sub-heads (Food, Bills, Netflix, etc.)          |
+| `head_equity`    | Equity      | equity    | Opening balances, adjustment entries                    |
 
 Root heads have `parentId: null` and `isSystem: true`. They cannot be deleted or renamed.
 
 ### User-defined sub-heads
 
 Users can create sub-heads under any root through:
+
 1. The **Account Heads** view (Settings → Planning → Account Heads)
 2. **Inline creation** in any form's account head selector (shows "+ New under [Parent]…" option)
 
@@ -262,20 +261,21 @@ Sub-heads have `parentId` set to the root head's ID. They can have children (two
 **Every `Account`, `CreditCard`, and `Loan` is simultaneously an `AccountHead` with the same `id`.** This is the core of the unified chart of accounts.
 
 When `save("accounts", ...)` is called in `AppContext`:
+
 1. The account is saved to the `accounts` IDB store
 2. An `AccountHead` record is immediately constructed with `isAccount: true` and saved to `accountHeads`
 3. Both entities are dispatched to React state
 
 The `AccountHead` type maps from account type as follows:
 
-| Account type | AccountHead type | Parent head |
-|---|---|---|
-| bank | asset | head_asset |
-| cash | asset | head_asset |
-| investment | asset | head_asset |
-| receivable | asset | head_asset |
-| credit_card | liability | head_liability |
-| loan | liability | head_liability |
+| Account type | AccountHead type | Parent head    |
+| ------------ | ---------------- | -------------- |
+| bank         | asset            | head_asset     |
+| cash         | asset            | head_asset     |
+| investment   | asset            | head_asset     |
+| receivable   | asset            | head_asset     |
+| credit_card  | liability        | head_liability |
+| loan         | liability        | head_liability |
 
 When `remove("accounts", id)` is called, both the `Account` and its mirror `AccountHead` are deleted atomically.
 
@@ -291,17 +291,17 @@ Every financial event—expense, income, transfer, loan EMI, reconciliation adju
 
 ```typescript
 interface JournalEntry {
-  id:                  string;
-  date:                string;        // yyyy-MM-dd
-  description:         string;
-  amount:              number;        // always positive
-  type:                JournalEntryType;
-  debitAccountHeadId:  string;        // Dr side
-  creditAccountHeadId: string;        // Cr side
-  notes?:              string;
-  tags?:               string[];
-  createdAt:           string;
-  updatedAt:           string;
+	id: string;
+	date: string; // yyyy-MM-dd
+	description: string;
+	amount: number; // always positive
+	type: JournalEntryType;
+	debitAccountHeadId: string; // Dr side
+	creditAccountHeadId: string; // Cr side
+	notes?: string;
+	tags?: string[];
+	createdAt: string;
+	updatedAt: string;
 }
 ```
 
@@ -310,44 +310,52 @@ interface JournalEntry {
 ### Accounting rules (normal balances)
 
 | Account type | Increases on | Decreases on |
-|---|---|---|
-| Asset | Debit (Dr) | Credit (Cr) |
-| Expense | Debit (Dr) | Credit (Cr) |
-| Income | Credit (Cr) | Debit (Dr) |
-| Liability | Credit (Cr) | Debit (Dr) |
-| Equity | Credit (Cr) | Debit (Dr) |
+| ------------ | ------------ | ------------ |
+| Asset        | Debit (Dr)   | Credit (Cr)  |
+| Expense      | Debit (Dr)   | Credit (Cr)  |
+| Income       | Credit (Cr)  | Debit (Dr)   |
+| Liability    | Credit (Cr)  | Debit (Dr)   |
+| Equity       | Credit (Cr)  | Debit (Dr)   |
 
 ### Transaction examples
 
 **Expense — Netflix ₹649 from HDFC Savings:**
+
 ```
 Dr: Expenses → Netflix     ₹649
 Cr: Assets → HDFC Savings  ₹649
 ```
+
 `debitAccountHeadId` = id of "Netflix" sub-head  
 `creditAccountHeadId` = id of HDFC Savings account (same as account id)
 
 **Income — Salary ₹85,000 into HDFC Savings:**
+
 ```
 Dr: Assets → HDFC Savings  ₹85,000
 Cr: Income → Salary         ₹85,000
 ```
 
 **Transfer — ₹10,000 from HDFC to ICICI:**
+
 ```
 Dr: Assets → ICICI Savings  ₹10,000
 Cr: Assets → HDFC Savings   ₹10,000
 ```
+
 Both account heads here are real accounts (asset mirrors).
 
 **Reconciliation adjustment — actual balance ₹500 higher than tracked:**
+
 ```
 Dr: Assets → HDFC Savings  ₹500
 Cr: Equity                  ₹500
 ```
+
 (Opposite entries if actual is lower.)
 
 **Loan EMI payment — ₹25,000 from HDFC:**
+
 ```
 Dr: Liabilities → Home Loan   ₹25,000
 Cr: Assets → HDFC Savings     ₹25,000
@@ -364,6 +372,7 @@ Account balances are **never stored**. They are computed on demand by a Web Work
 ### Trigger mechanism (debounced)
 
 In `AppContext`, a `useEffect` watches `[state.accounts, state.accountHeads, state.journalEntries, state.loading]`. When any of these arrays change reference, it calls `triggerBalance()` which:
+
 1. Cancels any pending debounce timer
 2. Sets a 300ms `setTimeout`
 3. On expiry, reads the **latest** state from `stateRef.current` (avoiding stale closures)
@@ -410,16 +419,16 @@ All views read balance from `state.computedBalances[account.id]` and fall back t
 
 Represents a financial account held by the user.
 
-| Field | Type | Notes |
-|---|---|---|
-| id | string | UUID; also the `AccountHead.id` for this account |
-| name | string | Display name (e.g., "HDFC Savings") |
-| type | AccountType | bank / cash / credit_card / loan / investment / receivable |
-| openingBalance | number | Balance before any recorded journal entries |
-| color | string | Hex colour for UI display (8 presets available) |
-| currency | string | Default "INR" |
-| notes | string? | Free text |
-| isArchived | boolean? | Soft-delete flag (UI not yet filtering on this) |
+| Field          | Type        | Notes                                                      |
+| -------------- | ----------- | ---------------------------------------------------------- |
+| id             | string      | UUID; also the `AccountHead.id` for this account           |
+| name           | string      | Display name (e.g., "HDFC Savings")                        |
+| type           | AccountType | bank / cash / credit_card / loan / investment / receivable |
+| openingBalance | number      | Balance before any recorded journal entries                |
+| color          | string      | Hex colour for UI display (8 presets available)            |
+| currency       | string      | Default "INR"                                              |
+| notes          | string?     | Free text                                                  |
+| isArchived     | boolean?    | Soft-delete flag (UI not yet filtering on this)            |
 
 **Lifecycle:** Creating an account immediately creates a mirror `AccountHead`. Deleting an account deletes the mirror. The account's `id` is used as `creditAccountHeadId` or `debitAccountHeadId` in journal entries involving this account.
 
@@ -427,46 +436,46 @@ Represents a financial account held by the user.
 
 Node in the chart of accounts tree.
 
-| Field | Type | Notes |
-|---|---|---|
-| id | string | For root heads: fixed constants (head_asset, etc.) |
-| name | string | Display name |
-| type | RootAccountHeadType | asset / liability / income / expense / equity |
-| parentId | string \| null | null = root node |
-| isSystem | boolean | true = root head, cannot delete |
-| isAccount | boolean? | true = auto-mirror of Account/CreditCard/Loan |
-| notes | string? | Free text |
+| Field     | Type                | Notes                                              |
+| --------- | ------------------- | -------------------------------------------------- |
+| id        | string              | For root heads: fixed constants (head_asset, etc.) |
+| name      | string              | Display name                                       |
+| type      | RootAccountHeadType | asset / liability / income / expense / equity      |
+| parentId  | string \| null      | null = root node                                   |
+| isSystem  | boolean             | true = root head, cannot delete                    |
+| isAccount | boolean?            | true = auto-mirror of Account/CreditCard/Loan      |
+| notes     | string?             | Free text                                          |
 
 ### 8.3 JournalEntry
 
 The fundamental transaction record.
 
-| Field | Type | Notes |
-|---|---|---|
-| id | string | UUID |
-| date | string | yyyy-MM-dd |
-| description | string | Human-readable description |
-| amount | number | Always positive |
-| type | JournalEntryType | expense / income / transfer / emi / adjustment / opening_balance |
-| debitAccountHeadId | string | Dr side account head id |
-| creditAccountHeadId | string | Cr side account head id |
-| notes | string? | Free text |
-| tags | string[]? | Optional tags |
+| Field               | Type             | Notes                                                            |
+| ------------------- | ---------------- | ---------------------------------------------------------------- |
+| id                  | string           | UUID                                                             |
+| date                | string           | yyyy-MM-dd                                                       |
+| description         | string           | Human-readable description                                       |
+| amount              | number           | Always positive                                                  |
+| type                | JournalEntryType | expense / income / transfer / emi / adjustment / opening_balance |
+| debitAccountHeadId  | string           | Dr side account head id                                          |
+| creditAccountHeadId | string           | Cr side account head id                                          |
+| notes               | string?          | Free text                                                        |
+| tags                | string[]?        | Optional tags                                                    |
 
 ### 8.4 RecurringPayment
 
 A recurring bill or scheduled payment.
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "Netflix", "Rent" |
-| amount | number | Expected amount |
-| frequency | Frequency | daily / weekly / fortnightly / monthly / quarterly / yearly |
-| nextDate | string | Next due date; advances on mark-paid |
-| category | string | Legacy category label |
-| accountId | string | Default credit account (bank to pay from) |
-| debitAccountHeadId | string? | Pre-set expense head (e.g., "Bills → Netflix") |
-| isActive | boolean | Paused items excluded from PaymentsView |
+| Field              | Type      | Notes                                                       |
+| ------------------ | --------- | ----------------------------------------------------------- |
+| name               | string    | e.g., "Netflix", "Rent"                                     |
+| amount             | number    | Expected amount                                             |
+| frequency          | Frequency | daily / weekly / fortnightly / monthly / quarterly / yearly |
+| nextDate           | string    | Next due date; advances on mark-paid                        |
+| category           | string    | Legacy category label                                       |
+| accountId          | string    | Default credit account (bank to pay from)                   |
+| debitAccountHeadId | string?   | Pre-set expense head (e.g., "Bills → Netflix")              |
+| isActive           | boolean   | Paused items excluded from PaymentsView                     |
 
 **Mark-paid flow:** When paid, `debitAccountHeadId` is shown read-only in the pay dialog. The user selects which account to pay from (credit side). A `JournalEntry` is created. `nextDate` is advanced by one frequency period.
 
@@ -474,65 +483,65 @@ A recurring bill or scheduled payment.
 
 Scheduled income (salary, rental, etc.).
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "Salary" |
-| amount | number | Expected amount |
+| Field     | Type      | Notes                           |
+| --------- | --------- | ------------------------------- |
+| name      | string    | e.g., "Salary"                  |
+| amount    | number    | Expected amount                 |
 | frequency | Frequency | Same values as RecurringPayment |
-| nextDate | string | Next receipt date |
-| accountId | string | Account to credit |
+| nextDate  | string    | Next receipt date               |
+| accountId | string    | Account to credit               |
 
 ### 8.6 PaymentOccurrence
 
 A single scheduled instance of a recurring payment, loan EMI, or credit card bill within a calendar month.
 
-| Field | Type | Notes |
-|---|---|---|
-| id | string | Deterministic: `occ_${sourceId}_${dueDate}` |
-| kind | PaymentOccurrenceKind | recurring_payment / recurring_income / loan_emi / credit_card_bill |
-| sourceId | string | id of the RecurringPayment, Loan, or CreditCard |
-| dueDate | string | yyyy-MM-dd |
-| amount | number | Expected amount |
-| status | PaymentOccurrenceStatus | unpaid / paid / skipped |
-| paidDate | string? | Actual payment date |
-| paidAmount | number? | Actual amount paid (may differ from expected) |
-| transactionId | string? | id of the JournalEntry created on mark-paid |
-| accountId | string? | Account used for payment |
-| debitAccountHeadId | string? | Pre-filled expense head for pay dialog |
+| Field              | Type                    | Notes                                                              |
+| ------------------ | ----------------------- | ------------------------------------------------------------------ |
+| id                 | string                  | Deterministic: `occ_${sourceId}_${dueDate}`                        |
+| kind               | PaymentOccurrenceKind   | recurring_payment / recurring_income / loan_emi / credit_card_bill |
+| sourceId           | string                  | id of the RecurringPayment, Loan, or CreditCard                    |
+| dueDate            | string                  | yyyy-MM-dd                                                         |
+| amount             | number                  | Expected amount                                                    |
+| status             | PaymentOccurrenceStatus | unpaid / paid / skipped                                            |
+| paidDate           | string?                 | Actual payment date                                                |
+| paidAmount         | number?                 | Actual amount paid (may differ from expected)                      |
+| transactionId      | string?                 | id of the JournalEntry created on mark-paid                        |
+| accountId          | string?                 | Account used for payment                                           |
+| debitAccountHeadId | string?                 | Pre-filled expense head for pay dialog                             |
 
 Occurrences are generated on-the-fly from source entities each time the PaymentsView renders for a given month. Newly generated occurrences are auto-saved to IDB. Stored occurrences (with `status = paid`) override generated ones.
 
 ### 8.7 Loan
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "Home Loan — SBI" |
-| loanType | LoanType | normal / credit_card |
-| principalAmount | number | Original loan amount |
-| interestRate | number | Annual % (pre-tax) |
-| tenureMonths | number | Total repayment period |
-| startDate | string | First EMI date |
-| emi | number | Monthly instalment (auto-calculated or overridden) |
-| paidMonths | number | How many EMIs have been paid |
-| accountId | string | Bank account EMI debits from |
-| taxRate | number? | GST % on interest (e.g., 18) |
-| taxIncludedInRate | boolean? | If true, interestRate already includes tax |
+| Field             | Type     | Notes                                              |
+| ----------------- | -------- | -------------------------------------------------- |
+| name              | string   | e.g., "Home Loan — SBI"                            |
+| loanType          | LoanType | normal / credit_card                               |
+| principalAmount   | number   | Original loan amount                               |
+| interestRate      | number   | Annual % (pre-tax)                                 |
+| tenureMonths      | number   | Total repayment period                             |
+| startDate         | string   | First EMI date                                     |
+| emi               | number   | Monthly instalment (auto-calculated or overridden) |
+| paidMonths        | number   | How many EMIs have been paid                       |
+| accountId         | string   | Bank account EMI debits from                       |
+| taxRate           | number?  | GST % on interest (e.g., 18)                       |
+| taxIncludedInRate | boolean? | If true, interestRate already includes tax         |
 
 Saving a loan creates a mirror `AccountHead` under `head_liability`. The amortisation schedule is computed on-demand by `generateAmortisation()`.
 
 ### 8.8 CreditCard
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "HDFC Regalia" |
-| limit | number | Credit limit |
-| outstanding | number | Current statement balance |
-| statementDay | number | Day of month statement generates (1–28) |
-| billingCycleDays | number | Length of billing cycle (typically 30) |
-| gracePeriodDays | number | Days after statement to pay |
-| dueDate | string | Next payment due date (computed) |
-| statementDate | string | Next statement date (computed) |
-| taxRate | number? | GST % on interest charges |
+| Field            | Type    | Notes                                   |
+| ---------------- | ------- | --------------------------------------- |
+| name             | string  | e.g., "HDFC Regalia"                    |
+| limit            | number  | Credit limit                            |
+| outstanding      | number  | Current statement balance               |
+| statementDay     | number  | Day of month statement generates (1–28) |
+| billingCycleDays | number  | Length of billing cycle (typically 30)  |
+| gracePeriodDays  | number  | Days after statement to pay             |
+| dueDate          | string  | Next payment due date (computed)        |
+| statementDate    | string  | Next statement date (computed)          |
+| taxRate          | number? | GST % on interest charges               |
 
 Saving a credit card creates a mirror `AccountHead` under `head_liability`.
 
@@ -540,85 +549,86 @@ Saving a credit card creates a mirror `AccountHead` under `head_liability`.
 
 Money lent to another person.
 
-| Field | Type | Notes |
-|---|---|---|
-| personName | string | Who owes money |
-| amountLent | number | Original amount |
-| amountRepaid | number | Running total of repayments received |
-| dateLent | string | Date of lending |
-| expectedRepaymentDate | string? | Expected return date |
-| accountId | string | Account money was sent from |
-| isSettled | boolean | True when fully repaid |
+| Field                 | Type    | Notes                                |
+| --------------------- | ------- | ------------------------------------ |
+| personName            | string  | Who owes money                       |
+| amountLent            | number  | Original amount                      |
+| amountRepaid          | number  | Running total of repayments received |
+| dateLent              | string  | Date of lending                      |
+| expectedRepaymentDate | string? | Expected return date                 |
+| accountId             | string  | Account money was sent from          |
+| isSettled             | boolean | True when fully repaid               |
 
 Repayment records are child entities linked by `receivableId`.
 
 ### 8.10 Investment
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "Zerodha Portfolio" |
-| value | number | Current market value |
-| costBasis | number? | Purchase cost |
-| type | InvestmentType | stocks / mutual_fund / ppf / fd / nps / crypto / real_estate / gold / other |
-| accountId | string? | Linked account (optional) |
+| Field     | Type           | Notes                                                                       |
+| --------- | -------------- | --------------------------------------------------------------------------- |
+| name      | string         | e.g., "Zerodha Portfolio"                                                   |
+| value     | number         | Current market value                                                        |
+| costBasis | number?        | Purchase cost                                                               |
+| type      | InvestmentType | stocks / mutual_fund / ppf / fd / nps / crypto / real_estate / gold / other |
+| accountId | string?        | Linked account (optional)                                                   |
 
 ### 8.11 Reconciliation
 
 Record of a balance reconciliation event.
 
-| Field | Type | Notes |
-|---|---|---|
-| accountId | string | Account being reconciled |
-| reconciledDate | string | Date of reconciliation |
-| trackedBalance | number | What the app showed |
-| actualBalance | number | What the bank statement showed |
-| difference | number | actualBalance - trackedBalance |
-| status | ReconciliationStatus | pending / completed / in_progress |
-| adjustmentTransactionId | string? | JournalEntry id of the adjustment entry |
+| Field                   | Type                 | Notes                                   |
+| ----------------------- | -------------------- | --------------------------------------- |
+| accountId               | string               | Account being reconciled                |
+| reconciledDate          | string               | Date of reconciliation                  |
+| trackedBalance          | number               | What the app showed                     |
+| actualBalance           | number               | What the bank statement showed          |
+| difference              | number               | actualBalance - trackedBalance          |
+| status                  | ReconciliationStatus | pending / completed / in_progress       |
+| adjustmentTransactionId | string?              | JournalEntry id of the adjustment entry |
 
 If `difference ≠ 0`, a double-entry `JournalEntry` of type `"adjustment"` is automatically created:
+
 - Positive difference (actual higher): Dr account head, Cr `head_equity`
 - Negative difference (actual lower): Dr `head_equity`, Cr account head
 
 ### 8.12 Goal
 
-| Field | Type | Notes |
-|---|---|---|
-| name | string | e.g., "Emergency Fund" |
-| type | GoalType | savings / debt_payoff / investment / emergency_fund / purchase / custom |
-| targetAmount | number | Target value |
-| currentAmount | number | Current progress |
-| targetDate | string? | Deadline |
-| monthlyContribution | number? | Used in forecast calculations |
-| linkedAccountId | string? | For balance-linked goals |
-| status | GoalStatus | active / completed / paused |
-| icon | string | Emoji icon (auto-set from type) |
+| Field               | Type       | Notes                                                                   |
+| ------------------- | ---------- | ----------------------------------------------------------------------- |
+| name                | string     | e.g., "Emergency Fund"                                                  |
+| type                | GoalType   | savings / debt_payoff / investment / emergency_fund / purchase / custom |
+| targetAmount        | number     | Target value                                                            |
+| currentAmount       | number     | Current progress                                                        |
+| targetDate          | string?    | Deadline                                                                |
+| monthlyContribution | number?    | Used in forecast calculations                                           |
+| linkedAccountId     | string?    | For balance-linked goals                                                |
+| status              | GoalStatus | active / completed / paused                                             |
+| icon                | string     | Emoji icon (auto-set from type)                                         |
 
 ### 8.13 ImportReview
 
 Pending duplicate decision from an import session.
 
-| Field | Type | Notes |
-|---|---|---|
-| sessionId | string | Groups all reviews from one import run |
-| entity | EntityName | Which entity the duplicate belongs to |
-| incoming | Record | The record from the import file |
-| existing | Record | The matched existing record |
-| status | ImportReviewStatus | pending / resolved |
-| decision | ImportReviewDecision? | skip / overwrite / create_new |
+| Field     | Type                  | Notes                                  |
+| --------- | --------------------- | -------------------------------------- |
+| sessionId | string                | Groups all reviews from one import run |
+| entity    | EntityName            | Which entity the duplicate belongs to  |
+| incoming  | Record                | The record from the import file        |
+| existing  | Record                | The matched existing record            |
+| status    | ImportReviewStatus    | pending / resolved                     |
+| decision  | ImportReviewDecision? | skip / overwrite / create_new          |
 
 ### 8.14 SyncState
 
 Live sync telemetry (held in `AppState.sync`, never persisted).
 
-| Field | Notes |
-|---|---|
-| status | "idle" / "firebase" / "rest" — which adapter is connected |
-| phase | "idle" / "syncing" / "success" / "error" — current operation state |
-| pendingCount | Local changes not yet pushed to cloud |
-| lastSyncedAt | ISO timestamp of last successful flush |
-| lastSyncedCount | Number of records pushed in last flush |
-| lastError | Error message from last failed flush, or null |
+| Field           | Notes                                                              |
+| --------------- | ------------------------------------------------------------------ |
+| status          | "idle" / "firebase" / "rest" — which adapter is connected          |
+| phase           | "idle" / "syncing" / "success" / "error" — current operation state |
+| pendingCount    | Local changes not yet pushed to cloud                              |
+| lastSyncedAt    | ISO timestamp of last successful flush                             |
+| lastSyncedCount | Number of records pushed in last flush                             |
+| lastError       | Error message from last failed flush, or null                      |
 
 ---
 
@@ -629,12 +639,14 @@ Live sync telemetry (held in `AppState.sync`, never persisted).
 **Purpose:** High-level financial snapshot.
 
 **Stat cards (top row):**
+
 - Total Balance — sum of `computedBalances` for all non-liability accounts
 - Safe to Spend — `totalBalance - monthlyObligations × 1.5`
 - Monthly Out — sum of active recurring payment amounts + loan EMI totalPayables
 - Next Income — next recurring income amount and name
 
 **Widgets:**
+
 - Forecast Chart (60-day area chart from `buildForecast()`)
 - Shortfall alert banner if any day in the 60-day horizon goes negative
 - Overdue payments this month (from `getOccurrencesForMonth()`)
@@ -651,6 +663,7 @@ Live sync telemetry (held in `AppState.sync`, never persisted).
 Filtered view of `journalEntries` where `type === "expense"`.
 
 **Layout:**
+
 - Category filter pills (derived from debit account head names)
 - Monthly bars chart (last 6 months)
 - Spending breakdown by category with progress bars
@@ -672,6 +685,7 @@ Split into two tabs:
 ### 9.4 Transfers (`/#/transfers`)
 
 `journalEntries` where `type === "transfer"`, newest-first. Each card shows:
+
 - Source account name (credit head) → Destination account name (debit head)
 - Amount, date
 
@@ -680,6 +694,7 @@ Both sides in a transfer are asset account heads.
 ### 9.5 Recurring (`/#/recurring`)
 
 Lists all `recurringPayments` with:
+
 - Name, amount, frequency badge, next due date
 - Active/paused status
 - Category
@@ -690,6 +705,7 @@ Lists all `recurringPayments` with:
 Both routes render `JournalLedgerView` (the same component). The "ledger" route is the legacy tab entry; "journalledger" is the explicit Journal Ledger nav item.
 
 **JournalLedgerView features:**
+
 - Entries sorted **oldest to newest** (ascending date)
 - Grouped by date with a day-header row showing the net change for that day
 - Three-column totals strip: Total In / Total Out / Net
@@ -697,6 +713,7 @@ Both routes render `JournalLedgerView` (the same component). The "ledger" route 
 - Tap any row to expand inline details (type, amounts, both heads, notes, tags)
 
 **Filters panel (toggle):**
+
 - Type: All / Expense / Income / Transfer / EMI / Adjustment
 - Account Head: dropdown of all non-root heads
 - Date From / Date To
@@ -712,6 +729,7 @@ Active filter count shown as a badge on the filter button. "Clear all filters" l
 List of all `accounts`. Total balance in subtitle = `Object.values(computedBalances).reduce(sum)`.
 
 Each account card shows:
+
 - Colour dot, name, type badge
 - Computed balance from `computedBalances[a.id]` (cyan)
 - Reconcile button (⚖️ icon) — opens `ReconciliationForm`
@@ -727,6 +745,7 @@ Each account card shows:
 ### 9.8 Loans & EMIs (`/#/loans`)
 
 Each loan card shows:
+
 - Name, type badge
 - Principal, interest rate, tenure
 - EMI amount
@@ -741,6 +760,7 @@ Amortisation schedule table shows: month number, date, opening balance, EMI, pri
 ### 9.9 Credit Cards (`/#/cards`)
 
 Each card shows:
+
 - Card name
 - Limit, outstanding, available credit
 - Utilisation progress bar
@@ -751,6 +771,7 @@ Each card shows:
 ### 9.10 Money Lent (`/#/receivables`)
 
 Each receivable shows:
+
 - Person name, description
 - Amount lent, amount repaid, amount outstanding
 - Date lent, expected repayment date
@@ -761,6 +782,7 @@ Each receivable shows:
 ### 9.11 Investments (`/#/investments`)
 
 Each investment shows:
+
 - Name, type badge
 - Current value
 - Cost basis (if set) and unrealised gain/loss
@@ -775,6 +797,7 @@ The central bill-tracking view. Shows all payment occurrences for the selected c
 **Month summary strip:** 4 columns: Total Out, Paid, Unpaid, and either Overdue or Income depending on context.
 
 **Sections:**
+
 - Overdue (unpaid past due date, red styling)
 - Upcoming (unpaid future due dates)
 - Paid
@@ -784,11 +807,13 @@ The central bill-tracking view. Shows all payment occurrences for the selected c
 **Occurrence card:** Shows label, category badge, urgency label ("Due in 3d", "Overdue by 2d"), due date, amount. For paid occurrences: paid account with colour dot, actual paid amount (if different from expected).
 
 **Action buttons per card:**
+
 - "Mark Paid" / "Mark Received" → opens PayDialog
 - "Skip" → marks occurrence as skipped, advances `nextDate` on source
 - "Undo" → reverts to unpaid, deletes the linked JournalEntry
 
 **PayDialog:**
+
 - Shows occurrence label and due date
 - Shows debit head (read-only, from `occ.debitAccountHeadId` or recurring payment's default)
 - Payment date picker (defaults to today)
@@ -796,7 +821,7 @@ The central bill-tracking view. Shows all payment occurrences for the selected c
 - Account selector (credit side — which account to pay from)
 - Balance preview: "Balance after: ₹X" shown below account selector
 - Shortfall detection: if account balance < amount, shows warning with inline top-up toggle
-  - Top-up creates a separate income JournalEntry (Dr account, Cr head_equity) before the main payment
+    - Top-up creates a separate income JournalEntry (Dr account, Cr head_equity) before the main payment
 - "Confirm Payment" creates a JournalEntry, marks occurrence paid, advances nextDate, increments paidMonths for loan EMIs
 
 **Occurrence ID generation:** Deterministic — `occ_${sourceId}_${dueDate}` — so the same occurrence is always referenced correctly even if the auto-save hasn't completed.
@@ -806,11 +831,12 @@ The central bill-tracking view. Shows all payment occurrences for the selected c
 60-day forward cash-flow projection from `buildForecast()`.
 
 Shows:
+
 - Area chart of projected balance (blue if positive, red if shortfall exists)
 - Timeline cards — one per day that has events — showing:
-  - Date
-  - Events (income +, payment −, EMI −, CC bill −, goal contribution −)
-  - Projected balance after all events
+    - Date
+    - Events (income +, payment −, EMI −, CC bill −, goal contribution −)
+    - Projected balance after all events
 - Shortfall alert card at the top if balance ever goes negative within 60 days
 
 ### 9.14 Simulator (`/#/simulator`)
@@ -826,6 +852,7 @@ Three simulation calculators in tabs:
 ### 9.15 Reconciliation (`/#/reconciliation`)
 
 Lists all `Reconciliation` records, newest-first. Each shows:
+
 - Account name, date, tracked balance, actual balance, difference
 - Status badge
 - Linked adjustment transaction id (if any)
@@ -835,6 +862,7 @@ Primary entry point is via the Reconcile button on the Accounts view.
 ### 9.16 Goals (`/#/goals`)
 
 Each goal card shows:
+
 - Icon + name + type badge + status
 - Progress bar (currentAmount / targetAmount)
 - Target amount, current amount, percentage
@@ -847,9 +875,11 @@ Each goal card shows:
 Displays the full chart of accounts tree. Root heads shown with bold uppercase labels. Children indented with └ prefix.
 
 For each user-created (non-system, non-account-mirror) sub-head:
+
 - Delete button (enabled only if no journal entries reference it AND no children)
 
 **Add account head panel:**
+
 - Name field
 - Parent selector (root heads only)
 - Create button
@@ -861,21 +891,25 @@ For each user-created (non-system, non-account-mirror) sub-head:
 Four-tab panel:
 
 **Import / Export tab:**
+
 - Export all data as JSON
 - Download sample import JSON
 - Import from JSON (triggers full parse pipeline)
 
 **Merge tab (Merge Accounts):**
+
 - Select "keep" account and "delete" account
 - Re-points all journal entry debit/credit references, recurring payment accounts, loan accounts, receivable accounts from deleted to kept account
 - Deletes the duplicate account (and its AccountHead mirror)
 
 **Dups tab (Duplicate Review):**
+
 - Lists pending `ImportReview` records (transaction duplicates from a previous import)
 - Badge count shown on tab
 - Each card: description, date, amount, options: Skip / Overwrite / Create New
 
 **Clear Data tab:**
+
 - Checkbox selection of entity groups to clear
 - Scope selector: Local device only / Cloud (Firestore) only / Local + Cloud
 - Cloud options disabled with tooltip if Firebase not connected
@@ -884,13 +918,14 @@ Four-tab panel:
 - On confirm: `dbClear()` per entity + `dbClear("syncQueue")` + re-seeds account heads if needed
 
 **Firebase Sync card (below tabs):**
+
 - When disconnected: Firebase setup form (paste SDK snippet or manual fields)
 - When connected:
-  - 3-column status grid: Status / Pending changes / Last sync time
-  - Last error panel (red, shown only on error)
-  - "Sync Now" button (spins during sync, shows phase)
-  - "QR Code" button → generates QR with base64-encoded Firebase config for mobile pairing
-  - "Disconnect" button
+    - 3-column status grid: Status / Pending changes / Last sync time
+    - Last error panel (red, shown only on error)
+    - "Sync Now" button (spins during sync, shows phase)
+    - "QR Code" button → generates QR with base64-encoded Firebase config for mobile pairing
+    - "Disconnect" button
 
 **Install as App card:** Instructions for iOS Safari, Android Chrome, desktop browsers.
 
@@ -905,6 +940,7 @@ Four-tab panel:
 Used for expenses, income, and transfers (with `defaultType` prop setting the semantic meaning).
 
 Fields:
+
 - Description (text)
 - Amount (number)
 - Date (date picker, defaults to today)
@@ -921,16 +957,19 @@ If `lockedDebitId` or `lockedCreditId` props are passed, that side renders as a 
 ### HeadSelect (inline head creation)
 
 The `HeadSelect` component is used in all head selectors. It renders:
+
 - Root heads as bold selectable items
 - Children of each root indented with └
 - "New under [Root Name]…" option at the bottom of each root's section with a + icon
 
 Selecting the "New under…" option opens `CreateHeadDialog`:
+
 - Name field (auto-focused, Enter submits)
 - Creates the AccountHead via `save("accountHeads", ...)`
 - Immediately selects the new head in the parent form (no form reset needed)
 
 This inline creation is available in:
+
 - `ExpenseForm` (debit head)
 - `IncomeForm` (credit head)
 - `TransferForm` (both heads)
@@ -957,6 +996,7 @@ Opening balance represents the account's value before any journal entries. It se
 5. For each `CreditCard`: checks if `dueDate` falls in the target month
 
 For each projected occurrence:
+
 - If a stored occurrence with the same deterministic id exists → use the stored version (preserves paid/skipped status)
 - Otherwise → create a new occurrence object with `status: "unpaid"`
 
@@ -990,6 +1030,7 @@ When a recurring payment/income is marked paid, `advanceByFrequency(src.nextDate
 **Push:** Uses `writeBatch()`. Each `ChangeRecord` is either a `batch.set(..., { merge: true })` or `batch.delete()`. Firestore batch limit is 500 ops; `clearCollections()` chunks accordingly.
 
 **Pull (realtime):** `subscribeRealtime()` calls `onSnapshot()` on every entity collection. On each snapshot change:
+
 - `removed` → `dbDelete(entity, doc.id)` then `onReload(entity)`
 - `added/modified` → `dbPut(entity, doc.data())` then `onReload(entity)`
 - `reloadEntity()` fetches the full store from IDB and dispatches `RELOAD_ENTITY`
@@ -1030,6 +1071,7 @@ Hash-based routing (`/#/route`) works with any static host (GitHub Pages, Netlif
 ### Export
 
 All 14 entity stores are exported as a JSON file:
+
 ```json
 {
   "version": "4.0",
@@ -1045,20 +1087,21 @@ All 14 entity stores are exported as a JSON file:
 
 ### Import
 
-The import engine (`src/utils/importEngine.ts`) accepts a JSON file in either the export format (`{ data: {...} }`) or a simplified flat format with these supported entities: `accounts`, `expenses` (→ JournalEntry expense), `incomes` (→ JournalEntry income), `loans`, `creditCards`.
+The import engine (`src/utils/importEngine.ts`) accepts a JSON file in either the export format (`{ data: {...} }`) or a simplified flat format with these supported entities: `accounts`, `expenses` (→ JournalEntry expense), `incomes` (→ JournalEntry income), `loans`, and legacy `creditCards` (auto-converted into `accounts` with `type: "credit_card"`).
 
 **Import pipeline:**
 
 1. **Account resolution:** Account names are used as identifiers. New accounts are created with generated IDs. Existing accounts are matched case-insensitively.
 2. **Intra-file duplicate detection:** Two accounts in the same file with the same name — user picks which to keep (modal dialog).
 3. **Existing duplicate detection:** New account matches an existing one — user chooses Merge or Skip.
-4. **Loan/CreditCard import:** Resolved by name. EMI auto-calculated if missing. Default billing cycle values applied if missing.
+4. **Loan/CreditCard import:** Loans import directly; legacy `creditCards` import is converted into account records with `creditCard` details. EMI auto-calculated if missing.
 5. **Expense/Income import:** Converted to `JournalEntry` records. Account resolved by name. Default account heads assigned (`head_expense` / `head_income`) if not specified.
 6. **Transaction duplicate detection:** Same description + date + amount + account → saved as `ImportReview` with `status: "pending"`. Resolved in the Dup Review tab.
 
 ### Merge Accounts
 
 The merge operation:
+
 1. Finds all journal entries where `debitAccountHeadId === deleteId`, re-points to `keepId`
 2. Finds all journal entries where `creditAccountHeadId === deleteId`, re-points to `keepId`
 3. Re-points recurring payments, recurring incomes, loans, receivables from `deleteId` to `keepId`
@@ -1068,6 +1111,7 @@ The merge operation:
 ### Clear Data
 
 The `clearData()` action accepts:
+
 - `local: boolean` — clears selected entity stores in IDB + clears syncQueue
 - `cloud: boolean` — calls `adapter.clearCollections()` on Firestore (requires Firebase connected)
 - `entities: EntityName[]` — which stores to clear
@@ -1075,9 +1119,10 @@ The `clearData()` action accepts:
 Account heads are re-seeded (5 root heads) if accountHeads was in the cleared entities list.
 
 The UI presents named groups:
+
 - Transactions (journalEntries)
 - Accounts (accounts)
-- Loans & Credit Cards (loans, creditCards, paymentOccurrences)
+- Loans & Credit Cards (loans, paymentOccurrences)
 - Recurring (recurringPayments, recurringIncomes)
 - Receivables (receivables, repaymentRecords)
 - Investments (investments)
@@ -1109,7 +1154,7 @@ user action (form submit)
     → BaseRepository.save() → IDB put
       → enqueueChange() → syncQueue IDB put → flush() async
     → dispatch UPSERT → React re-render
-    → if entity in [accounts, creditCards, loans]:
+    → if entity in [accounts, loans]:
         → save AccountHead mirror → dispatch UPSERT accountHeads
     → getPendingCount() → dispatch SET_SYNC_STATE { pendingCount }
     → if entity in [accounts, accountHeads, journalEntries]:
@@ -1126,7 +1171,7 @@ user action (delete)
     → BaseRepository.delete() → IDB delete
       → enqueueChange({ type: "delete" }) → flush() async
     → dispatch REMOVE
-    → if entity in [accounts, creditCards, loans]:
+    → if entity in [accounts, loans]:
         → Repos.accountHeads.delete(id)
         → dispatch REMOVE accountHeads
     → triggerBalance() fires → balances recomputed
@@ -1134,16 +1179,16 @@ user action (delete)
 
 ### Reducer actions
 
-| Action | Effect |
-|---|---|
-| `LOAD_ALL` | Bulk replace all state arrays, `loading: false` |
-| `UPSERT` | Insert or update one record in one entity array |
-| `REMOVE` | Filter one record out of one entity array |
-| `RELOAD_ENTITY` | Replace entire entity array (used after Firebase realtime update) |
-| `SET_BALANCES` | Replace `computedBalances` map |
-| `SET_SYNC` | Update `syncStatus` and `sync.status` |
-| `SET_SYNC_STATE` | Partial update to `sync` object |
-| `SET_ERROR` | Set `error` message, `loading: false` |
+| Action           | Effect                                                            |
+| ---------------- | ----------------------------------------------------------------- |
+| `LOAD_ALL`       | Bulk replace all state arrays, `loading: false`                   |
+| `UPSERT`         | Insert or update one record in one entity array                   |
+| `REMOVE`         | Filter one record out of one entity array                         |
+| `RELOAD_ENTITY`  | Replace entire entity array (used after Firebase realtime update) |
+| `SET_BALANCES`   | Replace `computedBalances` map                                    |
+| `SET_SYNC`       | Update `syncStatus` and `sync.status`                             |
+| `SET_SYNC_STATE` | Partial update to `sync` object                                   |
+| `SET_ERROR`      | Set `error` message, `loading: false`                             |
 
 ---
 
@@ -1229,4 +1274,4 @@ The sample import JSON (`/sample-import.json`) uses human-readable account names
 
 ---
 
-*Report generated from source code as of FinTracker v4.0 — March 2026*
+_Report generated from source code as of FinTracker v4.0 — March 2026_

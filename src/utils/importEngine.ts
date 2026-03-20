@@ -12,7 +12,6 @@ import type {
 	JournalEntry,
 	JournalEntryType,
 	Loan,
-	CreditCard,
 	AppState,
 	ImportReview,
 	EntityName,
@@ -142,7 +141,6 @@ export interface ImportPlan {
 	resolvedAccounts: Map<string, string>;
 	cleanAccounts: Partial<Account>[];
 	cleanLoans: Partial<Loan>[];
-	cleanCreditCards: Partial<CreditCard>[];
 	cleanJournalEntries: Partial<JournalEntry>[];
 	intraFileDuplicates: IntraFileDuplicate[];
 	existingDuplicates: ExistingDuplicate[];
@@ -157,7 +155,6 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		resolvedAccounts: new Map(),
 		cleanAccounts: [],
 		cleanLoans: [],
-		cleanCreditCards: [],
 		cleanJournalEntries: [],
 		intraFileDuplicates: [],
 		existingDuplicates: [],
@@ -294,15 +291,14 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 			plan.errors.push('Credit card missing name — skipped');
 			continue;
 		}
-		const existing = state.creditCards.find(
-			(x) => x.name.toLowerCase() === c.name.toLowerCase()
-		);
+		const existing = state.accounts.find((x) => x.name.toLowerCase() === c.name.toLowerCase());
 		if (existing) {
 			plan.existingDuplicates.push({
 				kind: 'creditCard',
 				incoming: c as unknown as Record<string, unknown>,
 				existing: existing as unknown as Record<string, unknown>,
 			});
+			plan.resolvedAccounts.set(c.name.toLowerCase(), existing.id);
 			continue;
 		}
 
@@ -312,21 +308,29 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		const stmtDate = nextStatementDate({ statementDay: statDay, billingCycleDays: cycDays });
 		const dueDate = dueFromStatement(stmtDate, graceDays);
 
-		plan.cleanCreditCards.push({
-			id: c.id ?? generateId(),
+		const id = c.id ?? generateId();
+		plan.cleanAccounts.push({
+			id,
 			name: c.name.trim(),
-			limit: c.limit,
-			outstanding: c.outstanding ?? 0,
-			statementDay: statDay,
-			billingCycleDays: cycDays,
-			gracePeriodDays: graceDays,
-			statementDate: stmtDate.toISOString().split('T')[0],
-			dueDate: dueDate.toISOString().split('T')[0],
-			taxRate: c.taxRate,
+			type: 'credit_card',
+			openingBalance: -(c.outstanding ?? 0),
+			creditCard: {
+				limit: c.limit,
+				outstanding: c.outstanding ?? 0,
+				statementDay: statDay,
+				billingCycleDays: cycDays,
+				gracePeriodDays: graceDays,
+				statementDate: stmtDate.toISOString().split('T')[0],
+				dueDate: dueDate.toISOString().split('T')[0],
+				taxRate: c.taxRate,
+			},
+			color: '#00d4f5',
+			currency: 'INR',
 			notes: c.notes,
 			createdAt: now,
 			updatedAt: now,
 		});
+		plan.resolvedAccounts.set(c.name.toLowerCase(), id);
 	}
 
 	// ── 4. Journal Entries (ledger-based) ──────────────────────────────────────

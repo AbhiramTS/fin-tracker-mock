@@ -134,17 +134,20 @@ export function getOccurrencesForMonth(
 	});
 
 	// Credit card bills
-	(state.creditCards ?? []).forEach((cc) => {
-		if (cc.dueDate && isWithinInterval(parseISO(cc.dueDate), interval))
+	(state.accounts ?? [])
+		.filter((a) => a.type === 'credit_card' && a.creditCard)
+		.forEach((a) => {
+			const cc = a.creditCard!;
+			if (!cc.dueDate || !isWithinInterval(parseISO(cc.dueDate), interval)) return;
 			add(
 				'credit_card_bill',
-				cc.id,
+				a.id,
 				cc.dueDate,
-				cc.outstanding,
-				`${cc.name} bill`,
+				cc.outstanding ?? 0,
+				`${a.name} bill`,
 				'Credit Card'
 			);
-	});
+		});
 
 	return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }

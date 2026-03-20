@@ -20,7 +20,7 @@ export interface AccountHead extends BaseRecord {
 	type: RootAccountHeadType;
 	parentId: string | null; // null = root head
 	isSystem: boolean; // true = built-in root, cannot be deleted
-	isAccount?: boolean; // true = auto-created mirror of an Account/CreditCard/Loan
+	isAccount?: boolean; // true = auto-created mirror of an Account/Loan
 	notes?: string;
 }
 
@@ -58,10 +58,22 @@ export function rootHeadForAccountType(type: AccountType): string {
 
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'loan' | 'investment' | 'receivable';
 
+export interface CreditCardDetails {
+	limit: number;
+	outstanding: number;
+	statementDay: number;
+	billingCycleDays: number;
+	gracePeriodDays: number;
+	dueDate: string;
+	statementDate: string;
+	taxRate?: number;
+}
+
 export interface Account extends BaseRecord {
 	name: string;
 	type: AccountType;
 	openingBalance: number;
+	creditCard?: CreditCardDetails;
 	color?: string;
 	currency?: string;
 	notes?: string;
@@ -194,20 +206,6 @@ export interface AmortisationRow {
 	isPaid: boolean;
 }
 
-// ── Credit cards ──────────────────────────────────────────────────────────────
-export interface CreditCard extends BaseRecord {
-	name: string;
-	limit: number;
-	outstanding: number;
-	statementDay: number;
-	billingCycleDays: number;
-	gracePeriodDays: number;
-	dueDate: string;
-	statementDate: string;
-	taxRate?: number;
-	notes?: string;
-}
-
 // ── Receivables ───────────────────────────────────────────────────────────────
 export interface Receivable extends BaseRecord {
 	personName: string;
@@ -327,7 +325,6 @@ export type EntityName =
 	| 'recurringPayments'
 	| 'recurringIncomes'
 	| 'loans'
-	| 'creditCards'
 	| 'receivables'
 	| 'repaymentRecords'
 	| 'investments'
@@ -355,7 +352,6 @@ export interface AppState {
 	recurringPayments: RecurringPayment[];
 	recurringIncomes: RecurringIncome[];
 	loans: Loan[];
-	creditCards: CreditCard[];
 	receivables: Receivable[];
 	repaymentRecords: RepaymentRecord[];
 	investments: Investment[];
