@@ -40,9 +40,10 @@ const TYPE_META: Record<
 // For global view, running balance tracks net asset flow
 function withRunning(
 	entries: JournalEntry[],
-	accountHeadId?: string
+	accountHeadId?: string,
+	openingBalance = 0
 ): (JournalEntry & { running: number })[] {
-	let running = 0;
+	let running = openingBalance;
 	return entries.map((e) => {
 		running += getSignedImpact(e, accountHeadId);
 		return { ...e, running };
@@ -91,6 +92,8 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? id;
 	const activeHead = filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined);
+	const activeAccount = state.accounts.find((a) => a.id === activeHead);
+	const openingSeed = activeAccount?.openingBalance ?? 0;
 
 	// ── Filter entries ─────────────────────────────────────────────────────────
 	const filtered = useMemo(() => {
@@ -134,7 +137,10 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		search,
 	]);
 
-	const withBalances = useMemo(() => withRunning(filtered, activeHead), [filtered, activeHead]);
+	const withBalances = useMemo(
+		() => withRunning(filtered, activeHead, openingSeed),
+		[filtered, activeHead, openingSeed]
+	);
 
 	// Totals derived from the same signed-impact logic used by running/day balances.
 	const { netIn, netOut } = useMemo(() => {
@@ -376,12 +382,44 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 			) : (
 				<div className="rounded-xl border border-border overflow-hidden">
 					{/* Column header */}
-					<div className="grid grid-cols-[1fr_auto_auto_auto] border-b border-border bg-muted/40 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+					<div className="grid grid-cols-[1fr_auto_auto_auto_auto] border-b border-border bg-muted/40 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
 						<span>Entry</span>
+						<span className="pr-3 w-24 text-right">Account</span>
 						<span className="text-right pr-3 w-20">Debit</span>
 						<span className="text-right pr-3 w-20">Credit</span>
 						<span className="text-right w-24">Balance</span>
 					</div>
+
+					{/* Opening balance row */}
+					{activeAccount && (
+						<div className="grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2 bg-cyan/5 border-b border-border/50">
+							<div className="flex items-center gap-2.5 min-w-0 pr-2">
+								<div className="shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-cyan/10 text-cyan">
+									<SlidersHorizontal className="h-3 w-3" />
+								</div>
+								<p className="text-xs font-semibold text-cyan">Opening Balance</p>
+							</div>
+							<div className="w-24 text-right pr-3 self-center">
+								<span className="text-[10px] text-muted-foreground truncate block">
+									{activeAccount.name}
+								</span>
+							</div>
+							<div className="w-20 text-right pr-3 self-center">
+								<span className="text-muted-foreground/30 text-xs">—</span>
+							</div>
+							<div className="w-20 text-right pr-3 self-center">
+								<span className="text-muted-foreground/30 text-xs">—</span>
+							</div>
+							<div className="w-24 text-right self-center">
+								<span
+									className={`font-mono text-xs font-bold ${
+										openingSeed >= 0 ? 'text-cyan' : 'text-loss'
+									}`}>
+									{fmt(openingSeed)}
+								</span>
+							</div>
+						</div>
+					)}
 
 					{byDate.map(([date, dayRows]) => {
 						const dayDelta = dayRows.reduce(
@@ -412,12 +450,19 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 									const isDebit = side === 'debit';
 									const isCredit = side === 'credit';
 									const isOpen = expanded === row.id;
+									const counterHead = activeHead
+										? row.debitAccountHeadId === activeHead
+											? headName(row.creditAccountHeadId)
+											: row.creditAccountHeadId === activeHead
+												? headName(row.debitAccountHeadId)
+												: '—'
+										: headName(row.debitAccountHeadId);
 
 									return (
 										<div key={row.id}>
 											<button
 												onClick={() => setExpanded(isOpen ? null : row.id)}
-												className="w-full grid grid-cols-[1fr_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
+												className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
 												<div className="flex items-start gap-2.5 min-w-0 pr-2">
 													<div
 														className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
@@ -432,7 +477,13 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 															Cr: {headName(row.creditAccountHeadId)}
 														</p>
 													</div>
-												</div>
+												</div>{' '}
+												{/* Account column */}
+												<div className="w-24 text-right pr-3">
+													<span className="text-[10px] text-muted-foreground truncate block">
+														{counterHead}
+													</span>
+												</div>{' '}
 												{/* Debit column */}
 												<div className="w-20 text-right pr-3">
 													{isDebit ? (
