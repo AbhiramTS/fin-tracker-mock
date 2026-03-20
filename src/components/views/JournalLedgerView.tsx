@@ -5,6 +5,7 @@ import {
 	ArrowDownLeft,
 	ArrowLeftRight,
 	SlidersHorizontal,
+	Pencil,
 	X,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
@@ -20,6 +21,8 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
+import { JournalEntryForm } from '@/components/forms';
+import { useEditDelete } from './EntityView';
 import type { JournalEntry, JournalEntryType } from '@/types';
 
 // ── Type meta ─────────────────────────────────────────────────────────────────
@@ -78,6 +81,15 @@ function getDisplaySide(entry: JournalEntry, accountHeadId?: string): 'debit' | 
 // ─────────────────────────────────────────────────────────────────────────────
 export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId?: string } = {}) {
 	const { state } = useApp();
+	const { startEdit, EditDialog } = useEditDelete<JournalEntry>({
+		entity: 'journalEntries',
+		FormComp: JournalEntryForm,
+		formProps: {
+			accounts: state.accounts,
+			accountHeads: state.accountHeads,
+		},
+		formTitle: 'Journal Entry',
+	});
 
 	// ── Filters ────────────────────────────────────────────────────────────────
 	const [search, setSearch] = useState('');
@@ -619,6 +631,16 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 
 											{isOpen && (
 												<div className="px-12 py-2 bg-muted/20 border-b border-border/30 text-xs text-muted-foreground space-y-1">
+													<div className="flex justify-end">
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => startEdit(row)}
+															className="h-7 gap-1.5">
+															<Pencil className="h-3 w-3" /> Edit
+															entry
+														</Button>
+													</div>
 													<p>
 														<span className="font-semibold text-foreground">
 															Type:
@@ -673,6 +695,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 					})}
 				</div>
 			)}
+			{EditDialog}
 		</div>
 	);
 }
