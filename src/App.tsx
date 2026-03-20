@@ -38,7 +38,6 @@ import { ForecastView } from '@/components/views/ForecastView';
 import { SimulatorView } from '@/components/views/SimulatorView';
 import { AccountsView } from '@/components/views/AccountsView';
 import { ReconciliationView } from '@/components/views/ReconciliationView';
-import { LedgerView } from '@/components/views/LedgerView';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import { SettingsView, AccountHeadsView } from '@/components/views/SettingsView';
 
@@ -61,7 +60,7 @@ type TabId =
 	| 'simulator'
 	| 'accounts'
 	| 'reconciliation'
-	| 'ledger'
+	// | 'ledger'
 	| 'journalledger'
 	| 'accountheads'
 	| 'settings';
@@ -82,7 +81,7 @@ const VALID_TABS = new Set<TabId>([
 	'simulator',
 	'accounts',
 	'reconciliation',
-	'ledger',
+	// 'ledger',
 	'journalledger',
 	'accountheads',
 	'settings',
@@ -105,7 +104,7 @@ const NAV: NavItem[] = [
 	{ id: 'income', label: 'Income', icon: Zap, group: 'Money' },
 	{ id: 'transfers', label: 'Transfers', icon: ArrowLeftRight, group: 'Money' },
 	{ id: 'recurring', label: 'Recurring', icon: RefreshCw, group: 'Money' },
-	{ id: 'ledger', label: 'Account Book', icon: BookOpen, group: 'Money' },
+	// { id: 'ledger', label: 'Account Book', icon: BookOpen, group: 'Money' },
 	{ id: 'journalledger', label: 'Journal Ledger', icon: BookOpen, group: 'Money' },
 
 	{ id: 'accounts', label: 'Accounts', icon: Wallet, group: 'Accounts' },
@@ -130,7 +129,7 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	income: IncomeView,
 	transfers: TransfersView,
 	recurring: RecurringView,
-	ledger: LedgerView,
+	// ledger: LedgerView,
 	journalledger: JournalLedgerView,
 	loans: LoansView,
 	cards: CreditCardsView,
