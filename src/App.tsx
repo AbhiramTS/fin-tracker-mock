@@ -41,6 +41,8 @@ import { ReconciliationView } from '@/components/views/ReconciliationView';
 import { LedgerView } from '@/components/views/LedgerView';
 import { SettingsView, AccountHeadsView } from '@/components/views/SettingsView';
 
+const APP_VERSION = __APP_VERSION__;
+
 // ── Nav config ────────────────────────────────────────────────────────────────
 type TabId =
 	| 'dashboard'
@@ -216,7 +218,7 @@ function Sidebar({
 							FinTracker
 						</h1>
 						<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
-							v4.0
+							v{APP_VERSION}
 						</span>
 					</div>
 					<p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-0.5">
@@ -360,7 +362,7 @@ function AppShell() {
 						</span>
 						{tab === 'dashboard' && (
 							<span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-widest text-primary">
-								v4.0
+								v{APP_VERSION}
 							</span>
 						)}
 					</div>
