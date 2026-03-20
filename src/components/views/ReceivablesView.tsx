@@ -23,7 +23,7 @@ export function ReceivablesView() {
 	const { startEdit, doRemove, EditDialog } = useEditDelete<Receivable>({
 		entity: 'receivables',
 		FormComp: ReceivableForm,
-		formProps: { accounts: state.accounts },
+		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
 		formTitle: 'Receivable',
 	});
 
@@ -31,9 +31,23 @@ export function ReceivablesView() {
 		const receivable = state.receivables.find((r) => r.id === repayFor);
 		if (!receivable) return;
 		await save('repaymentRecords', data);
-		const newRepaid = (receivable.amountRepaid ?? 0) + (data.amount as number);
+		const amount = (data.amount as number) ?? 0;
+		const receiveAccountId = (data.accountId as string) ?? receivable.accountId;
+		const repaymentDate = (data.date as string) ?? new Date().toISOString().slice(0, 10);
+		const newRepaid = (receivable.amountRepaid ?? 0) + amount;
 		const isSettled = newRepaid >= receivable.amountLent;
 		await save('receivables', { ...receivable, amountRepaid: newRepaid, isSettled });
+		if (amount > 0 && receiveAccountId) {
+			await save('journalEntries', {
+				description: `Repayment from ${receivable.personName}`,
+				amount,
+				date: repaymentDate,
+				type: 'lending_repayment',
+				debitAccountHeadId: receiveAccountId,
+				creditAccountHeadId: receivable.receivableHeadId ?? 'head_asset',
+				notes: data.notes,
+			});
+		}
 		setRepayFor(null);
 	};
 
@@ -43,7 +57,23 @@ export function ReceivablesView() {
 			subtitle={`${active.length} active · ${fmt(totalOut)} outstanding`}
 			entity="receivables"
 			FormComp={ReceivableForm}
-			formProps={{ accounts: state.accounts }}>
+			formProps={{ accounts: state.accounts, accountHeads: state.accountHeads }}
+			onAfterSave={async (saved) => {
+				const receivable = saved as Receivable;
+				const isNew = !state.receivables.some((r) => r.id === receivable.id);
+				if (!isNew) return;
+				if (!receivable.amountLent || !receivable.accountId) return;
+
+				await save('journalEntries', {
+					description: `Lent to ${receivable.personName}`,
+					amount: receivable.amountLent,
+					date: receivable.dateLent,
+					type: 'lending_disbursal',
+					debitAccountHeadId: receivable.receivableHeadId ?? 'head_asset',
+					creditAccountHeadId: receivable.accountId,
+					notes: receivable.description ?? receivable.notes,
+				});
+			}}>
 			{state.receivables.length === 0 && (
 				<EmptyState
 					icon="🤝"
@@ -189,6 +219,10 @@ export function ReceivablesView() {
 					{repayFor && (
 						<RepaymentForm
 							receivableId={repayFor}
+							accounts={state.accounts}
+							defaultAccountId={
+								state.receivables.find((r) => r.id === repayFor)?.accountId
+							}
 							onSave={handleRepayment as (d: Record<string, unknown>) => void}
 							onCancel={() => setRepayFor(null)}
 						/>

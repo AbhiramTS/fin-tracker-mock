@@ -34,6 +34,14 @@ const TYPE_META: Record<
 	income: { icon: ArrowDownLeft, color: 'text-profit', label: 'Income' },
 	transfer: { icon: ArrowLeftRight, color: 'text-warning', label: 'Transfer' },
 	emi: { icon: ArrowUpRight, color: 'text-loss', label: 'EMI' },
+	loan_disbursal: { icon: ArrowDownLeft, color: 'text-cyan', label: 'Loan Disbursal' },
+	loan_payoff: { icon: ArrowUpRight, color: 'text-loss', label: 'Loan Payoff' },
+	lending_disbursal: { icon: ArrowUpRight, color: 'text-warning', label: 'Lending Disbursal' },
+	lending_repayment: {
+		icon: ArrowDownLeft,
+		color: 'text-profit',
+		label: 'Lending Repayment',
+	},
 	adjustment: { icon: SlidersHorizontal, color: 'text-muted-foreground', label: 'Adjustment' },
 	opening_balance: { icon: SlidersHorizontal, color: 'text-cyan', label: 'Opening Balance' },
 };
@@ -61,7 +69,14 @@ function getSignedImpact(entry: JournalEntry, accountHeadId?: string): number {
 	}
 
 	if (entry.type === 'income' || entry.type === 'opening_balance') return entry.amount;
-	if (entry.type === 'expense' || entry.type === 'emi') return -entry.amount;
+	if (entry.type === 'loan_disbursal' || entry.type === 'lending_repayment') return entry.amount;
+	if (
+		entry.type === 'expense' ||
+		entry.type === 'emi' ||
+		entry.type === 'loan_payoff' ||
+		entry.type === 'lending_disbursal'
+	)
+		return -entry.amount;
 	return 0;
 }
 
@@ -87,6 +102,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		formProps: {
 			accounts: state.accounts,
 			accountHeads: state.accountHeads,
+			allowTypeChange: true,
 		},
 		formTitle: 'Journal Entry',
 	});
@@ -300,7 +316,12 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 											'income',
 											'transfer',
 											'emi',
+											'loan_disbursal',
+											'loan_payoff',
+											'lending_disbursal',
+											'lending_repayment',
 											'adjustment',
+											'opening_balance',
 										] as JournalEntryType[]
 									).map((t) => (
 										<SelectItem

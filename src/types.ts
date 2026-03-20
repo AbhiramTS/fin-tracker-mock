@@ -88,6 +88,10 @@ export type JournalEntryType =
 	| 'income'
 	| 'transfer'
 	| 'emi'
+	| 'loan_disbursal'
+	| 'loan_payoff'
+	| 'lending_disbursal'
+	| 'lending_repayment'
 	| 'adjustment'
 	| 'opening_balance';
 
@@ -213,6 +217,7 @@ export interface Receivable extends BaseRecord {
 	dateLent: string;
 	expectedRepaymentDate?: string;
 	accountId: string;
+	receivableHeadId?: string;
 	isSettled: boolean;
 	notes?: string;
 }
@@ -221,6 +226,7 @@ export interface RepaymentRecord extends BaseRecord {
 	receivableId: string;
 	amount: number;
 	date: string;
+	accountId?: string;
 	notes?: string;
 }
 

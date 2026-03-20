@@ -277,7 +277,7 @@ function LoanCard({
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 export function LoansView() {
-	const { state, remove } = useApp();
+	const { state, save } = useApp();
 	const [expanded, setExpanded] = useState<string | null>(null);
 	const [ledgerLoan, setLedgerLoan] = useState<Loan | null>(null);
 
@@ -299,7 +299,23 @@ export function LoansView() {
 			subtitle={`Outstanding: ${fmt(totalDebt)}${totalTaxAll > 0 ? ` · Est. total tax: ${fmt(totalTaxAll)}` : ''}`}
 			entity="loans"
 			FormComp={LoanForm}
-			formProps={{ accounts: state.accounts }}>
+			formProps={{ accounts: state.accounts }}
+			onAfterSave={async (saved) => {
+				const loan = saved as Loan;
+				const isNew = !state.loans.some((l) => l.id === loan.id);
+				if (!isNew) return;
+				if (!loan.principalAmount || !loan.accountId) return;
+
+				await save('journalEntries', {
+					description: `Loan disbursal — ${loan.name}`,
+					amount: loan.principalAmount,
+					date: loan.startDate,
+					type: 'loan_disbursal',
+					debitAccountHeadId: loan.accountId,
+					creditAccountHeadId: loan.id,
+					notes: 'Auto-posted on loan creation',
+				});
+			}}>
 			{state.loans.length === 0 && (
 				<EmptyState
 					icon="🏠"

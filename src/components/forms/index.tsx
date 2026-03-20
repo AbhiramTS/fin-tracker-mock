@@ -376,7 +376,7 @@ export function AccountForm({ initialData, onSave, onCancel }: FP<Account>) {
 }
 
 // ── JournalEntryForm ──────────────────────────────────────────────────────────
-// Handles expense, income, transfer — the type determines which side is which.
+// Handles all journal transaction types with type-aware debit/credit head filters.
 
 interface JEFormProps {
 	initialData?: Partial<JournalEntry>;
@@ -385,6 +385,7 @@ interface JEFormProps {
 	accounts: Account[];
 	accountHeads: AccountHead[];
 	defaultType?: JournalEntryType;
+	allowTypeChange?: boolean;
 	// If set, locks the debit or credit side (e.g. from PaymentsView)
 	lockedDebitId?: string;
 	lockedCreditId?: string;
@@ -397,19 +398,20 @@ export function JournalEntryForm({
 	accounts,
 	accountHeads,
 	defaultType = 'expense',
+	allowTypeChange = false,
 	lockedDebitId,
 	lockedCreditId,
 }: JEFormProps) {
-	const type = (initialData?.type ?? defaultType) as JournalEntryType;
 	const [f, setF] = useState<Partial<JournalEntry>>({
 		description: '',
 		amount: undefined,
 		date: todayStr(),
-		type,
+		type: (initialData?.type ?? defaultType) as JournalEntryType,
 		debitAccountHeadId: lockedDebitId ?? '',
 		creditAccountHeadId: lockedCreditId ?? '',
 		...initialData,
 	});
+	const type = (f.type ?? defaultType) as JournalEntryType;
 
 	const canSave = !!(f.description && f.amount && f.debitAccountHeadId && f.creditAccountHeadId);
 	const submit = (e: FormEvent) => {
@@ -417,28 +419,114 @@ export function JournalEntryForm({
 		if (canSave) onSave(f);
 	};
 
-	// Labels change per type
-	const debitLabel =
-		type === 'expense'
-			? 'Expense Head (Debit) *'
-			: type === 'income'
-				? 'Asset Account (Debit) *'
-				: 'Destination Account (Debit) *';
-	const creditLabel =
-		type === 'expense'
-			? 'Asset Account (Credit) *'
-			: type === 'income'
-				? 'Income Head (Credit) *'
-				: 'Source Account (Credit) *';
+	const TYPE_OPTIONS: { value: JournalEntryType; label: string }[] = [
+		{ value: 'expense', label: 'Expense' },
+		{ value: 'income', label: 'Income' },
+		{ value: 'transfer', label: 'Transfer' },
+		{ value: 'emi', label: 'EMI' },
+		{ value: 'loan_disbursal', label: 'Loan Disbursal' },
+		{ value: 'loan_payoff', label: 'Loan Payoff' },
+		{ value: 'lending_disbursal', label: 'Lending Disbursal' },
+		{ value: 'lending_repayment', label: 'Lending Repayment' },
+		{ value: 'adjustment', label: 'Adjustment' },
+		{ value: 'opening_balance', label: 'Opening Balance' },
+	];
 
-	const debitRootType = type === 'expense' ? 'expense' : type === 'income' ? 'asset' : 'asset';
-	const creditRootType = type === 'expense' ? 'asset' : type === 'income' ? 'income' : 'asset';
+	const TYPE_CONFIG: Record<
+		JournalEntryType,
+		{ debitLabel: string; creditLabel: string; debitRoot: string; creditRoot: string }
+	> = {
+		expense: {
+			debitLabel: 'Expense Head (Debit) *',
+			creditLabel: 'Asset Account (Credit) *',
+			debitRoot: 'expense',
+			creditRoot: 'asset',
+		},
+		income: {
+			debitLabel: 'Asset Account (Debit) *',
+			creditLabel: 'Income Head (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'income',
+		},
+		transfer: {
+			debitLabel: 'Destination Account (Debit) *',
+			creditLabel: 'Source Account (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'asset',
+		},
+		emi: {
+			debitLabel: 'Loan / Liability Head (Debit) *',
+			creditLabel: 'Paying Account (Credit) *',
+			debitRoot: 'liability',
+			creditRoot: 'asset',
+		},
+		loan_disbursal: {
+			debitLabel: 'Receiving Account (Debit) *',
+			creditLabel: 'Loan Liability (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'liability',
+		},
+		loan_payoff: {
+			debitLabel: 'Loan Liability (Debit) *',
+			creditLabel: 'Paying Account (Credit) *',
+			debitRoot: 'liability',
+			creditRoot: 'asset',
+		},
+		lending_disbursal: {
+			debitLabel: 'Receivable / Asset Head (Debit) *',
+			creditLabel: 'Funding Account (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'asset',
+		},
+		lending_repayment: {
+			debitLabel: 'Receiving Account (Debit) *',
+			creditLabel: 'Receivable / Asset Head (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'asset',
+		},
+		adjustment: {
+			debitLabel: 'Debit Head *',
+			creditLabel: 'Credit Head *',
+			debitRoot: 'asset',
+			creditRoot: 'equity',
+		},
+		opening_balance: {
+			debitLabel: 'Opening Asset Head (Debit) *',
+			creditLabel: 'Opening Counter Head (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'equity',
+		},
+	};
+
+	const cfg = TYPE_CONFIG[type];
 
 	return (
 		<form
 			onSubmit={submit}
 			className="flex flex-col gap-4 p-5 pt-2">
 			<FormGrid>
+				{allowTypeChange && (
+					<FormField
+						label="Transaction Type"
+						span={2}>
+						<Select
+							value={type}
+							onValueChange={(v) => setF({ ...f, type: v as JournalEntryType })}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{TYPE_OPTIONS.map((opt) => (
+									<SelectItem
+										key={opt.value}
+										value={opt.value}>
+										{opt.label}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</FormField>
+				)}
 				<FormField
 					label="Description"
 					span={2}>
@@ -450,7 +538,15 @@ export function JournalEntryForm({
 								? 'e.g. Swiggy lunch'
 								: type === 'income'
 									? 'e.g. Salary'
-									: 'e.g. Transfer to savings'
+									: type === 'loan_disbursal'
+										? 'e.g. Home loan disbursal'
+										: type === 'loan_payoff'
+											? 'e.g. Home loan prepayment'
+											: type === 'lending_disbursal'
+												? 'e.g. Lent to Rahul'
+												: type === 'lending_repayment'
+													? 'e.g. Repayment from Rahul'
+													: 'e.g. Transfer to savings'
 						}
 						required
 					/>
@@ -478,7 +574,7 @@ export function JournalEntryForm({
 
 				{/* Debit side */}
 				<FormField
-					label={debitLabel}
+					label={cfg.debitLabel}
 					span={2}
 					hint="The account being debited (Dr)">
 					{lockedDebitId ? (
@@ -491,7 +587,7 @@ export function JournalEntryForm({
 							heads={accountHeads}
 							value={f.debitAccountHeadId ?? ''}
 							onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
-							rootType={debitRootType}
+							rootType={cfg.debitRoot}
 							placeholder="Select debit head"
 						/>
 					)}
@@ -499,7 +595,7 @@ export function JournalEntryForm({
 
 				{/* Credit side */}
 				<FormField
-					label={creditLabel}
+					label={cfg.creditLabel}
 					span={2}
 					hint="The account being credited (Cr)">
 					{lockedCreditId ? (
@@ -512,7 +608,7 @@ export function JournalEntryForm({
 							heads={accountHeads}
 							value={f.creditAccountHeadId ?? ''}
 							onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
-							rootType={creditRootType}
+							rootType={cfg.creditRoot}
 							placeholder="Select credit head"
 						/>
 					)}
@@ -1140,6 +1236,7 @@ export function ReceivableForm({
 		amountRepaid: 0,
 		dateLent: todayStr(),
 		accountId: accounts[0]?.id ?? '',
+		receivableHeadId: 'head_asset',
 		isSettled: false,
 		...initialData,
 	});
@@ -1206,6 +1303,18 @@ export function ReceivableForm({
 					</Select>
 				</FormField>
 				<FormField
+					label="Receivable Head"
+					span={2}
+					hint="Asset head that tracks amount due from borrower">
+					<HeadSelect
+						heads={accountHeads ?? []}
+						value={f.receivableHeadId ?? 'head_asset'}
+						onChange={(v) => setF({ ...f, receivableHeadId: v })}
+						rootType="asset"
+						placeholder="Select receivable asset head"
+					/>
+				</FormField>
+				<FormField
 					label="Description"
 					span={2}>
 					<Input
@@ -1230,10 +1339,14 @@ export function ReceivableForm({
 
 export function RepaymentForm({
 	receivableId,
+	accounts,
+	defaultAccountId,
 	onSave,
 	onCancel,
 }: {
 	receivableId: string;
+	accounts: Account[];
+	defaultAccountId?: string;
 	onSave: (d: Partial<RepaymentRecord>) => void;
 	onCancel: () => void;
 }) {
@@ -1241,6 +1354,7 @@ export function RepaymentForm({
 		receivableId,
 		amount: undefined,
 		date: todayStr(),
+		accountId: defaultAccountId ?? accounts[0]?.id ?? '',
 	});
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
@@ -1269,6 +1383,24 @@ export function RepaymentForm({
 						onChange={(e) => setF({ ...f, date: e.target.value })}
 						required
 					/>
+				</FormField>
+				<FormField label="Receive Into Account">
+					<Select
+						value={f.accountId ?? ''}
+						onValueChange={(v) => setF({ ...f, accountId: v })}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{accounts.map((a) => (
+								<SelectItem
+									key={a.id}
+									value={a.id}>
+									{a.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
 				</FormField>
 				<FormField
 					label="Notes (optional)"

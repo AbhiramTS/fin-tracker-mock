@@ -579,6 +579,7 @@ export function PaymentsView() {
 		) => {
 			const { paidDate, paidAmount, creditAccountId, topUpAmount } = opts;
 			const isIncome = occ.kind === 'recurring_income';
+			const isLoanEmi = occ.kind === 'loan_emi';
 
 			// 0. Top-up: income journal entry (debit the account, credit Equity/Adjustments)
 			if (topUpAmount > 0) {
@@ -603,7 +604,7 @@ export function PaymentsView() {
 				description: occ.label,
 				amount: paidAmount,
 				date: paidDate,
-				type: isIncome ? 'income' : 'expense',
+				type: isIncome ? 'income' : isLoanEmi ? 'emi' : 'expense',
 				debitAccountHeadId: debitId,
 				creditAccountHeadId: creditId,
 				notes: `From payment: ${occ.label}`,
