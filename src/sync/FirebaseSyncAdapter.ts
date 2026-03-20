@@ -18,6 +18,25 @@ export class FirebaseSyncAdapter extends SyncAdapter {
 	private db: Firestore | null = null;
 	private unsubs: Unsubscribe[] = [];
 
+	private sanitizeForFirestore(value: unknown): unknown {
+		if (value === undefined) return undefined;
+		if (value === null) return null;
+		if (Array.isArray(value)) {
+			return value
+				.map((item) => this.sanitizeForFirestore(item))
+				.filter((item) => item !== undefined);
+		}
+		if (typeof value === 'object') {
+			const out: Record<string, unknown> = {};
+			for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+				const sanitized = this.sanitizeForFirestore(v);
+				if (sanitized !== undefined) out[k] = sanitized;
+			}
+			return out;
+		}
+		return value;
+	}
+
 	constructor(private readonly config: FirebaseConfig) {
 		super();
 	}
@@ -32,20 +51,32 @@ export class FirebaseSyncAdapter extends SyncAdapter {
 		await this.prepare();
 		const batch = writeBatch(this.db!);
 		const synced: string[] = [];
+		const failed: string[] = [];
 		const entities = Object.keys(STORE_DEFS).filter((s) => s !== 'syncQueue');
 		for (const change of changes) {
 			if (!entities.includes(change.entity)) {
 				synced.push(change.queueId);
 				continue;
 			}
-			const ref = doc(collection(this.db!, change.entity), change.payload['id'] as string);
-			change.type === 'delete'
-				? batch.delete(ref)
-				: batch.set(ref, change.payload, { merge: true });
+			const id = change.payload['id'];
+			if (typeof id !== 'string' || !id.trim()) {
+				failed.push(change.queueId);
+				continue;
+			}
+			const ref = doc(collection(this.db!, change.entity), id);
+			if (change.type === 'delete') {
+				batch.delete(ref);
+			} else {
+				const sanitizedPayload = this.sanitizeForFirestore(change.payload) as Record<
+					string,
+					unknown
+				>;
+				batch.set(ref, sanitizedPayload, { merge: true });
+			}
 			synced.push(change.queueId);
 		}
 		await batch.commit();
-		return { synced, failed: [] };
+		return { synced, failed };
 	}
 
 	async pullEntity(entity: string): Promise<Record<string, unknown>[]> {
