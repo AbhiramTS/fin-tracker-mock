@@ -10,6 +10,7 @@ import { calculateEMI, nextStatementDate, dueFromStatement } from './amortisatio
 import type {
 	Account,
 	JournalEntry,
+	JournalEntryType,
 	Loan,
 	CreditCard,
 	AppState,
@@ -23,6 +24,7 @@ export interface ImportFile {
 	exportedAt?: string;
 	data?: {
 		accounts?: RawAccount[];
+		journalEntries?: RawJournalEntry[];
 		expenses?: RawExpense[];
 		incomes?: RawIncome[];
 		loans?: RawLoan[];
@@ -30,10 +32,23 @@ export interface ImportFile {
 	};
 	// Also accept flat (no wrapper)
 	accounts?: RawAccount[];
+	journalEntries?: RawJournalEntry[];
 	expenses?: RawExpense[];
 	incomes?: RawIncome[];
 	loans?: RawLoan[];
 	creditCards?: RawCreditCard[];
+}
+
+export interface RawJournalEntry {
+	description: string;
+	amount: number;
+	date: string;
+	type?: JournalEntryType;
+	debitAccountHeadId: string; // account name or head id
+	creditAccountHeadId: string; // account name or head id
+	notes?: string;
+	tags?: string[];
+	id?: string;
 }
 
 export interface RawAccount {
@@ -314,7 +329,70 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		});
 	}
 
-	// ── 4. Expenses → JournalEntries (type: "expense") ───────────────────────────
+	// ── 4. Journal Entries (ledger-based) ──────────────────────────────────────
+	const rawJournalEntries: RawJournalEntry[] = file.journalEntries ?? [];
+	for (const je of rawJournalEntries) {
+		if (!je.description || je.amount === undefined || !je.date) {
+			plan.errors.push(`Journal entry "${je.description}" missing required fields`);
+			continue;
+		}
+
+		// Resolve debit account (can be account name or head id)
+		const debitId = resolveAccountHead(je.debitAccountHeadId, plan.resolvedAccounts, state);
+		if (!debitId) {
+			plan.errors.push(
+				`Journal entry "${je.description}": debit account "${je.debitAccountHeadId}" not found`
+			);
+			continue;
+		}
+
+		// Resolve credit account (can be account name or head id)
+		const creditId = resolveAccountHead(je.creditAccountHeadId, plan.resolvedAccounts, state);
+		if (!creditId) {
+			plan.errors.push(
+				`Journal entry "${je.description}": credit account "${je.creditAccountHeadId}" not found`
+			);
+			continue;
+		}
+
+		// Check for duplicate
+		const existing = state.journalEntries.find(
+			(x) =>
+				x.description === je.description &&
+				x.date === je.date &&
+				x.amount === je.amount &&
+				x.debitAccountHeadId === debitId &&
+				x.creditAccountHeadId === creditId
+		);
+		if (existing) {
+			plan.txDuplicates.push({
+				entity: 'journalEntries',
+				incoming: {
+					...je,
+					debitAccountHeadId: debitId,
+					creditAccountHeadId: creditId,
+				} as unknown as Record<string, unknown>,
+				existing: existing as unknown as Record<string, unknown>,
+			});
+			continue;
+		}
+
+		plan.cleanJournalEntries.push({
+			id: je.id ?? generateId(),
+			description: je.description,
+			amount: je.amount,
+			date: je.date,
+			type: (je.type as JournalEntryType) ?? 'expense',
+			debitAccountHeadId: debitId,
+			creditAccountHeadId: creditId,
+			notes: je.notes,
+			tags: je.tags,
+			createdAt: now,
+			updatedAt: now,
+		});
+	}
+
+	// ── 5. Expenses → JournalEntries (backward compatibility) ────────────────────
 	const rawExpenses: RawExpense[] = file.expenses ?? [];
 	for (const e of rawExpenses) {
 		if (!e.name || !e.amount || !e.date) {
@@ -362,7 +440,7 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		});
 	}
 
-	// ── 5. Incomes → JournalEntries (type: "income") ─────────────────────────────
+	// ── 6. Incomes → JournalEntries (backward compatibility) ─────────────────────
 	const rawIncomes: RawIncome[] = file.incomes ?? [];
 	for (const i of rawIncomes) {
 		if (!i.name || !i.amount || !i.date) {
@@ -426,6 +504,29 @@ function resolveAccount(
 	// Try exact match on existing accounts
 	const existing = state.accounts.find(
 		(a) => a.name.toLowerCase() === nameOrId.toLowerCase() || a.id === nameOrId
+	);
+	return existing?.id ?? null;
+}
+
+function resolveAccountHead(
+	nameOrHeadId: string | undefined,
+	resolvedMap: Map<string, string>,
+	state: AppState
+): string | null {
+	if (!nameOrHeadId) return null;
+
+	// If it's already a root head id, return it
+	if (nameOrHeadId.startsWith('head_')) {
+		return nameOrHeadId;
+	}
+
+	// Try by account name (case-insensitive)
+	const byName = resolvedMap.get(nameOrHeadId.toLowerCase());
+	if (byName) return byName;
+
+	// Try exact match on existing accounts
+	const existing = state.accounts.find(
+		(a) => a.name.toLowerCase() === nameOrHeadId.toLowerCase() || a.id === nameOrHeadId
 	);
 	return existing?.id ?? null;
 }

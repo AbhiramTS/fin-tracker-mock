@@ -1,8 +1,10 @@
 {
-	"version": "4.0",
-	"description": "FinTracker sample import file. Remove/replace records with your own data. Fields marked with * are required. Account names are used as identifiers — they must match exactly across all entities.",
+	"version": "5.0",
+	"_instructions": "FinTracker v5 ledger-based import file. All transactions use double-entry accounting (journal entries). Accounts: define the physical/legal entities you track. JournalEntries: the core transaction model with explicit debit (from) and credit (to) sides. Use account names or system head IDs (head_income, head_expense, etc.). Remove example records and add your own data.",
+	"description": "FinTracker ledger-based import file. Uses journal entries (double-entry accounting) for all transactions.",
 	"accounts": [
 		{
+			"_comment": "Asset account: physical bank account",
 			"name": "HDFC Savings",
 			"type": "bank",
 			"openingBalance": 25000,
@@ -11,66 +13,94 @@
 			"notes": "Primary salary account"
 		},
 		{
+			"_comment": "Asset account: another bank",
 			"name": "ICICI Savings",
 			"type": "bank",
 			"openingBalance": 10000,
 			"color": "#00e5a0"
 		},
 		{
+			"_comment": "Asset account: physical cash",
 			"name": "Cash Wallet",
 			"type": "cash",
 			"openingBalance": 2000
 		}
 	],
-	"incomes": [
+	"journalEntries": [
 		{
-			"name": "Salary — March",
+			"_comment": "Income: Asset (Dr) from Income (Cr). When money comes IN to an account.",
+			"description": "Salary — March",
 			"amount": 85000,
 			"date": "2026-03-01",
-			"account": "HDFC Savings",
-			"category": "Salary",
+			"type": "income",
+			"debitAccountHeadId": "HDFC Savings",
+			"creditAccountHeadId": "head_income",
 			"notes": "Monthly salary credit"
 		},
 		{
-			"name": "Freelance project — XYZ Corp",
+			"_comment": "Income: Another account receives money from income",
+			"description": "Freelance project — XYZ Corp",
 			"amount": 15000,
 			"date": "2026-03-10",
-			"account": "ICICI Savings",
-			"category": "Freelance"
-		}
-	],
-	"expenses": [
+			"type": "income",
+			"debitAccountHeadId": "ICICI Savings",
+			"creditAccountHeadId": "head_income",
+			"notes": "Project payment received"
+		},
 		{
-			"name": "Electricity bill",
+			"_comment": "Expense: Expense (Dr) from Asset (Cr). When money goes OUT of an account. Debit an expense category, credit the account it came from.",
+			"description": "Electricity bill",
 			"amount": 1850,
 			"date": "2026-03-05",
-			"account": "HDFC Savings",
-			"category": "Bills"
+			"type": "expense",
+			"debitAccountHeadId": "head_expense",
+			"creditAccountHeadId": "HDFC Savings",
+			"notes": "Monthly utility bill"
 		},
 		{
-			"name": "Grocery — DMart",
+			"_comment": "Expense: Debit expense, credit account",
+			"description": "Grocery — DMart",
 			"amount": 3200,
 			"date": "2026-03-08",
-			"account": "HDFC Savings",
-			"category": "Food"
+			"type": "expense",
+			"debitAccountHeadId": "head_expense",
+			"creditAccountHeadId": "HDFC Savings",
+			"notes": "Weekly groceries"
 		},
 		{
-			"name": "Netflix subscription",
+			"_comment": "Expense: From same account as above",
+			"description": "Netflix subscription",
 			"amount": 649,
 			"date": "2026-03-10",
-			"account": "HDFC Savings",
-			"category": "Subscriptions"
+			"type": "expense",
+			"debitAccountHeadId": "head_expense",
+			"creditAccountHeadId": "HDFC Savings",
+			"notes": "Monthly subscription"
 		},
 		{
-			"name": "Auto to office",
+			"_comment": "Expense: From cash wallet",
+			"description": "Auto to office",
 			"amount": 120,
 			"date": "2026-03-12",
-			"account": "Cash Wallet",
-			"category": "Transport"
+			"type": "expense",
+			"debitAccountHeadId": "head_expense",
+			"creditAccountHeadId": "Cash Wallet",
+			"notes": "Daily transport"
+		},
+		{
+			"_comment": "Transfer: Asset (Dr) from Asset (Cr). Money between two accounts. Debit destination, credit source.",
+			"description": "Transfer — HDFC to ICICI",
+			"amount": 10000,
+			"date": "2026-03-15",
+			"type": "transfer",
+			"debitAccountHeadId": "ICICI Savings",
+			"creditAccountHeadId": "HDFC Savings",
+			"notes": "Internal transfer between accounts"
 		}
 	],
 	"loans": [
 		{
+			"_comment": "Liability: Long-term loan with interest. EMI auto-calculated if omitted. Link to payment account.",
 			"name": "Home Loan — SBI",
 			"principalAmount": 4500000,
 			"interestRate": 8.5,
@@ -82,6 +112,7 @@
 			"notes": "20-year home loan. EMI auto-calculated if omitted."
 		},
 		{
+			"_comment": "Liability: Loan with explicit EMI override",
 			"name": "Car Loan — ICICI",
 			"principalAmount": 600000,
 			"interestRate": 9.0,
@@ -95,6 +126,7 @@
 	],
 	"creditCards": [
 		{
+			"_comment": "Liability: Credit card with cycle/grace period. Auto-calculates statement and due dates.",
 			"name": "HDFC Regalia",
 			"limit": 200000,
 			"outstanding": 18500,
