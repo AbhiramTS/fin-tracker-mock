@@ -91,9 +91,8 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const [expanded, setExpanded] = useState<string | null>(null);
 
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? id;
-	const isAccountHead = (id: string) =>
-		state.accountHeads.find((h) => h.id === id)?.isAccount === true;
 	const activeHead = filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined);
+	const isGlobalJournal = !activeHead;
 	const activeAccount = state.accounts.find((a) => a.id === activeHead);
 	const openingSeed = activeAccount?.openingBalance ?? 0;
 
@@ -144,17 +143,38 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		[filtered, activeHead, openingSeed]
 	);
 
-	// Totals derived from the same signed-impact logic used by running/day balances.
-	const { netIn, netOut } = useMemo(() => {
-		return filtered.reduce(
-			(acc, entry) => {
-				const signed = getSignedImpact(entry, activeHead);
-				if (signed > 0) acc.netIn += signed;
-				else if (signed < 0) acc.netOut += Math.abs(signed);
-				return acc;
-			},
-			{ netIn: 0, netOut: 0 }
-		);
+	const totals = useMemo(() => {
+		if (activeHead) {
+			const { netIn, netOut } = filtered.reduce(
+				(acc, entry) => {
+					const signed = getSignedImpact(entry, activeHead);
+					if (signed > 0) acc.netIn += signed;
+					else if (signed < 0) acc.netOut += Math.abs(signed);
+					return acc;
+				},
+				{ netIn: 0, netOut: 0 }
+			);
+
+			return [
+				{ label: 'Total In', value: netIn, cls: 'text-profit' },
+				{ label: 'Total Out', value: netOut, cls: 'text-loss' },
+				{
+					label: 'Net',
+					value: netIn - netOut,
+					cls: netIn >= netOut ? 'text-profit' : 'text-loss',
+				},
+			] as const;
+		}
+
+		const totalDebits = filtered.reduce((sum, entry) => sum + entry.amount, 0);
+		const totalCredits = totalDebits;
+		const diff = totalDebits - totalCredits;
+
+		return [
+			{ label: 'Total Dr', value: totalDebits, cls: 'text-cyan' },
+			{ label: 'Total Cr', value: totalCredits, cls: 'text-profit' },
+			{ label: 'Diff', value: diff, cls: diff === 0 ? 'text-muted-foreground' : 'text-loss' },
+		] as const;
 	}, [filtered, activeHead]);
 
 	// Group by date
@@ -204,22 +224,16 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 			{/* Totals strip */}
 			{filtered.length > 0 && (
 				<div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-border">
-					{[
-						{ label: 'Total In', value: fmt(netIn), cls: 'text-profit' },
-						{ label: 'Total Out', value: fmt(netOut), cls: 'text-loss' },
-						{
-							label: 'Net',
-							value: fmt(netIn - netOut),
-							cls: netIn >= netOut ? 'text-profit' : 'text-loss',
-						},
-					].map(({ label, value, cls }, i) => (
+					{totals.map(({ label, value, cls }, i) => (
 						<div
 							key={label}
 							className={`flex flex-col items-center py-3 bg-muted/20 ${i < 2 ? 'border-r border-border' : ''}`}>
 							<p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
 								{label}
 							</p>
-							<p className={`font-mono text-xs font-bold mt-0.5 ${cls}`}>{value}</p>
+							<p className={`font-mono text-xs font-bold mt-0.5 ${cls}`}>
+								{fmt(value)}
+							</p>
 						</div>
 					))}
 				</div>
@@ -386,10 +400,14 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 					{/* Column header */}
 					<div className="grid grid-cols-[1fr_auto_auto_auto_auto] border-b border-border bg-muted/40 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
 						<span>Entry</span>
-						<span className="pr-3 w-24 text-right">Account</span>
+						<span className="pr-3 w-24 text-right">
+							{isGlobalJournal ? 'Head' : 'Account'}
+						</span>
 						<span className="text-right pr-3 w-20">Debit</span>
 						<span className="text-right pr-3 w-20">Credit</span>
-						<span className="text-right w-24">Balance</span>
+						<span className="text-right w-24">
+							{isGlobalJournal ? 'Line' : 'Balance'}
+						</span>
 					</div>
 
 					{/* Opening balance row */}
@@ -428,6 +446,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 							(s, r) => s + getSignedImpact(r, activeHead),
 							0
 						);
+						const dayVolume = dayRows.reduce((s, r) => s + r.amount, 0);
 
 						return (
 							<div key={date}>
@@ -438,10 +457,15 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 									</span>
 									<span
 										className={`font-mono text-[10px] font-bold ${
-											dayDelta >= 0 ? 'text-profit' : 'text-loss'
+											isGlobalJournal
+												? 'text-muted-foreground'
+												: dayDelta >= 0
+													? 'text-profit'
+													: 'text-loss'
 										}`}>
-										{dayDelta >= 0 ? '+' : ''}
-										{fmt(Math.abs(dayDelta))}
+										{isGlobalJournal
+											? `${fmt(dayVolume)} vol`
+											: `${dayDelta >= 0 ? '+' : ''}${fmt(Math.abs(dayDelta))}`}
 									</span>
 								</div>
 
@@ -452,78 +476,146 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 									const isDebit = side === 'debit';
 									const isCredit = side === 'credit';
 									const isOpen = expanded === row.id;
-									const counterHead = activeHead
-										? row.debitAccountHeadId === activeHead
+									const counterHead =
+										row.debitAccountHeadId === activeHead
 											? headName(row.creditAccountHeadId)
 											: row.creditAccountHeadId === activeHead
 												? headName(row.debitAccountHeadId)
-												: '—'
-										: isAccountHead(row.debitAccountHeadId) &&
-											  !isAccountHead(row.creditAccountHeadId)
-											? headName(row.debitAccountHeadId)
-											: isAccountHead(row.creditAccountHeadId) &&
-												  !isAccountHead(row.debitAccountHeadId)
-												? headName(row.creditAccountHeadId)
-												: headName(row.debitAccountHeadId);
+												: '—';
 
 									return (
 										<div key={row.id}>
-											<button
-												onClick={() => setExpanded(isOpen ? null : row.id)}
-												className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
-												<div className="flex items-start gap-2.5 min-w-0 pr-2">
-													<div
-														className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
-														<Icon className="h-3 w-3" />
+											{isGlobalJournal ? (
+												<button
+													onClick={() =>
+														setExpanded(isOpen ? null : row.id)
+													}
+													className="w-full text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
+													<div className="px-3 py-2 border-b border-border/20">
+														<div className="flex items-start gap-2.5 min-w-0">
+															<div
+																className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
+																<Icon className="h-3 w-3" />
+															</div>
+															<div className="min-w-0">
+																<p className="text-xs font-semibold truncate">
+																	{row.description}
+																</p>
+																<p className="text-[10px] text-muted-foreground mt-0.5">
+																	{meta.label}
+																</p>
+															</div>
+														</div>
 													</div>
-													<div className="min-w-0">
-														<p className="text-xs font-semibold truncate">
-															{row.description}
-														</p>
-														<p className="text-[10px] text-muted-foreground mt-0.5 truncate">
-															Dr: {headName(row.debitAccountHeadId)} ·
-															Cr: {headName(row.creditAccountHeadId)}
-														</p>
+													<div className="grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2">
+														<div className="text-xs font-semibold text-foreground">
+															Debit
+														</div>
+														<div className="w-24 text-right pr-3">
+															<span className="text-[10px] text-muted-foreground truncate block">
+																{headName(row.debitAccountHeadId)}
+															</span>
+														</div>
+														<div className="w-20 text-right pr-3">
+															<span className="font-mono text-xs font-semibold text-loss">
+																{fmt(row.amount)}
+															</span>
+														</div>
+														<div className="w-20 text-right pr-3">
+															<span className="text-muted-foreground/30 text-xs">
+																—
+															</span>
+														</div>
+														<div className="w-24 text-right">
+															<span className="text-[10px] font-semibold text-muted-foreground">
+																Dr
+															</span>
+														</div>
 													</div>
-												</div>{' '}
-												{/* Account column */}
-												<div className="w-24 text-right pr-3">
-													<span className="text-[10px] text-muted-foreground truncate block">
-														{counterHead}
-													</span>
-												</div>{' '}
-												{/* Debit column */}
-												<div className="w-20 text-right pr-3">
-													{isDebit ? (
-														<span className="font-mono text-xs font-semibold text-loss">
-															{fmt(row.amount)}
+													<div className="grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2 bg-muted/10">
+														<div className="text-xs font-semibold text-foreground">
+															Credit
+														</div>
+														<div className="w-24 text-right pr-3">
+															<span className="text-[10px] text-muted-foreground truncate block">
+																{headName(row.creditAccountHeadId)}
+															</span>
+														</div>
+														<div className="w-20 text-right pr-3">
+															<span className="text-muted-foreground/30 text-xs">
+																—
+															</span>
+														</div>
+														<div className="w-20 text-right pr-3">
+															<span className="font-mono text-xs font-semibold text-profit">
+																{fmt(row.amount)}
+															</span>
+														</div>
+														<div className="w-24 text-right">
+															<span className="text-[10px] font-semibold text-muted-foreground">
+																Cr
+															</span>
+														</div>
+													</div>
+												</button>
+											) : (
+												<button
+													onClick={() =>
+														setExpanded(isOpen ? null : row.id)
+													}
+													className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
+													<div className="flex items-start gap-2.5 min-w-0 pr-2">
+														<div
+															className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
+															<Icon className="h-3 w-3" />
+														</div>
+														<div className="min-w-0">
+															<p className="text-xs font-semibold truncate">
+																{row.description}
+															</p>
+															<p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+																Dr:{' '}
+																{headName(row.debitAccountHeadId)} ·
+																Cr:{' '}
+																{headName(row.creditAccountHeadId)}
+															</p>
+														</div>
+													</div>
+													<div className="w-24 text-right pr-3">
+														<span className="text-[10px] text-muted-foreground truncate block">
+															{counterHead}
 														</span>
-													) : (
-														<span className="text-muted-foreground/30 text-xs">
-															—
+													</div>
+													<div className="w-20 text-right pr-3">
+														{isDebit ? (
+															<span className="font-mono text-xs font-semibold text-loss">
+																{fmt(row.amount)}
+															</span>
+														) : (
+															<span className="text-muted-foreground/30 text-xs">
+																—
+															</span>
+														)}
+													</div>
+													<div className="w-20 text-right pr-3">
+														{isCredit ? (
+															<span className="font-mono text-xs font-semibold text-profit">
+																{fmt(row.amount)}
+															</span>
+														) : (
+															<span className="text-muted-foreground/30 text-xs">
+																—
+															</span>
+														)}
+													</div>
+													<div className="w-24 text-right">
+														<span
+															className={`font-mono text-xs font-bold ${row.running >= 0 ? 'text-foreground' : 'text-loss'}`}>
+															{fmt(row.running)}
 														</span>
-													)}
-												</div>
-												{/* Credit column */}
-												<div className="w-20 text-right pr-3">
-													{isCredit ? (
-														<span className="font-mono text-xs font-semibold text-profit">
-															{fmt(row.amount)}
-														</span>
-													) : (
-														<span className="text-muted-foreground/30 text-xs">
-															—
-														</span>
-													)}
-												</div>
-												{/* Running balance */}
-												<div className="w-24 text-right">
-													<span
-														className={`font-mono text-xs font-bold ${row.running >= 0 ? 'text-foreground' : 'text-loss'}`}>
-														{fmt(row.running)}
-													</span>
-												</div>
-											</button>
+													</div>
+												</button>
+											)}
 
 											{isOpen && (
 												<div className="px-12 py-2 bg-muted/20 border-b border-border/30 text-xs text-muted-foreground space-y-1">
