@@ -1229,6 +1229,7 @@ export function ReceivableForm({
 	onSave,
 	onCancel,
 	accounts,
+	accountHeads,
 }: WithAccounts<Receivable>) {
 	const [f, setF] = useState<Partial<Receivable>>({
 		personName: '',
