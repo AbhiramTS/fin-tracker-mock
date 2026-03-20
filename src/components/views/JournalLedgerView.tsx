@@ -43,20 +43,35 @@ function withRunning(
 	accountHeadId?: string
 ): (JournalEntry & { running: number })[] {
 	let running = 0;
-	return [...entries]
-		.reverse()
-		.map((e) => {
-			if (accountHeadId) {
-				if (e.debitAccountHeadId === accountHeadId) running += e.amount;
-				else if (e.creditAccountHeadId === accountHeadId) running -= e.amount;
-			} else {
-				// Global view: income adds, expense/emi removes
-				if (e.type === 'income' || e.type === 'opening_balance') running += e.amount;
-				else if (e.type === 'expense' || e.type === 'emi') running -= e.amount;
-			}
-			return { ...e, running };
-		})
-		.reverse();
+	return entries.map((e) => {
+		running += getSignedImpact(e, accountHeadId);
+		return { ...e, running };
+	});
+}
+
+function getSignedImpact(entry: JournalEntry, accountHeadId?: string): number {
+	if (accountHeadId) {
+		if (entry.debitAccountHeadId === accountHeadId) return entry.amount;
+		if (entry.creditAccountHeadId === accountHeadId) return -entry.amount;
+		return 0;
+	}
+
+	if (entry.type === 'income' || entry.type === 'opening_balance') return entry.amount;
+	if (entry.type === 'expense' || entry.type === 'emi') return -entry.amount;
+	return 0;
+}
+
+function getDisplaySide(entry: JournalEntry, accountHeadId?: string): 'debit' | 'credit' | null {
+	if (accountHeadId) {
+		if (entry.debitAccountHeadId === accountHeadId) return 'debit';
+		if (entry.creditAccountHeadId === accountHeadId) return 'credit';
+		return null;
+	}
+
+	const signed = getSignedImpact(entry);
+	if (signed > 0) return 'credit';
+	if (signed < 0) return 'debit';
+	return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,6 +90,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const [expanded, setExpanded] = useState<string | null>(null);
 
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? id;
+	const activeHead = filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined);
 
 	// ── Filter entries ─────────────────────────────────────────────────────────
 	const filtered = useMemo(() => {
@@ -82,7 +98,6 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		let rows = [...state.journalEntries].sort((a, b) => a.date.localeCompare(b.date));
 
 		// Account head filter (from prop or from dropdown)
-		const activeHead = filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined);
 		if (activeHead) {
 			rows = rows.filter(
 				(e) => e.debitAccountHeadId === activeHead || e.creditAccountHeadId === activeHead
@@ -119,23 +134,20 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		search,
 	]);
 
-	const withBalances = useMemo(
-		() =>
-			withRunning(
-				filtered,
-				filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined)
-			),
-		[filtered, filterAccountHeadId, headFilter]
-	);
+	const withBalances = useMemo(() => withRunning(filtered, activeHead), [filtered, activeHead]);
 
-	// Totals
-	const totalDebit = filtered.reduce((s, e) => s + e.amount, 0);
-	const totalCredit = filtered.reduce((s, e) => s + e.amount, 0);
-	// Net: income - expense (simplified for global view)
-	const netIn = filtered.filter((e) => e.type === 'income').reduce((s, e) => s + e.amount, 0);
-	const netOut = filtered
-		.filter((e) => e.type === 'expense' || e.type === 'emi')
-		.reduce((s, e) => s + e.amount, 0);
+	// Totals derived from the same signed-impact logic used by running/day balances.
+	const { netIn, netOut } = useMemo(() => {
+		return filtered.reduce(
+			(acc, entry) => {
+				const signed = getSignedImpact(entry, activeHead);
+				if (signed > 0) acc.netIn += signed;
+				else if (signed < 0) acc.netOut += Math.abs(signed);
+				return acc;
+			},
+			{ netIn: 0, netOut: 0 }
+		);
+	}, [filtered, activeHead]);
 
 	// Group by date
 	const byDate = useMemo(() => {
@@ -371,164 +383,143 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 						<span className="text-right w-24">Balance</span>
 					</div>
 
-					{byDate.map(([date, dayRows]) => (
-						<div key={date}>
-							{/* Day header */}
-							<div className="flex items-center justify-between px-3 py-1.5 bg-muted/20 border-b border-border/50">
-								<span className="text-xs font-bold text-muted-foreground">
-									{fmtDateFull(date)}
-								</span>
-								<span
-									className={`font-mono text-[10px] font-bold ${
-										dayRows.reduce((s, r) => {
-											if (r.type === 'income') return s + r.amount;
-											if (r.type === 'expense' || r.type === 'emi')
-												return s - r.amount;
-											return s;
-										}, 0) >= 0
-											? 'text-profit'
-											: 'text-loss'
-									}`}>
-									{dayRows.reduce((s, r) => {
-										const delta =
-											r.type === 'income'
-												? r.amount
-												: r.type === 'expense' || r.type === 'emi'
-													? -r.amount
-													: 0;
-										return s + delta;
-									}, 0) >= 0
-										? '+'
-										: ''}
-									{fmt(
-										Math.abs(
-											dayRows.reduce((s, r) => {
-												const delta =
-													r.type === 'income'
-														? r.amount
-														: r.type === 'expense' || r.type === 'emi'
-															? -r.amount
-															: 0;
-												return s + delta;
-											}, 0)
-										)
-									)}
-								</span>
-							</div>
+					{byDate.map(([date, dayRows]) => {
+						const dayDelta = dayRows.reduce(
+							(s, r) => s + getSignedImpact(r, activeHead),
+							0
+						);
 
-							{dayRows.map((row) => {
-								const meta = TYPE_META[row.type];
-								const Icon = meta.icon;
-								const isExp = row.type === 'expense' || row.type === 'emi';
-								const isInc = row.type === 'income';
-								const isOpen = expanded === row.id;
+						return (
+							<div key={date}>
+								{/* Day header */}
+								<div className="flex items-center justify-between px-3 py-1.5 bg-muted/20 border-b border-border/50">
+									<span className="text-xs font-bold text-muted-foreground">
+										{fmtDateFull(date)}
+									</span>
+									<span
+										className={`font-mono text-[10px] font-bold ${
+											dayDelta >= 0 ? 'text-profit' : 'text-loss'
+										}`}>
+										{dayDelta >= 0 ? '+' : ''}
+										{fmt(Math.abs(dayDelta))}
+									</span>
+								</div>
 
-								return (
-									<div key={row.id}>
-										<button
-											onClick={() => setExpanded(isOpen ? null : row.id)}
-											className="w-full grid grid-cols-[1fr_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
-											<div className="flex items-start gap-2.5 min-w-0 pr-2">
-												<div
-													className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
-													<Icon className="h-3 w-3" />
+								{dayRows.map((row) => {
+									const meta = TYPE_META[row.type];
+									const Icon = meta.icon;
+									const side = getDisplaySide(row, activeHead);
+									const isDebit = side === 'debit';
+									const isCredit = side === 'credit';
+									const isOpen = expanded === row.id;
+
+									return (
+										<div key={row.id}>
+											<button
+												onClick={() => setExpanded(isOpen ? null : row.id)}
+												className="w-full grid grid-cols-[1fr_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
+												<div className="flex items-start gap-2.5 min-w-0 pr-2">
+													<div
+														className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
+														<Icon className="h-3 w-3" />
+													</div>
+													<div className="min-w-0">
+														<p className="text-xs font-semibold truncate">
+															{row.description}
+														</p>
+														<p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+															Dr: {headName(row.debitAccountHeadId)} ·
+															Cr: {headName(row.creditAccountHeadId)}
+														</p>
+													</div>
 												</div>
-												<div className="min-w-0">
-													<p className="text-xs font-semibold truncate">
-														{row.description}
-													</p>
-													<p className="text-[10px] text-muted-foreground mt-0.5 truncate">
-														Dr: {headName(row.debitAccountHeadId)} · Cr:{' '}
-														{headName(row.creditAccountHeadId)}
-													</p>
+												{/* Debit column */}
+												<div className="w-20 text-right pr-3">
+													{isDebit ? (
+														<span className="font-mono text-xs font-semibold text-loss">
+															{fmt(row.amount)}
+														</span>
+													) : (
+														<span className="text-muted-foreground/30 text-xs">
+															—
+														</span>
+													)}
 												</div>
-											</div>
-											{/* Debit column */}
-											<div className="w-20 text-right pr-3">
-												{isExp ? (
-													<span className="font-mono text-xs font-semibold text-loss">
-														{fmt(row.amount)}
+												{/* Credit column */}
+												<div className="w-20 text-right pr-3">
+													{isCredit ? (
+														<span className="font-mono text-xs font-semibold text-profit">
+															{fmt(row.amount)}
+														</span>
+													) : (
+														<span className="text-muted-foreground/30 text-xs">
+															—
+														</span>
+													)}
+												</div>
+												{/* Running balance */}
+												<div className="w-24 text-right">
+													<span
+														className={`font-mono text-xs font-bold ${row.running >= 0 ? 'text-foreground' : 'text-loss'}`}>
+														{fmt(row.running)}
 													</span>
-												) : (
-													<span className="text-muted-foreground/30 text-xs">
-														—
-													</span>
-												)}
-											</div>
-											{/* Credit column */}
-											<div className="w-20 text-right pr-3">
-												{isInc ? (
-													<span className="font-mono text-xs font-semibold text-profit">
-														{fmt(row.amount)}
-													</span>
-												) : (
-													<span className="text-muted-foreground/30 text-xs">
-														—
-													</span>
-												)}
-											</div>
-											{/* Running balance */}
-											<div className="w-24 text-right">
-												<span
-													className={`font-mono text-xs font-bold ${row.running >= 0 ? 'text-foreground' : 'text-loss'}`}>
-													{fmt(row.running)}
-												</span>
-											</div>
-										</button>
+												</div>
+											</button>
 
-										{isOpen && (
-											<div className="px-12 py-2 bg-muted/20 border-b border-border/30 text-xs text-muted-foreground space-y-1">
-												<p>
-													<span className="font-semibold text-foreground">
-														Type:
-													</span>{' '}
-													{meta.label}
-												</p>
-												<p>
-													<span className="font-semibold text-foreground">
-														Amount:
-													</span>{' '}
-													{fmt(row.amount)}
-												</p>
-												<p>
-													<span className="font-semibold text-foreground">
-														Dr:
-													</span>{' '}
-													{headName(row.debitAccountHeadId)}
-												</p>
-												<p>
-													<span className="font-semibold text-foreground">
-														Cr:
-													</span>{' '}
-													{headName(row.creditAccountHeadId)}
-												</p>
-												{row.notes && (
+											{isOpen && (
+												<div className="px-12 py-2 bg-muted/20 border-b border-border/30 text-xs text-muted-foreground space-y-1">
 													<p>
 														<span className="font-semibold text-foreground">
-															Notes:
+															Type:
 														</span>{' '}
-														{row.notes}
+														{meta.label}
 													</p>
-												)}
-												{(row.tags ?? []).length > 0 && (
-													<div className="flex gap-1 flex-wrap">
-														{row.tags!.map((t) => (
-															<Badge
-																key={t}
-																variant="muted"
-																className="text-[9px]">
-																{t}
-															</Badge>
-														))}
-													</div>
-												)}
-											</div>
-										)}
-									</div>
-								);
-							})}
-						</div>
-					))}
+													<p>
+														<span className="font-semibold text-foreground">
+															Amount:
+														</span>{' '}
+														{fmt(row.amount)}
+													</p>
+													<p>
+														<span className="font-semibold text-foreground">
+															Dr:
+														</span>{' '}
+														{headName(row.debitAccountHeadId)}
+													</p>
+													<p>
+														<span className="font-semibold text-foreground">
+															Cr:
+														</span>{' '}
+														{headName(row.creditAccountHeadId)}
+													</p>
+													{row.notes && (
+														<p>
+															<span className="font-semibold text-foreground">
+																Notes:
+															</span>{' '}
+															{row.notes}
+														</p>
+													)}
+													{(row.tags ?? []).length > 0 && (
+														<div className="flex gap-1 flex-wrap">
+															{row.tags!.map((t) => (
+																<Badge
+																	key={t}
+																	variant="muted"
+																	className="text-[9px]">
+																	{t}
+																</Badge>
+															))}
+														</div>
+													)}
+												</div>
+											)}
+										</div>
+									);
+								})}
+							</div>
+						);
+					})}
 				</div>
 			)}
 		</div>
