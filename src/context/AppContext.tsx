@@ -9,7 +9,13 @@ import {
 } from 'react';
 import { openDB, dbClear } from '@/db/indexedDB';
 import { Repos } from '@/repositories';
-import { registerSyncAdapter, getAdapter } from '@/sync/syncQueue';
+import {
+	registerSyncAdapter,
+	getAdapter,
+	onFlushResult,
+	flush,
+	getPendingCount,
+} from '@/sync/syncQueue';
 import { FirebaseSyncAdapter } from '@/sync/FirebaseSyncAdapter';
 import { computeBalances } from '@/workers/balanceWorker';
 import type {
@@ -20,10 +26,20 @@ import type {
 	FirebaseConfig,
 	AccountHead,
 	ComputedBalances,
+	SyncState,
 } from '@/types';
 import { ROOT_HEADS } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
+const INITIAL_SYNC: SyncState = {
+	status: 'idle',
+	phase: 'idle',
+	pendingCount: 0,
+	lastSyncedAt: null,
+	lastSyncedCount: 0,
+	lastError: null,
+};
+
 const INITIAL: AppState = {
 	accounts: [],
 	accountHeads: [],
@@ -45,6 +61,7 @@ const INITIAL: AppState = {
 	loading: true,
 	error: null,
 	syncStatus: 'idle',
+	sync: INITIAL_SYNC,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -59,7 +76,13 @@ function reducer(state: AppState, action: AppAction): AppState {
 		case 'SET_ERROR':
 			return { ...state, error: action.payload, loading: false };
 		case 'SET_SYNC':
-			return { ...state, syncStatus: action.payload };
+			return {
+				...state,
+				syncStatus: action.payload,
+				sync: { ...state.sync, status: action.payload },
+			};
+		case 'SET_SYNC_STATE':
+			return { ...state, sync: { ...state.sync, ...action.payload } };
 		case 'SET_BALANCES':
 			return { ...state, computedBalances: action.payload };
 		case 'UPSERT': {
@@ -94,6 +117,7 @@ interface AppContextValue {
 	save: (entity: EntityName, record: Record<string, unknown>) => Promise<BaseRecord>;
 	remove: (entity: EntityName, id: string) => Promise<void>;
 	clearData: (opts: { local: boolean; cloud: boolean; entities: EntityName[] }) => Promise<void>;
+	syncNow: () => Promise<void>;
 	connectFirebase: (config: FirebaseConfig) => Promise<void>;
 }
 
@@ -224,12 +248,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, [reloadEntity, seedAccountHeads]);
 
 	// ── Save ──────────────────────────────────────────────────────────────────
-	// Balance is now DERIVED — we never mutate account.balance directly.
-	// The worker recomputes automatically after every UPSERT to a balance entity.
 	const save = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const saved = await Repos[entity].save(record as any);
 		dispatch({ type: 'UPSERT', payload: { entity, record: saved } });
+		// Update pending count so the UI reflects the queue depth immediately
+		getPendingCount()
+			.then((n) => dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } }))
+			.catch(() => {});
 		return saved;
 	}, []);
 
@@ -268,6 +294,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		[seedAccountHeads]
 	);
 
+	// ── Wire flush callback ───────────────────────────────────────────────────
+	// Called by syncQueue after every flush (automatic or manual).
+	useEffect(() => {
+		onFlushResult(async ({ synced, error }) => {
+			const pending = await getPendingCount();
+			dispatch({
+				type: 'SET_SYNC_STATE',
+				payload: {
+					phase: error ? 'error' : 'success',
+					pendingCount: pending,
+					lastSyncedAt:
+						synced > 0 ? new Date().toISOString() : stateRef.current.sync.lastSyncedAt,
+					lastSyncedCount: synced,
+					lastError: error,
+				},
+			});
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// ── syncNow ───────────────────────────────────────────────────────────────
+	// Manually trigger a flush and update sync state with live phase tracking.
+	const syncNow = useCallback(async () => {
+		if (!getAdapter()) return;
+		const pending = await getPendingCount();
+		dispatch({
+			type: 'SET_SYNC_STATE',
+			payload: { phase: 'syncing', pendingCount: pending, lastError: null },
+		});
+		await flush();
+		// Phase and counts are updated by the onFlushResult callback above
+	}, []);
+
 	const connectFirebase = useCallback(
 		async (config: FirebaseConfig) => {
 			localStorage.setItem('ft_firebase_config', JSON.stringify(config));
@@ -279,7 +338,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	);
 
 	return (
-		<AppCtx.Provider value={{ state, save, remove, clearData, connectFirebase }}>
+		<AppCtx.Provider value={{ state, save, remove, clearData, syncNow, connectFirebase }}>
 			{children}
 		</AppCtx.Provider>
 	);

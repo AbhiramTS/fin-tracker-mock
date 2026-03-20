@@ -7,6 +7,11 @@ import type { FirebaseSyncAdapter } from './FirebaseSyncAdapter';
 let _adapter: SyncAdapter | null = null;
 let _flushing = false;
 
+// Optional callback invoked after every flush attempt so AppContext
+// can update its SyncState without polling.
+type FlushCallback = (result: { synced: number; failed: number; error: string | null }) => void;
+let _onFlush: FlushCallback | null = null;
+
 export function registerSyncAdapter(
 	adapter: SyncAdapter,
 	onRealtimeUpdate?: (entity: string) => void
@@ -18,9 +23,20 @@ export function registerSyncAdapter(
 	flush();
 }
 
+/** Register a callback that fires after every flush with the result. */
+export function onFlushResult(cb: FlushCallback): void {
+	_onFlush = cb;
+}
+
 /** Returns the currently registered sync adapter, or null if none. */
 export function getAdapter(): SyncAdapter | null {
 	return _adapter;
+}
+
+/** Number of change records not yet pushed to the cloud. */
+export async function getPendingCount(): Promise<number> {
+	const all = await dbGetAll<ChangeRecord>('syncQueue');
+	return all.filter((c) => !c.syncedAt).length;
 }
 
 export async function enqueueChange(params: {
@@ -40,18 +56,25 @@ export async function enqueueChange(params: {
 export async function flush(): Promise<void> {
 	if (!_adapter || _flushing) return;
 	_flushing = true;
+	let syncedCount = 0;
+	let errorMsg: string | null = null;
 	try {
 		const pending = (await dbGetAll<ChangeRecord>('syncQueue')).filter((c) => !c.syncedAt);
-		if (!pending.length) return;
-		await _adapter.prepare();
-		const { synced = [] }: PushResult = await _adapter.pushChanges(pending);
-		for (const qid of synced) {
-			const r = pending.find((p) => p.queueId === qid);
-			if (r) await dbPut('syncQueue', { ...r, syncedAt: new Date().toISOString() });
+		if (pending.length) {
+			await _adapter.prepare();
+			const { synced = [], failed = [] }: PushResult = await _adapter.pushChanges(pending);
+			for (const qid of synced) {
+				const r = pending.find((p) => p.queueId === qid);
+				if (r) await dbPut('syncQueue', { ...r, syncedAt: new Date().toISOString() });
+			}
+			syncedCount = synced.length;
+			if (failed.length) errorMsg = `${failed.length} record(s) failed to sync`;
 		}
 	} catch (e) {
-		console.warn('[SyncQueue]', (e as Error).message);
+		errorMsg = (e as Error).message;
+		console.warn('[SyncQueue]', errorMsg);
 	} finally {
 		_flushing = false;
+		_onFlush?.({ synced: syncedCount, failed: 0, error: errorMsg });
 	}
 }

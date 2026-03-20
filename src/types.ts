@@ -318,6 +318,16 @@ export type EntityName =
 	| 'importReviews';
 
 export type SyncStatus = 'idle' | 'firebase' | 'rest';
+export type SyncPhase = 'idle' | 'syncing' | 'success' | 'error';
+
+export interface SyncState {
+	status: SyncStatus; // which adapter is connected
+	phase: SyncPhase; // current operation state
+	pendingCount: number; // changes not yet pushed to cloud
+	lastSyncedAt: string | null;
+	lastSyncedCount: number; // records synced in the last flush
+	lastError: string | null;
+}
 
 export interface AppState {
 	accounts: Account[];
@@ -336,16 +346,18 @@ export interface AppState {
 	goals: Goal[];
 	paymentOccurrences: PaymentOccurrence[];
 	importReviews: ImportReview[];
-	computedBalances: ComputedBalances; // derived by worker, not stored in IDB
+	computedBalances: ComputedBalances;
 	loading: boolean;
 	error: string | null;
-	syncStatus: SyncStatus;
+	syncStatus: SyncStatus; // kept for backwards compat with existing reads
+	sync: SyncState; // full sync detail
 }
 
 export type AppAction =
 	| { type: 'LOAD_ALL'; payload: Partial<AppState> }
 	| { type: 'SET_ERROR'; payload: string }
 	| { type: 'SET_SYNC'; payload: SyncStatus }
+	| { type: 'SET_SYNC_STATE'; payload: Partial<SyncState> }
 	| { type: 'UPSERT'; payload: { entity: EntityName; record: BaseRecord } }
 	| { type: 'REMOVE'; payload: { entity: EntityName; id: string } }
 	| { type: 'RELOAD_ENTITY'; payload: { entity: EntityName; records: BaseRecord[] } }

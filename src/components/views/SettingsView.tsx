@@ -7,6 +7,7 @@ import {
 	GitMerge,
 	Trash2,
 	Plus,
+	RefreshCw,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -599,7 +600,7 @@ function DataPortability() {
 	// ── Download sample ─────────────────────────────────────────────────────────
 	const downloadSample = () => {
 		const a = document.createElement('a');
-		a.href = './sample-import.json';
+		a.href = '/sample-import.json';
 		a.download = 'fintracker-sample-import.json';
 		a.click();
 	};
@@ -954,10 +955,6 @@ function ClearDataSection() {
 	const selectedEntities: EntityName[] = [...selected].flatMap((i) => CLEAR_GROUPS[i].entities);
 
 	const selectedGroups = [...selected].map((i) => CLEAR_GROUPS[i].label);
-	const selectedGroupsSummary =
-		selectedGroups.length <= 2
-			? selectedGroups.join(', ')
-			: `${selectedGroups.slice(0, 2).join(', ')} +${selectedGroups.length - 2} more`;
 
 	const scopeLabel =
 		scope === 'local'
@@ -1123,11 +1120,9 @@ function ClearDataSection() {
 					setConfirmText('');
 					setShowConfirm(true);
 				}}
-				className="w-full h-auto items-center justify-center gap-2 whitespace-normal py-2">
-				<Trash2 className="h-4 w-4 shrink-0" />
-				<span className="text-center leading-snug break-words">
-					Clear {selected.size > 0 ? selectedGroupsSummary : 'selected data'}
-				</span>
+				className="w-full gap-2">
+				<Trash2 className="h-4 w-4" />
+				Clear {selected.size > 0 ? selectedGroups.join(', ') : 'selected data'}
 			</Button>
 
 			{/* Confirmation dialog */}
@@ -1209,11 +1204,13 @@ function ClearDataSection() {
 
 // ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
-	const { state, connectFirebase } = useApp();
+	const { state, connectFirebase, syncNow } = useApp();
 	const [connected, setConnected] = useState(() => !!localStorage.getItem('ft_firebase_config'));
 	const [showQR, setShowQR] = useState(false);
 	const [qrData, setQrData] = useState('');
+	const [syncing, setSyncing] = useState(false);
 	const pendingReviews = state.importReviews.filter((r) => r.status === 'pending').length;
+	const sync = state.sync;
 
 	const showQRModal = () => {
 		const cfg = localStorage.getItem('ft_firebase_config');
@@ -1227,6 +1224,47 @@ export function SettingsView() {
 		setConnected(false);
 		window.location.reload();
 	};
+
+	const handleSyncNow = async () => {
+		setSyncing(true);
+		try {
+			await syncNow();
+		} finally {
+			setSyncing(false);
+		}
+	};
+
+	// Human-readable time since last sync
+	const lastSyncLabel = (() => {
+		if (!sync.lastSyncedAt) return 'Never';
+		const diff = Math.floor((Date.now() - new Date(sync.lastSyncedAt).getTime()) / 1000);
+		if (diff < 60) return 'Just now';
+		if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+		if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+		return new Date(sync.lastSyncedAt).toLocaleDateString('en-IN', {
+			day: 'numeric',
+			month: 'short',
+		});
+	})();
+
+	const phaseColor =
+		sync.phase === 'error'
+			? 'text-loss'
+			: sync.phase === 'syncing'
+				? 'text-warning'
+				: sync.phase === 'success'
+					? 'text-profit'
+					: 'text-muted-foreground';
+	const phaseLabel =
+		sync.phase === 'error'
+			? 'Error'
+			: sync.phase === 'syncing'
+				? 'Syncing…'
+				: sync.phase === 'success'
+					? 'Up to date'
+					: connected
+						? 'Connected'
+						: 'Not connected';
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -1278,7 +1316,7 @@ export function SettingsView() {
 				</TabsContent>
 			</Tabs>
 
-			{/* Firebase */}
+			{/* Firebase Sync + Status */}
 			<Card>
 				<CardHeader className="pb-2">
 					<div className="flex items-center justify-between">
@@ -1286,17 +1324,80 @@ export function SettingsView() {
 						{connected && <Badge variant="profit">Live</Badge>}
 					</div>
 				</CardHeader>
-				<CardContent>
+				<CardContent className="flex flex-col gap-3">
 					{connected ? (
-						<div className="flex flex-col gap-3">
-							<p className="text-sm text-muted-foreground">
-								Real-time sync active across all devices.
-							</p>
+						<>
+							{/* Sync status grid */}
+							<div className="grid grid-cols-3 gap-0 rounded-xl overflow-hidden border border-border">
+								{[
+									{ label: 'Status', value: phaseLabel, cls: phaseColor },
+									{
+										label: 'Pending',
+										value: `${sync.pendingCount} change${sync.pendingCount !== 1 ? 's' : ''}`,
+										cls:
+											sync.pendingCount > 0
+												? 'text-warning'
+												: 'text-muted-foreground',
+									},
+									{
+										label: 'Last sync',
+										value: lastSyncLabel,
+										cls: 'text-muted-foreground',
+									},
+								].map(({ label, value, cls }, i) => (
+									<div
+										key={label}
+										className={`flex flex-col items-center py-3 bg-muted/20 ${i < 2 ? 'border-r border-border' : ''}`}>
+										<p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+											{label}
+										</p>
+										<p className={`font-semibold text-xs mt-0.5 ${cls}`}>
+											{value}
+										</p>
+									</div>
+								))}
+							</div>
+
+							{/* Last error */}
+							{sync.lastError && (
+								<div className="flex items-start gap-2.5 rounded-xl border border-loss/30 bg-loss/10 p-3 text-xs text-loss">
+									<AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+									<div>
+										<p className="font-semibold">Last sync error</p>
+										<p className="mt-0.5 text-loss/80 font-mono break-all">
+											{sync.lastError}
+										</p>
+									</div>
+								</div>
+							)}
+
+							{/* Last sync detail */}
+							{sync.lastSyncedCount > 0 && sync.phase !== 'error' && (
+								<p className="text-xs text-muted-foreground">
+									Last sync pushed{' '}
+									<span className="font-semibold text-foreground">
+										{sync.lastSyncedCount}
+									</span>{' '}
+									record{sync.lastSyncedCount !== 1 ? 's' : ''} to Firestore.
+								</p>
+							)}
+
+							{/* Actions */}
 							<div className="flex gap-2">
 								<Button
-									className="flex-1"
-									onClick={showQRModal}>
-									📱 QR Sync Code
+									className="flex-1 gap-2"
+									onClick={handleSyncNow}
+									disabled={syncing || sync.phase === 'syncing'}>
+									<RefreshCw
+										className={`h-4 w-4 ${syncing || sync.phase === 'syncing' ? 'animate-spin' : ''}`}
+									/>
+									{syncing || sync.phase === 'syncing' ? 'Syncing…' : 'Sync Now'}
+								</Button>
+								<Button
+									onClick={showQRModal}
+									variant="outline"
+									className="gap-2">
+									📱 QR Code
 								</Button>
 								<Button
 									variant="destructive"
@@ -1304,9 +1405,9 @@ export function SettingsView() {
 									Disconnect
 								</Button>
 							</div>
-						</div>
+						</>
 					) : (
-						<div className="flex flex-col gap-3">
+						<>
 							<p className="text-sm text-muted-foreground">
 								Connect Firestore for real-time sync across all your devices.
 							</p>
@@ -1316,7 +1417,7 @@ export function SettingsView() {
 									setConnected(true);
 								}}
 							/>
-						</div>
+						</>
 					)}
 				</CardContent>
 			</Card>
