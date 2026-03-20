@@ -337,8 +337,28 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 			continue;
 		}
 
+		const txType = (je.type as JournalEntryType) ?? 'expense';
+		const debitRef = je.debitAccountHeadId?.trim();
+		const creditRef = je.creditAccountHeadId?.trim();
+
+		if (
+			debitRef &&
+			shouldAutoCreateMissingAccount(txType, 'debit', debitRef) &&
+			!resolveAccountHead(debitRef, plan.resolvedAccounts, state)
+		) {
+			ensureAutoAccountForImport(debitRef, plan, state, now);
+		}
+
+		if (
+			creditRef &&
+			shouldAutoCreateMissingAccount(txType, 'credit', creditRef) &&
+			!resolveAccountHead(creditRef, plan.resolvedAccounts, state)
+		) {
+			ensureAutoAccountForImport(creditRef, plan, state, now);
+		}
+
 		// Resolve debit account (can be account name or head id)
-		const debitId = resolveAccountHead(je.debitAccountHeadId, plan.resolvedAccounts, state);
+		const debitId = resolveAccountHead(debitRef, plan.resolvedAccounts, state);
 		if (!debitId) {
 			plan.errors.push(
 				`Journal entry "${je.description}": debit account "${je.debitAccountHeadId}" not found`
@@ -347,7 +367,7 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		}
 
 		// Resolve credit account (can be account name or head id)
-		const creditId = resolveAccountHead(je.creditAccountHeadId, plan.resolvedAccounts, state);
+		const creditId = resolveAccountHead(creditRef, plan.resolvedAccounts, state);
 		if (!creditId) {
 			plan.errors.push(
 				`Journal entry "${je.description}": credit account "${je.creditAccountHeadId}" not found`
@@ -382,7 +402,7 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 			description: je.description,
 			amount: je.amount,
 			date: je.date,
-			type: (je.type as JournalEntryType) ?? 'expense',
+			type: txType,
 			debitAccountHeadId: debitId,
 			creditAccountHeadId: creditId,
 			notes: je.notes,
@@ -514,21 +534,105 @@ function resolveAccountHead(
 	state: AppState
 ): string | null {
 	if (!nameOrHeadId) return null;
+	const key = nameOrHeadId.trim();
+	const keyLc = key.toLowerCase();
 
 	// If it's already a root head id, return it
-	if (nameOrHeadId.startsWith('head_')) {
-		return nameOrHeadId;
+	if (key.startsWith('head_')) {
+		return key;
 	}
 
 	// Try by account name (case-insensitive)
-	const byName = resolvedMap.get(nameOrHeadId.toLowerCase());
+	const byName = resolvedMap.get(keyLc);
 	if (byName) return byName;
 
-	// Try exact match on existing accounts
-	const existing = state.accounts.find(
-		(a) => a.name.toLowerCase() === nameOrHeadId.toLowerCase() || a.id === nameOrHeadId
+	// Try any existing account head by id or name (supports user-created heads)
+	const existingHead = state.accountHeads.find(
+		(h) => h.id === key || h.name.toLowerCase() === keyLc
 	);
+	if (existingHead) return existingHead.id;
+
+	// Try exact match on existing accounts
+	const existing = state.accounts.find((a) => a.name.toLowerCase() === keyLc || a.id === key);
 	return existing?.id ?? null;
+}
+
+function shouldAutoCreateMissingAccount(
+	txType: JournalEntryType,
+	side: 'debit' | 'credit',
+	nameOrHeadId: string
+): boolean {
+	if (!nameOrHeadId || nameOrHeadId.startsWith('head_')) return false;
+
+	switch (txType) {
+		case 'expense':
+			return side === 'credit';
+		case 'income':
+			return side === 'debit';
+		default:
+			return true;
+	}
+}
+
+function inferAccountTypeFromLabel(name: string): Account['type'] {
+	const n = name.toLowerCase();
+	if (n.includes('credit') && n.includes('card')) return 'credit_card';
+	if (n.includes('loan') || n.includes('finance')) return 'loan';
+	if (n.includes('cash') || n.includes('wallet')) return 'cash';
+	if (
+		n.includes('invest') ||
+		n.includes('mutual') ||
+		n.includes('stock') ||
+		n.includes('demat')
+	) {
+		return 'investment';
+	}
+	if (n.includes('receivable') || n.includes('due')) return 'receivable';
+	return 'bank';
+}
+
+function ensureAutoAccountForImport(
+	name: string,
+	plan: ImportPlan,
+	state: AppState,
+	now: string
+): string {
+	const trimmed = name.trim();
+	const key = trimmed.toLowerCase();
+
+	const mapped = plan.resolvedAccounts.get(key);
+	if (mapped) return mapped;
+
+	const existingAccount = state.accounts.find(
+		(a) => a.name.toLowerCase() === key || a.id === trimmed
+	);
+	if (existingAccount) {
+		plan.resolvedAccounts.set(key, existingAccount.id);
+		return existingAccount.id;
+	}
+
+	const existingPlanned = plan.cleanAccounts.find(
+		(a) =>
+			typeof a.name === 'string' && a.name.toLowerCase() === key && typeof a.id === 'string'
+	);
+	if (existingPlanned?.id) {
+		plan.resolvedAccounts.set(key, existingPlanned.id);
+		return existingPlanned.id;
+	}
+
+	const id = generateId();
+	plan.cleanAccounts.push({
+		id,
+		name: trimmed,
+		type: inferAccountTypeFromLabel(trimmed),
+		openingBalance: 0,
+		color: '#00d4f5',
+		currency: 'INR',
+		createdAt: now,
+		updatedAt: now,
+	});
+	plan.resolvedAccounts.set(key, id);
+	return id;
 }
 
 // ── Build ImportReview records for tx duplicates ───────────────────────────────

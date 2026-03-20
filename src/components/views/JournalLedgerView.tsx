@@ -91,6 +91,8 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const [expanded, setExpanded] = useState<string | null>(null);
 
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? id;
+	const isAccountHead = (id: string) =>
+		state.accountHeads.find((h) => h.id === id)?.isAccount === true;
 	const activeHead = filterAccountHeadId ?? (headFilter !== 'all' ? headFilter : undefined);
 	const activeAccount = state.accounts.find((a) => a.id === activeHead);
 	const openingSeed = activeAccount?.openingBalance ?? 0;
@@ -456,7 +458,13 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 											: row.creditAccountHeadId === activeHead
 												? headName(row.debitAccountHeadId)
 												: '—'
-										: headName(row.debitAccountHeadId);
+										: isAccountHead(row.debitAccountHeadId) &&
+											  !isAccountHead(row.creditAccountHeadId)
+											? headName(row.debitAccountHeadId)
+											: isAccountHead(row.creditAccountHeadId) &&
+												  !isAccountHead(row.debitAccountHeadId)
+												? headName(row.creditAccountHeadId)
+												: headName(row.debitAccountHeadId);
 
 									return (
 										<div key={row.id}>

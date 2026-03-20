@@ -574,6 +574,7 @@ function DataPortability() {
 		ok: number;
 		err: number;
 		reviews: number;
+		skipped: number;
 	} | null>(null);
 	const [intraDups, setIntraDups] = useState<IntraFileDupChoice[]>([]);
 	const [existingDups, setExistingDups] = useState<ExistingDupChoice[]>([]);
@@ -783,7 +784,7 @@ function DataPortability() {
 
 			if (plan.errors.length) console.warn('[import] errors:', plan.errors);
 
-			setImportResult({ ok, err, reviews: reviews.length });
+			setImportResult({ ok, err, reviews: reviews.length, skipped: plan.errors.length });
 			setStep('done');
 			setPlanRef(null);
 		},
@@ -843,6 +844,13 @@ function DataPortability() {
 								: ' successfully'}
 							.
 						</p>
+						{importResult.skipped > 0 && (
+							<p className="text-warning mt-0.5">
+								{importResult.skipped} record
+								{importResult.skipped !== 1 ? 's were' : ' was'}
+								skipped due to missing/invalid references.
+							</p>
+						)}
 						{importResult.reviews > 0 && (
 							<p className="text-warning mt-0.5">
 								{importResult.reviews} duplicate transaction
