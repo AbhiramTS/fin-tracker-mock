@@ -25,7 +25,7 @@ export function ExpensesView() {
 	const { startEdit, doRemove, EditDialog } = useEditDelete<Expense>({
 		entity: 'expenses',
 		FormComp: ExpenseForm,
-		formProps: { accounts: state.accounts },
+		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
 		formTitle: 'Expense',
 	});
 
@@ -49,7 +49,7 @@ export function ExpensesView() {
 			subtitle={`${filtered.length} records · ${fmt(total)}`}
 			entity="expenses"
 			FormComp={ExpenseForm}
-			formProps={{ accounts: state.accounts }}>
+			formProps={{ accounts: state.accounts, accountHeads: state.accountHeads }}>
 			{state.expenses.length > 0 && (
 				<>
 					<Card>

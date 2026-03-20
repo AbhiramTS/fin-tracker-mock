@@ -14,6 +14,7 @@ import { todayStr } from '@/utils/format';
 import { calculateEMI, nextStatementDate, dueFromStatement } from '@/utils/amortisation';
 import type {
 	Account,
+	AccountHead,
 	Expense,
 	Income,
 	Transfer,
@@ -105,14 +106,69 @@ export const GOAL_ICONS: Record<GoalType, string> = {
 
 // ── Generic form props ────────────────────────────────────────────────────────
 type FP<T> = { initialData?: Partial<T>; onSave: (d: Partial<T>) => void; onCancel: () => void };
-type WithAccounts<T> = FP<T> & { accounts: Account[] };
+type WithAccounts<T> = FP<T> & { accounts: Account[]; accountHeads?: AccountHead[] };
+
+// ── Account head selector helper ─────────────────────────────────────────────
+// Renders a grouped Select showing root heads + their user-defined children.
+function HeadSelect({
+	heads,
+	value,
+	onChange,
+	placeholder,
+	rootType,
+}: {
+	heads: AccountHead[];
+	value: string;
+	onChange: (v: string) => void;
+	placeholder?: string;
+	rootType?: string; // filter to heads of this root type
+}) {
+	const roots = heads.filter((h) => h.parentId === null && (!rootType || h.type === rootType));
+	const children = (parentId: string) => heads.filter((h) => h.parentId === parentId);
+	const allOpts = rootType
+		? heads.filter(
+				(h) =>
+					h.type === rootType ||
+					roots.some((r) => r.id === h.parentId && r.type === rootType)
+			)
+		: heads;
+
+	if (allOpts.length === 0)
+		return <p className="text-xs text-muted-foreground py-2">No account heads available</p>;
+
+	return (
+		<Select
+			value={value}
+			onValueChange={onChange}>
+			<SelectTrigger>
+				<SelectValue placeholder={placeholder ?? 'Select account head'} />
+			</SelectTrigger>
+			<SelectContent>
+				{roots.map((root) => (
+					<div key={root.id}>
+						<SelectItem value={root.id}>
+							<span className="font-semibold">{root.name}</span>
+						</SelectItem>
+						{children(root.id).map((child) => (
+							<SelectItem
+								key={child.id}
+								value={child.id}>
+								<span className="pl-3 text-muted-foreground">└ {child.name}</span>
+							</SelectItem>
+						))}
+					</div>
+				))}
+			</SelectContent>
+		</Select>
+	);
+}
 
 // ── AccountForm ───────────────────────────────────────────────────────────────
 export function AccountForm({ initialData, onSave, onCancel }: FP<Account>) {
 	const [f, setF] = useState<Partial<Account>>({
 		name: '',
 		type: 'bank',
-		balance: 0,
+		openingBalance: 0,
 		color: ACCOUNT_COLORS[0],
 		currency: 'INR',
 		...initialData,
@@ -163,11 +219,16 @@ export function AccountForm({ initialData, onSave, onCancel }: FP<Account>) {
 						</SelectContent>
 					</Select>
 				</FormField>
-				<FormField label="Balance (₹)">
+				<FormField
+					label="Opening Balance (₹)"
+					hint="Balance before any recorded transactions">
 					<Input
 						type="number"
-						value={f.balance ?? ''}
-						onChange={(e) => setF({ ...f, balance: parseFloat(e.target.value) || 0 })}
+						step="0.01"
+						value={f.openingBalance ?? ''}
+						onChange={(e) =>
+							setF({ ...f, openingBalance: parseFloat(e.target.value) || 0 })
+						}
 					/>
 				</FormField>
 			</FormGrid>
@@ -203,19 +264,31 @@ export function AccountForm({ initialData, onSave, onCancel }: FP<Account>) {
 }
 
 // ── ExpenseForm ───────────────────────────────────────────────────────────────
-export function ExpenseForm({ initialData, onSave, onCancel, accounts }: WithAccounts<Expense>) {
+export function ExpenseForm({
+	initialData,
+	onSave,
+	onCancel,
+	accounts,
+	accountHeads = [],
+}: WithAccounts<Expense>) {
+	// Default to the "Expenses" root head if no accountHeadId
+	const defaultHead =
+		accountHeads.find((h) => h.id === 'head_expense')?.id ?? accountHeads[0]?.id ?? '';
 	const [f, setF] = useState<Partial<Expense>>({
 		name: '',
 		amount: undefined,
 		date: todayStr(),
 		category: 'Food',
 		accountId: accounts[0]?.id ?? '',
+		accountHeadId: defaultHead,
 		...initialData,
 	});
+	const canSave = !!(f.name && f.amount && f.accountId && f.accountHeadId);
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.amount) onSave(f);
+		if (canSave) onSave(f);
 	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -269,7 +342,7 @@ export function ExpenseForm({ initialData, onSave, onCancel, accounts }: WithAcc
 						</SelectContent>
 					</Select>
 				</FormField>
-				<FormField label="Account">
+				<FormField label="Debit Account">
 					<Select
 						value={f.accountId ?? ''}
 						onValueChange={(v) => setF({ ...f, accountId: v })}>
@@ -288,6 +361,17 @@ export function ExpenseForm({ initialData, onSave, onCancel, accounts }: WithAcc
 					</Select>
 				</FormField>
 				<FormField
+					label="Account Head *"
+					span={2}
+					hint="Required for double-entry bookkeeping">
+					<HeadSelect
+						heads={accountHeads}
+						value={f.accountHeadId ?? ''}
+						onChange={(v) => setF({ ...f, accountHeadId: v })}
+						rootType="expense"
+					/>
+				</FormField>
+				<FormField
 					label="Notes (optional)"
 					span={2}>
 					<Input
@@ -302,18 +386,29 @@ export function ExpenseForm({ initialData, onSave, onCancel, accounts }: WithAcc
 }
 
 // ── IncomeForm ────────────────────────────────────────────────────────────────
-export function IncomeForm({ initialData, onSave, onCancel, accounts }: WithAccounts<Income>) {
+export function IncomeForm({
+	initialData,
+	onSave,
+	onCancel,
+	accounts,
+	accountHeads = [],
+}: WithAccounts<Income>) {
+	const defaultHead =
+		accountHeads.find((h) => h.id === 'head_income')?.id ?? accountHeads[0]?.id ?? '';
 	const [f, setF] = useState<Partial<Income>>({
 		name: '',
 		amount: undefined,
 		date: todayStr(),
 		accountId: accounts[0]?.id ?? '',
+		accountHeadId: defaultHead,
 		...initialData,
 	});
+	const canSave = !!(f.name && f.amount && f.accountId && f.accountHeadId);
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.amount) onSave(f);
+		if (canSave) onSave(f);
 	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -349,7 +444,7 @@ export function IncomeForm({ initialData, onSave, onCancel, accounts }: WithAcco
 					/>
 				</FormField>
 				<FormField
-					label="Into Account"
+					label="Credit Account"
 					span={2}>
 					<Select
 						value={f.accountId ?? ''}
@@ -369,6 +464,17 @@ export function IncomeForm({ initialData, onSave, onCancel, accounts }: WithAcco
 					</Select>
 				</FormField>
 				<FormField
+					label="Account Head *"
+					span={2}
+					hint="Required for double-entry bookkeeping">
+					<HeadSelect
+						heads={accountHeads}
+						value={f.accountHeadId ?? ''}
+						onChange={(v) => setF({ ...f, accountHeadId: v })}
+						rootType="income"
+					/>
+				</FormField>
+				<FormField
 					label="Notes (optional)"
 					span={2}>
 					<Input
@@ -383,18 +489,35 @@ export function IncomeForm({ initialData, onSave, onCancel, accounts }: WithAcco
 }
 
 // ── TransferForm ──────────────────────────────────────────────────────────────
-export function TransferForm({ initialData, onSave, onCancel, accounts }: WithAccounts<Transfer>) {
+export function TransferForm({
+	initialData,
+	onSave,
+	onCancel,
+	accounts,
+	accountHeads = [],
+}: WithAccounts<Transfer>) {
+	const assetHead = accountHeads.find((h) => h.id === 'head_asset')?.id ?? '';
 	const [f, setF] = useState<Partial<Transfer>>({
 		fromAccountId: accounts[0]?.id ?? '',
 		toAccountId: accounts[1]?.id ?? '',
 		amount: undefined,
 		date: todayStr(),
+		fromAccountHeadId: assetHead,
+		toAccountHeadId: assetHead,
 		...initialData,
 	});
+	const canSave = !!(
+		f.fromAccountId &&
+		f.toAccountId &&
+		f.amount &&
+		f.fromAccountHeadId &&
+		f.toAccountHeadId
+	);
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.fromAccountId && f.toAccountId && f.amount) onSave(f);
+		if (canSave) onSave(f);
 	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -453,6 +576,24 @@ export function TransferForm({ initialData, onSave, onCancel, accounts }: WithAc
 						value={f.date ?? ''}
 						onChange={(e) => setF({ ...f, date: e.target.value })}
 						required
+					/>
+				</FormField>
+				<FormField
+					label="Debit Head *"
+					hint="Account head for the source side">
+					<HeadSelect
+						heads={accountHeads}
+						value={f.fromAccountHeadId ?? ''}
+						onChange={(v) => setF({ ...f, fromAccountHeadId: v })}
+					/>
+				</FormField>
+				<FormField
+					label="Credit Head *"
+					hint="Account head for the destination side">
+					<HeadSelect
+						heads={accountHeads}
+						value={f.toAccountHeadId ?? ''}
+						onChange={(v) => setF({ ...f, toAccountHeadId: v })}
 					/>
 				</FormField>
 				<FormField
@@ -617,7 +758,7 @@ export function RecurringIncomeForm({
 					<Input
 						value={f.name ?? ''}
 						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Salary, Freelance"
+						placeholder="e.g. Salary"
 						required
 					/>
 				</FormField>
@@ -706,25 +847,21 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 		taxIncludedInRate: false,
 		...initialData,
 	});
-
 	const computedEMI =
 		f.principalAmount && f.interestRate !== undefined && f.tenureMonths
 			? calculateEMI(f.principalAmount, f.interestRate, f.tenureMonths)
 			: 0;
 	const effectiveEMI = f.emi || computedEMI;
-	// Show estimated tax per EMI for a rough preview
 	const estMonthlyInterest =
 		computedEMI > 0 && f.principalAmount
 			? Math.round((f.principalAmount * (f.interestRate ?? 0)) / 12 / 100)
 			: 0;
 	const estTaxPerEMI =
 		f.taxRate && estMonthlyInterest ? Math.round((estMonthlyInterest * f.taxRate) / 100) : 0;
-
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (f.name && f.principalAmount && f.tenureMonths) onSave({ ...f, emi: effectiveEMI });
 	};
-
 	return (
 		<form
 			onSubmit={submit}
@@ -736,7 +873,6 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 					<Input
 						value={f.name ?? ''}
 						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Home Loan"
 						required
 					/>
 				</FormField>
@@ -749,7 +885,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="normal">Normal Loan</SelectItem>
-							<SelectItem value="credit_card">Credit Card Loan</SelectItem>
+							<SelectItem value="credit_card">CC Loan</SelectItem>
 						</SelectContent>
 					</Select>
 				</FormField>
@@ -786,13 +922,13 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						required
 					/>
 				</FormField>
-				<FormField label={`EMI (₹) — Auto: ₹${computedEMI.toLocaleString('en-IN')}`}>
+				<FormField label={`EMI — Auto: ₹${computedEMI.toLocaleString('en-IN')}`}>
 					<Input
 						type="number"
 						min="0"
 						value={f.emi || ''}
 						onChange={(e) => setF({ ...f, emi: parseFloat(e.target.value) || 0 })}
-						placeholder={computedEMI ? String(computedEMI) : 'auto-calculated'}
+						placeholder={computedEMI ? String(computedEMI) : 'auto'}
 					/>
 				</FormField>
 				<FormField label="Months Paid">
@@ -811,11 +947,9 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						required
 					/>
 				</FormField>
-
-				{/* Tax section */}
 				<FormField
 					label="Tax on Interest (%)"
-					hint="e.g. 18 for 18% GST on interest. Leave blank if none.">
+					hint="e.g. 18 for GST">
 					<Input
 						type="number"
 						min="0"
@@ -828,9 +962,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						placeholder="e.g. 18"
 					/>
 				</FormField>
-				<FormField
-					label="Tax Included in Rate?"
-					hint="Yes = your stated rate already includes tax">
+				<FormField label="Tax Included?">
 					<Select
 						value={f.taxIncludedInRate ? 'yes' : 'no'}
 						onValueChange={(v) => setF({ ...f, taxIncludedInRate: v === 'yes' })}>
@@ -838,26 +970,23 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 							<SelectValue />
 						</SelectTrigger>
 						<SelectContent>
-							<SelectItem value="no">No — tax added on top</SelectItem>
-							<SelectItem value="yes">Yes — rate includes tax</SelectItem>
+							<SelectItem value="no">No — tax on top</SelectItem>
+							<SelectItem value="yes">Yes — included</SelectItem>
 						</SelectContent>
 					</Select>
 				</FormField>
-
-				{/* Live tax preview */}
 				{estTaxPerEMI > 0 && (
 					<div className="col-span-2 rounded-lg bg-warning/10 border border-warning/25 p-3 text-xs text-warning">
-						Estimated tax per EMI:{' '}
+						Est. tax/EMI:{' '}
 						<span className="font-mono font-bold">
 							₹{estTaxPerEMI.toLocaleString('en-IN')}
 						</span>{' '}
-						· Total monthly outflow:{' '}
+						· Total:{' '}
 						<span className="font-mono font-bold">
 							₹{(effectiveEMI + estTaxPerEMI).toLocaleString('en-IN')}
 						</span>
 					</div>
 				)}
-
 				<FormField
 					label="Debit Account"
 					span={2}>
@@ -907,24 +1036,20 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 		taxRate: undefined,
 		...initialData,
 	});
-
-	// Auto-derive the next due date whenever billing settings change
 	const previewDueDate: string | null =
 		f.statementDay && f.gracePeriodDays
 			? (() => {
-					const stmt = nextStatementDate({
+					const s = nextStatementDate({
 						statementDay: f.statementDay!,
 						billingCycleDays: f.billingCycleDays ?? 30,
 					});
-					const due = dueFromStatement(stmt, f.gracePeriodDays!);
-					return due.toISOString().split('T')[0];
+					return dueFromStatement(s, f.gracePeriodDays!).toISOString().split('T')[0];
 				})()
 			: null;
-
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (f.name && f.limit) {
-			const stmtDate = f.statementDay
+			const sd = f.statementDay
 				? nextStatementDate({
 						statementDay: f.statementDay,
 						billingCycleDays: f.billingCycleDays ?? 30,
@@ -932,14 +1057,9 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						.toISOString()
 						.split('T')[0]
 				: (f.statementDate ?? todayStr());
-			onSave({
-				...f,
-				dueDate: previewDueDate ?? f.dueDate ?? todayStr(),
-				statementDate: stmtDate,
-			});
+			onSave({ ...f, dueDate: previewDueDate ?? f.dueDate ?? todayStr(), statementDate: sd });
 		}
 	};
-
 	return (
 		<form
 			onSubmit={submit}
@@ -966,7 +1086,7 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						required
 					/>
 				</FormField>
-				<FormField label="Current Outstanding (₹)">
+				<FormField label="Outstanding (₹)">
 					<Input
 						type="number"
 						min="0"
@@ -976,11 +1096,9 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						}
 					/>
 				</FormField>
-
-				{/* Billing cycle */}
 				<FormField
-					label="Statement Day (1–28)"
-					hint="Day of month your statement is generated">
+					label="Statement Day (1-28)"
+					hint="Day of month statement is generated">
 					<Input
 						type="number"
 						min="1"
@@ -991,75 +1109,50 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						}
 					/>
 				</FormField>
-				<FormField
-					label="Billing Cycle (days)"
-					hint="Typically 30">
+				<FormField label="Billing Cycle (days)">
 					<Input
 						type="number"
 						min="1"
-						max="45"
 						value={f.billingCycleDays ?? 30}
 						onChange={(e) =>
 							setF({ ...f, billingCycleDays: parseInt(e.target.value) || 30 })
 						}
 					/>
 				</FormField>
-				<FormField
-					label="Grace Period (days)"
-					hint="Days from statement to due date (typically 20–25)">
+				<FormField label="Grace Period (days)">
 					<Input
 						type="number"
-						min="1"
-						max="60"
+						min="0"
 						value={f.gracePeriodDays ?? 20}
 						onChange={(e) =>
 							setF({ ...f, gracePeriodDays: parseInt(e.target.value) || 20 })
 						}
 					/>
 				</FormField>
+				{previewDueDate && (
+					<div className="col-span-2 rounded-lg bg-cyan/10 border border-cyan/25 p-2 text-xs text-cyan">
+						Next due date: <span className="font-mono font-bold">{previewDueDate}</span>
+					</div>
+				)}
 				<FormField
-					label="Tax on Charges (%)"
-					hint="e.g. 18% GST on finance charges / late fees">
+					label="Tax on Interest (%)"
+					hint="e.g. 18 for GST">
 					<Input
 						type="number"
 						min="0"
-						max="50"
-						step="0.01"
 						value={f.taxRate ?? ''}
 						onChange={(e) =>
 							setF({ ...f, taxRate: parseFloat(e.target.value) || undefined })
 						}
-						placeholder="e.g. 18"
 					/>
 				</FormField>
-
-				{/* Preview computed dates */}
-				{previewDueDate && (
-					<div className="col-span-2 rounded-lg bg-muted/50 border border-border p-3 text-xs text-muted-foreground space-y-1">
-						<p>
-							Statement generated on day{' '}
-							<span className="font-semibold text-foreground">{f.statementDay}</span>{' '}
-							of each month
-						</p>
-						<p>
-							Payment due{' '}
-							<span className="font-semibold text-foreground">
-								{f.gracePeriodDays} days
-							</span>{' '}
-							after statement → next due:{' '}
-							<span className="font-mono font-bold text-foreground">
-								{previewDueDate}
-							</span>
-						</p>
-					</div>
-				)}
-
 				<FormField
 					label="Notes (optional)"
 					span={2}>
-					<Input
+					<Textarea
 						value={f.notes ?? ''}
 						onChange={(e) => setF({ ...f, notes: e.target.value })}
+						rows={2}
 					/>
 				</FormField>
 			</FormGrid>
@@ -1099,7 +1192,6 @@ export function ReceivableForm({
 					<Input
 						value={f.personName ?? ''}
 						onChange={(e) => setF({ ...f, personName: e.target.value })}
-						placeholder="Who did you lend to?"
 						required
 					/>
 				</FormField>
@@ -1153,7 +1245,6 @@ export function ReceivableForm({
 					<Input
 						value={f.description ?? ''}
 						onChange={(e) => setF({ ...f, description: e.target.value })}
-						placeholder="What was it for?"
 					/>
 				</FormField>
 				<FormField
@@ -1254,7 +1345,6 @@ export function InvestmentForm({ initialData, onSave, onCancel }: FP<Investment>
 					<Input
 						value={f.name ?? ''}
 						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Zerodha Portfolio"
 						required
 					/>
 				</FormField>
@@ -1363,7 +1453,6 @@ export function ReconciliationForm({
 					step="0.01"
 					value={actual}
 					onChange={(e) => setActual(e.target.value)}
-					placeholder="Enter actual balance"
 					required
 					autoFocus
 				/>
@@ -1372,8 +1461,10 @@ export function ReconciliationForm({
 				<div
 					className={`rounded-lg p-3 text-sm font-semibold ${diff === 0 ? 'bg-profit/10 text-profit' : 'bg-warning/10 text-warning'}`}>
 					{diff === 0
-						? '✓ Balanced — no difference'
-						: `Difference: ₹${Math.abs(diff).toLocaleString('en-IN')} ${diff > 0 ? '(actual is higher)' : '(actual is lower)'}`}
+						? '✓ Balanced'
+						: diff > 0
+							? `Actual is ₹${Math.abs(diff).toLocaleString('en-IN')} higher`
+							: `Actual is ₹${Math.abs(diff).toLocaleString('en-IN')} lower`}
 				</div>
 			)}
 			<FormField label="Notes (optional)">
@@ -1381,7 +1472,6 @@ export function ReconciliationForm({
 					value={notes}
 					onChange={(e) => setNotes(e.target.value)}
 					rows={2}
-					placeholder="e.g. bank charges not recorded"
 				/>
 			</FormField>
 			<FormActions
@@ -1419,7 +1509,6 @@ export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 					<Input
 						value={f.name ?? ''}
 						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Emergency Fund"
 						required
 					/>
 				</FormField>
@@ -1443,7 +1532,7 @@ export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 						</SelectContent>
 					</Select>
 				</FormField>
-				<FormField label="Target Amount (₹)">
+				<FormField label="Target (₹)">
 					<Input
 						type="number"
 						min="0"
@@ -1454,7 +1543,7 @@ export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 						required
 					/>
 				</FormField>
-				<FormField label="Current Amount (₹)">
+				<FormField label="Current (₹)">
 					<Input
 						type="number"
 						min="0"
@@ -1464,7 +1553,7 @@ export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 						}
 					/>
 				</FormField>
-				<FormField label="Monthly Contribution (₹)">
+				<FormField label="Monthly (₹)">
 					<Input
 						type="number"
 						min="0"

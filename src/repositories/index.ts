@@ -1,6 +1,7 @@
 import { BaseRepository } from './BaseRepository';
 import type {
 	Account,
+	AccountHead,
 	Expense,
 	Income,
 	Transfer,
@@ -14,11 +15,13 @@ import type {
 	Reconciliation,
 	Goal,
 	PaymentOccurrence,
+	ImportReview,
 	BaseRecord,
 	EntityName,
 } from '@/types';
 
 export const accountRepo = new BaseRepository<Account>('accounts');
+export const accountHeadRepo = new BaseRepository<AccountHead>('accountHeads');
 export const expenseRepo = new BaseRepository<Expense>('expenses');
 export const incomeRepo = new BaseRepository<Income>('incomes');
 export const transferRepo = new BaseRepository<Transfer>('transfers');
@@ -32,9 +35,11 @@ export const investmentRepo = new BaseRepository<Investment>('investments');
 export const reconciliationRepo = new BaseRepository<Reconciliation>('reconciliations');
 export const goalRepo = new BaseRepository<Goal>('goals');
 export const paymentOccurrenceRepo = new BaseRepository<PaymentOccurrence>('paymentOccurrences');
+export const importReviewRepo = new BaseRepository<ImportReview>('importReviews');
 
 export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	accounts: accountRepo as BaseRepository<BaseRecord>,
+	accountHeads: accountHeadRepo as BaseRepository<BaseRecord>,
 	expenses: expenseRepo as BaseRepository<BaseRecord>,
 	incomes: incomeRepo as BaseRepository<BaseRecord>,
 	transfers: transferRepo as BaseRepository<BaseRecord>,
@@ -48,4 +53,5 @@ export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	reconciliations: reconciliationRepo as BaseRepository<BaseRecord>,
 	goals: goalRepo as BaseRepository<BaseRecord>,
 	paymentOccurrences: paymentOccurrenceRepo as BaseRepository<BaseRecord>,
+	importReviews: importReviewRepo as BaseRepository<BaseRecord>,
 };

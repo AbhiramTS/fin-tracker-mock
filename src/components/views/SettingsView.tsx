@@ -1,5 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
-import { Download, Upload, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+	Download,
+	Upload,
+	AlertTriangle,
+	CheckCircle2,
+	GitMerge,
+	Trash2,
+	Plus,
+} from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -9,8 +17,17 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FormField } from '@/components/ui/form-field';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select';
 import { renderQR } from '@/qr/qrcode';
-import type { FirebaseConfig, EntityName } from '@/types';
+import { parseImportFile, makeTxReviewRecords } from '@/utils/importEngine';
+import { fmt, fmtDate } from '@/utils/format';
+import type { FirebaseConfig, EntityName, ImportReview, Account } from '@/types';
 
 // ── QR canvas ─────────────────────────────────────────────────────────────────
 function QRCanvas({ data, size = 220 }: { data: string; size?: number }) {
@@ -27,45 +44,27 @@ function QRCanvas({ data, size = 220 }: { data: string; size?: number }) {
 }
 
 // ── Firebase config parser ────────────────────────────────────────────────────
-// Handles all common Firebase SDK snippet formats:
-//   • Plain JS object:  { apiKey: "...", ... }
-//   • With assignment:  const firebaseConfig = { ... };
-//   • JSON:             { "apiKey": "...", ... }
-//   • Quoted or unquoted property names
-//   • Single or double quoted values
 function parseFirebaseConfig(raw: string): FirebaseConfig {
 	let text = raw.trim();
-
-	// Strip  `const X = ` prefix and trailing semicolon
-	text = text.replace(/^(?:const|let|var)\s+\w+\s*=\s*/, '');
-	text = text.replace(/;?\s*$/, '').trim();
-
-	// Extract the { ... } object body
-	const braceStart = text.indexOf('{');
-	const braceEnd = text.lastIndexOf('}');
-	if (braceStart === -1 || braceEnd === -1) throw new Error('No object literal found');
-	text = text.slice(braceStart, braceEnd + 1);
-
-	// Normalise to valid JSON:
-	// 1. Quote unquoted keys:   apiKey:  →  "apiKey":
+	text = text
+		.replace(/^(?:const|let|var)\s+\w+\s*=\s*/, '')
+		.replace(/;?\s*$/, '')
+		.trim();
+	const s = text.indexOf('{'),
+		e = text.lastIndexOf('}');
+	if (s === -1 || e === -1) throw new Error('No object literal found');
+	text = text.slice(s, e + 1);
 	text = text.replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)\s*:/g, '$1"$2":');
-	// 2. Convert single-quoted strings to double-quoted
-	//    Handle escaped single quotes inside: \'
 	text = text.replace(
 		/'((?:[^'\\]|\\.)*)'/g,
-		(_, inner) => '"' + inner.replace(/\\'/g, "'").replace(/"/g, '\\"') + '"'
+		(_, i) => '"' + i.replace(/\\'/g, "'").replace(/"/g, '\\"') + '"'
 	);
-	// 3. Remove trailing commas before } or ]
 	text = text.replace(/,(\s*[}\]])/g, '$1');
-
 	const parsed = JSON.parse(text) as Record<string, string>;
-	if (!parsed.apiKey || !parsed.projectId) {
-		throw new Error('apiKey and projectId are required');
-	}
+	if (!parsed.apiKey || !parsed.projectId) throw new Error('apiKey and projectId are required');
 	return parsed as unknown as FirebaseConfig;
 }
 
-// ── Firebase setup card ───────────────────────────────────────────────────────
 function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void }) {
 	const [raw, setRaw] = useState('');
 	const [cfg, setCfg] = useState<Partial<FirebaseConfig>>({
@@ -75,26 +74,19 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 		appId: '',
 	});
 	const [err, setErr] = useState('');
-	const [mode, setMode] = useState<'fields' | 'paste'>('paste'); // default to paste — easier
+	const [mode, setMode] = useState<'paste' | 'fields'>('paste');
 
 	const connect = () => {
 		try {
-			let parsed: FirebaseConfig;
-			if (mode === 'paste') {
-				parsed = parseFirebaseConfig(raw);
-			} else {
-				if (!cfg.apiKey || !cfg.projectId) {
-					setErr('apiKey and projectId are required');
-					return;
-				}
-				parsed = cfg as FirebaseConfig;
+			const parsed = mode === 'paste' ? parseFirebaseConfig(raw) : (cfg as FirebaseConfig);
+			if (!parsed.apiKey || !parsed.projectId) {
+				setErr('apiKey and projectId required');
+				return;
 			}
 			setErr('');
 			onConnect(parsed);
 		} catch (e) {
-			setErr(
-				(e as Error).message || 'Could not parse config. Try pasting the full SDK snippet.'
-			);
+			setErr((e as Error).message);
 		}
 	};
 
@@ -102,7 +94,7 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 		<div className="flex flex-col gap-3">
 			<Tabs
 				value={mode}
-				onValueChange={(v) => setMode(v as 'fields' | 'paste')}>
+				onValueChange={(v) => setMode(v as 'paste' | 'fields')}>
 				<TabsList className="w-full">
 					<TabsTrigger
 						value="paste"
@@ -121,12 +113,10 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 						onChange={(e) => setRaw(e.target.value)}
 						rows={7}
 						className="font-mono text-xs"
-						placeholder={`const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  authDomain: "app.firebaseapp.com",\n  databaseURL: "...",\n  projectId: "my-app",\n  storageBucket: "my-app.appspot.com",\n  messagingSenderId: "123456",\n  appId: "1:123:web:abc"\n};`}
+						placeholder={
+							'const firebaseConfig = {\n  apiKey: "AIzaSy...",\n  projectId: "my-app",\n  ...\n};'
+						}
 					/>
-					<p className="text-[10px] text-muted-foreground mt-1.5">
-						Paste the entire <code>firebaseConfig</code> object from your Firebase
-						console. JS or JSON format both work.
-					</p>
 				</TabsContent>
 				<TabsContent value="fields">
 					<div className="flex flex-col gap-2">
@@ -134,14 +124,12 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 							<Input
 								value={cfg.apiKey ?? ''}
 								onChange={(e) => setCfg({ ...cfg, apiKey: e.target.value })}
-								placeholder="AIzaSy..."
 							/>
 						</FormField>
 						<FormField label="Auth Domain">
 							<Input
 								value={cfg.authDomain ?? ''}
 								onChange={(e) => setCfg({ ...cfg, authDomain: e.target.value })}
-								placeholder="app.firebaseapp.com"
 							/>
 						</FormField>
 						<FormField label="Project ID">
@@ -154,7 +142,6 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 							<Input
 								value={cfg.appId ?? ''}
 								onChange={(e) => setCfg({ ...cfg, appId: e.target.value })}
-								placeholder="1:123:web:abc"
 							/>
 						</FormField>
 					</div>
@@ -167,17 +154,391 @@ function FirebaseSetup({ onConnect }: { onConnect: (cfg: FirebaseConfig) => void
 				className="w-full">
 				🔥 Connect Firebase
 			</Button>
-			<p className="text-xs text-muted-foreground">
-				Firebase Console → Project Settings → Your apps → SDK setup
-			</p>
 		</div>
 	);
 }
 
-// ── Export / Import ───────────────────────────────────────────────────────────
+// ── Merge Accounts UI ─────────────────────────────────────────────────────────
+// Shows all accounts; lets user pick pairs to merge (keep one, move txns, delete other).
+function MergeAccountsSection() {
+	const { state, save, remove } = useApp();
+	const [keepId, setKeepId] = useState('');
+	const [deleteId, setDeleteId] = useState('');
+	const [merging, setMerging] = useState(false);
+	const [done, setDone] = useState<string | null>(null);
 
+	const canMerge = keepId && deleteId && keepId !== deleteId;
+
+	const doMerge = async () => {
+		if (!canMerge) return;
+		setMerging(true);
+		try {
+			// Re-point all transactions from deleteId to keepId
+			const TRANSACTION_ENTITIES: { entity: EntityName; field: string }[] = [
+				{ entity: 'expenses', field: 'accountId' },
+				{ entity: 'incomes', field: 'accountId' },
+				{ entity: 'transfers', field: 'fromAccountId' },
+				{ entity: 'transfers', field: 'toAccountId' },
+				{ entity: 'recurringPayments', field: 'accountId' },
+				{ entity: 'recurringIncomes', field: 'accountId' },
+				{ entity: 'loans', field: 'accountId' },
+				{ entity: 'receivables', field: 'accountId' },
+			];
+
+			for (const { entity, field } of TRANSACTION_ENTITIES) {
+				const list =
+					(state[entity as keyof typeof state] as unknown as Record<string, unknown>[]) ??
+					[];
+				for (const rec of list) {
+					if (rec[field] === deleteId) {
+						await save(entity, { ...rec, [field]: keepId } as Record<string, unknown>);
+					}
+				}
+			}
+
+			// Delete the duplicate account
+			await remove('accounts', deleteId);
+
+			const keepName = state.accounts.find((a) => a.id === keepId)?.name ?? keepId;
+			const delName = state.accounts.find((a) => a.id === deleteId)?.name ?? deleteId;
+			setDone(`Merged "${delName}" into "${keepName}". All transactions moved.`);
+			setKeepId('');
+			setDeleteId('');
+		} finally {
+			setMerging(false);
+		}
+	};
+
+	return (
+		<div className="flex flex-col gap-3">
+			<p className="text-xs text-muted-foreground">
+				Select two accounts: the one to{' '}
+				<span className="text-profit font-semibold">keep</span> and the one to{' '}
+				<span className="text-loss font-semibold">delete</span>. All transactions from the
+				deleted account are moved to the surviving account.
+			</p>
+
+			<FormField label="Keep this account">
+				<Select
+					value={keepId}
+					onValueChange={setKeepId}>
+					<SelectTrigger>
+						<SelectValue placeholder="Select account to keep" />
+					</SelectTrigger>
+					<SelectContent>
+						{state.accounts.map((a) => (
+							<SelectItem
+								key={a.id}
+								value={a.id}>
+								<span className="flex items-center gap-2">
+									<span
+										className="inline-block h-2 w-2 rounded-full"
+										style={{ background: a.color ?? '#00d4f5' }}
+									/>
+									{a.name}
+									<span className="font-mono text-xs text-muted-foreground ml-1">
+										{fmt(state.computedBalances[a.id] ?? a.openingBalance ?? 0)}
+									</span>
+								</span>
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</FormField>
+
+			<FormField label="Delete this account (duplicate)">
+				<Select
+					value={deleteId}
+					onValueChange={setDeleteId}>
+					<SelectTrigger>
+						<SelectValue placeholder="Select duplicate to delete" />
+					</SelectTrigger>
+					<SelectContent>
+						{state.accounts
+							.filter((a) => a.id !== keepId)
+							.map((a) => (
+								<SelectItem
+									key={a.id}
+									value={a.id}>
+									<span className="flex items-center gap-2">
+										<span
+											className="inline-block h-2 w-2 rounded-full"
+											style={{ background: a.color ?? '#00d4f5' }}
+										/>
+										{a.name}
+										<span className="font-mono text-xs text-muted-foreground ml-1">
+											{fmt(
+												state.computedBalances[a.id] ??
+													a.openingBalance ??
+													0
+											)}
+										</span>
+									</span>
+								</SelectItem>
+							))}
+					</SelectContent>
+				</Select>
+			</FormField>
+
+			{done && (
+				<div className="flex items-center gap-2 text-xs text-profit bg-profit/10 rounded-lg px-3 py-2">
+					<CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> {done}
+				</div>
+			)}
+
+			<Button
+				variant="destructive"
+				onClick={doMerge}
+				disabled={!canMerge || merging}
+				className="w-full">
+				<GitMerge className="h-4 w-4 mr-2" />
+				{merging ? 'Merging…' : 'Merge Accounts'}
+			</Button>
+		</div>
+	);
+}
+
+// ── Transaction duplicate review ──────────────────────────────────────────────
+function TxDuplicateReview() {
+	const { state, save, remove } = useApp();
+	const pending = state.importReviews.filter((r) => r.status === 'pending');
+
+	const resolve = async (review: ImportReview, decision: ImportReview['decision']) => {
+		if (decision === 'overwrite') {
+			// Save incoming record (overwrites existing id)
+			const entity = review.entity;
+			await save(entity, { ...review.incoming } as Record<string, unknown>);
+		} else if (decision === 'create_new') {
+			// Save as brand-new record (strip any id)
+			const entity = review.entity;
+			const { id: _id, ...rest } = review.incoming;
+			void _id;
+			await save(entity, rest as Record<string, unknown>);
+		}
+		// skip = do nothing to the transaction
+		await save('importReviews', {
+			...review,
+			status: 'resolved',
+			decision,
+			resolvedAt: new Date().toISOString(),
+		} as unknown as Record<string, unknown>);
+	};
+
+	if (pending.length === 0)
+		return (
+			<div className="text-xs text-muted-foreground text-center py-4">
+				No pending duplicate reviews.
+			</div>
+		);
+
+	return (
+		<div className="flex flex-col gap-3">
+			<p className="text-xs text-muted-foreground">
+				{pending.length} duplicate transaction{pending.length !== 1 ? 's' : ''} need review.
+				Decisions are saved immediately.
+			</p>
+			{pending.map((review) => {
+				const inc = review.incoming as Record<string, string | number>;
+				const ext = review.existing as Record<string, string | number>;
+				return (
+					<div
+						key={review.id}
+						className="rounded-xl border border-warning/30 bg-warning/5 overflow-hidden">
+						<div className="px-3 py-2.5 border-b border-warning/20">
+							<p className="text-xs font-semibold text-warning">
+								Duplicate {review.entity === 'expenses' ? 'Expense' : 'Income'}
+							</p>
+							<p className="text-sm font-bold mt-0.5">{String(inc.name)}</p>
+							<p className="text-xs text-muted-foreground">
+								{String(inc.date)} · {fmt(inc.amount as number)}
+							</p>
+						</div>
+						<div className="px-3 py-2 text-xs text-muted-foreground border-b border-warning/10">
+							Existing record from {fmtDate(String(ext.date))} ·{' '}
+							{fmt(ext.amount as number)}
+						</div>
+						<div className="flex gap-1.5 p-2.5">
+							<Button
+								size="sm"
+								variant="outline"
+								className="flex-1 text-xs"
+								onClick={() => resolve(review, 'skip')}>
+								Skip
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								className="flex-1 text-xs"
+								onClick={() => resolve(review, 'overwrite')}>
+								Overwrite
+							</Button>
+							<Button
+								size="sm"
+								className="flex-1 text-xs"
+								onClick={() => resolve(review, 'create_new')}>
+								Create New
+							</Button>
+						</div>
+					</div>
+				);
+			})}
+		</div>
+	);
+}
+
+// ── Intra-file duplicate resolution ──────────────────────────────────────────
+// Called during import flow when two records in the same file share a name
+interface IntraFileDupChoice {
+	kind: string;
+	name: string;
+	options: Record<string, unknown>[];
+	choice: number | null;
+}
+
+function IntraFileDupDialog({
+	dups,
+	onResolve,
+}: {
+	dups: IntraFileDupChoice[];
+	onResolve: (choices: Record<string, number>) => void;
+}) {
+	const [choices, setChoices] = useState<Record<string, number>>(() =>
+		Object.fromEntries(dups.map((d, i) => [i, 0]))
+	);
+
+	return (
+		<Dialog
+			open={dups.length > 0}
+			onOpenChange={() => {}}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Duplicate names in import file</DialogTitle>
+				</DialogHeader>
+				<div className="flex flex-col gap-4 p-5 pt-2 max-h-[60vh] overflow-y-auto">
+					<p className="text-xs text-muted-foreground">
+						These names appear more than once in your file. Choose which version to
+						import.
+					</p>
+					{dups.map((d, di) => (
+						<div
+							key={di}
+							className="flex flex-col gap-2">
+							<p className="text-sm font-semibold">
+								{d.kind}: "{d.name}"
+							</p>
+							{d.options.map((opt, oi) => (
+								<button
+									key={oi}
+									onClick={() => setChoices((c) => ({ ...c, [di]: oi }))}
+									className={`text-left rounded-lg border p-2.5 text-xs transition-colors ${choices[di] === oi ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}>
+									<p className="font-semibold">Option {oi + 1}</p>
+									{Object.entries(opt)
+										.filter(
+											([k]) => !['id', 'createdAt', 'updatedAt'].includes(k)
+										)
+										.map(([k, v]) => (
+											<p
+												key={k}
+												className="text-muted-foreground">
+												{k}: {String(v)}
+											</p>
+										))}
+								</button>
+							))}
+						</div>
+					))}
+					<Button onClick={() => onResolve(choices)}>Use selected versions</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ── Existing duplicate resolution ─────────────────────────────────────────────
+interface ExistingDupChoice {
+	kind: string;
+	name: string;
+	incoming: Record<string, unknown>;
+	existing: Record<string, unknown>;
+	decision: 'skip' | 'merge' | null;
+}
+
+function ExistingDupDialog({
+	dups,
+	onResolve,
+}: {
+	dups: ExistingDupChoice[];
+	onResolve: (decisions: ('skip' | 'merge')[]) => void;
+}) {
+	const [decisions, setDecisions] = useState<('skip' | 'merge')[]>(() => dups.map(() => 'merge'));
+
+	return (
+		<Dialog
+			open={dups.length > 0}
+			onOpenChange={() => {}}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>Matches existing records</DialogTitle>
+				</DialogHeader>
+				<div className="flex flex-col gap-4 p-5 pt-2 max-h-[60vh] overflow-y-auto">
+					<p className="text-xs text-muted-foreground">
+						These names already exist in your data. Choose what to do.
+					</p>
+					{dups.map((d, i) => (
+						<div
+							key={i}
+							className="rounded-xl border border-border overflow-hidden">
+							<div className="px-3 py-2 border-b border-border bg-muted/30">
+								<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+									{d.kind}
+								</p>
+								<p className="text-sm font-bold">{d.name}</p>
+							</div>
+							<div className="flex">
+								<button
+									onClick={() =>
+										setDecisions((ds) =>
+											ds.map((x, j) => (j === i ? 'merge' : x))
+										)
+									}
+									className={`flex-1 flex items-center gap-2 p-3 text-xs transition-colors border-r border-border ${decisions[i] === 'merge' ? 'bg-profit/10 text-profit' : 'hover:bg-muted/40'}`}>
+									<GitMerge className="h-3.5 w-3.5 shrink-0" />
+									<div className="text-left">
+										<p className="font-semibold">Merge</p>
+										<p className="text-muted-foreground">
+											Update existing with new data, move transactions
+										</p>
+									</div>
+								</button>
+								<button
+									onClick={() =>
+										setDecisions((ds) =>
+											ds.map((x, j) => (j === i ? 'skip' : x))
+										)
+									}
+									className={`flex-1 flex items-center gap-2 p-3 text-xs transition-colors ${decisions[i] === 'skip' ? 'bg-muted text-foreground' : 'hover:bg-muted/40'}`}>
+									<CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+									<div className="text-left">
+										<p className="font-semibold">Skip</p>
+										<p className="text-muted-foreground">
+											Keep existing unchanged
+										</p>
+									</div>
+								</button>
+							</div>
+						</div>
+					))}
+					<Button onClick={() => onResolve(decisions)}>Apply decisions</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ── EXPORT_ENTITIES ───────────────────────────────────────────────────────────
 const EXPORT_ENTITIES: EntityName[] = [
 	'accounts',
+	'accountHeads',
 	'expenses',
 	'incomes',
 	'transfers',
@@ -193,486 +554,333 @@ const EXPORT_ENTITIES: EntityName[] = [
 	'paymentOccurrences',
 ];
 
-// Entities that are supported in the simple user-authored import format
-const IMPORTABLE: EntityName[] = [
-	'accounts',
-	'expenses',
-	'incomes',
-	'loans',
-	'creditCards',
-	'transfers',
-	'recurringPayments',
-	'recurringIncomes',
-	'receivables',
-	'investments',
-	'goals',
-];
-
-// Entity-friendly display names for the UI
-const ENTITY_LABELS: Record<EntityName, string> = {
-	accounts: 'Accounts',
-	expenses: 'Expenses',
-	incomes: 'Incomes',
-	transfers: 'Transfers',
-	recurringPayments: 'Recurring Payments',
-	recurringIncomes: 'Recurring Incomes',
-	loans: 'Loans',
-	creditCards: 'Credit Cards',
-	receivables: 'Receivables',
-	repaymentRecords: 'Repayment Records',
-	investments: 'Investments',
-	reconciliations: 'Reconciliations',
-	goals: 'Goals',
-	paymentOccurrences: 'Payment Occurrences',
-};
-
-// Generate a simple deterministic id from a string (for stable account cross-refs)
-function stableId(seed: string): string {
-	// Simple but sufficient for import — collision probability is negligible
-	let h = 5381;
-	for (let i = 0; i < seed.length; i++) h = ((h << 5) + h) ^ seed.charCodeAt(i);
-	return 'imp_' + (h >>> 0).toString(36) + '_' + Date.now().toString(36);
-}
-
-function ts() {
-	return new Date().toISOString();
-}
-
-/** Ensure a record has id/createdAt/updatedAt, generating them if missing */
-function ensureBase(r: Record<string, unknown>): Record<string, unknown> {
-	return {
-		...r,
-		id: r.id ?? stableId(JSON.stringify(r)),
-		createdAt: r.createdAt ?? ts(),
-		updatedAt: r.updatedAt ?? ts(),
-	};
-}
-
-/**
- * Resolve accountId: if the record has accountId as a name string (not an
- * existing ID), look it up by name in the account map and return the matched ID.
- */
-function resolveAccountId(
-	r: Record<string, unknown>,
-	field: string,
-	nameMap: Map<string, string> // account name → account id
-): Record<string, unknown> {
-	const val = r[field] as string | undefined;
-	if (!val) return r;
-	// If it already matches a known ID, leave it alone
-	if ([...nameMap.values()].includes(val)) return r;
-	// Try to look up by name
-	const resolved = nameMap.get(val.toLowerCase().trim());
-	if (resolved) return { ...r, [field]: resolved };
-	return r;
-}
+// ── DataPortability ───────────────────────────────────────────────────────────
+type ImportStep =
+	| 'idle'
+	| 'intra_dup' // resolving duplicates within the file
+	| 'existing_dup' // resolving duplicates against existing records
+	| 'saving'
+	| 'done';
 
 function DataPortability() {
 	const { state, save } = useApp();
 	const fileRef = useRef<HTMLInputElement>(null);
 
-	const [importing, setImporting] = useState(false);
+	const [step, setStep] = useState<ImportStep>('idle');
+	const [importError, setImportError] = useState('');
 	const [importResult, setImportResult] = useState<{
 		ok: number;
 		err: number;
-		entities: Record<string, number>;
+		reviews: number;
 	} | null>(null);
-	const [importError, setImportError] = useState('');
-	const [showConfirm, setShowConfirm] = useState(false);
-	const [pendingData, setPendingData] = useState<Record<string, unknown[]> | null>(null);
+	const [intraDups, setIntraDups] = useState<IntraFileDupChoice[]>([]);
+	const [existingDups, setExistingDups] = useState<ExistingDupChoice[]>([]);
+	const [planRef, setPlanRef] = useState<ReturnType<typeof parseImportFile> | null>(null);
 
-	// ── Export all ──────────────────────────────────────────────────────────────
+	// ── Export ──────────────────────────────────────────────────────────────────
 	const handleExport = () => {
 		const payload: Record<string, unknown[]> = {};
 		for (const entity of EXPORT_ENTITIES) {
-			payload[entity] = (state[entity] as unknown[]) ?? [];
+			payload[entity] = (state[entity as keyof typeof state] as unknown[]) ?? [];
 		}
 		const json = JSON.stringify(
 			{ version: '4.0', exportedAt: new Date().toISOString(), data: payload },
 			null,
 			2
 		);
-		const blob = new Blob([json], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = `fintracker-export-${new Date().toISOString().slice(0, 10)}.json`;
-		a.click();
+		const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+		Object.assign(document.createElement('a'), {
+			href: url,
+			download: `fintracker-export-${new Date().toISOString().slice(0, 10)}.json`,
+		}).click();
 		URL.revokeObjectURL(url);
 	};
 
-	// ── Download sample JSON ───────────────────────────────────────────────────
-	const handleDownloadSample = () => {
-		const today = new Date().toISOString().slice(0, 10);
-		const thisMonth = today.slice(0, 7);
-		const sample = {
-			_comment: [
-				'FinTracker import format — remove the _comment key before importing if it causes issues.',
-				'You can include any subset of the arrays below.',
-				"accountId in expenses/incomes/loans can be the account's NAME (e.g. 'HDFC Savings') or its id.",
-				'id, createdAt, updatedAt are optional — they will be auto-generated if missing.',
-				'Dates must be yyyy-MM-dd format.',
-			],
-			accounts: [
-				{
-					name: 'HDFC Savings',
-					type: 'bank',
-					balance: 45000,
-					color: '#00d4f5',
-					currency: 'INR',
-				},
-				{
-					name: 'Cash Wallet',
-					type: 'cash',
-					balance: 2500,
-				},
-				{
-					name: 'SBI Salary Account',
-					type: 'bank',
-					balance: 82000,
-					color: '#00e5a0',
-				},
-			],
-			expenses: [
-				{
-					name: 'Swiggy dinner',
-					amount: 450,
-					date: today,
-					category: 'Food',
-					accountId: 'HDFC Savings',
-					notes: 'Biryani',
-				},
-				{
-					name: 'Electricity bill',
-					amount: 1200,
-					date: `${thisMonth}-05`,
-					category: 'Bills',
-					accountId: 'HDFC Savings',
-				},
-				{
-					name: 'Petrol',
-					amount: 2000,
-					date: `${thisMonth}-10`,
-					category: 'Transport',
-					accountId: 'Cash Wallet',
-				},
-			],
-			incomes: [
-				{
-					name: 'July Salary',
-					amount: 85000,
-					date: `${thisMonth}-01`,
-					accountId: 'SBI Salary Account',
-					category: 'Salary',
-				},
-				{
-					name: 'Freelance payment',
-					amount: 15000,
-					date: `${thisMonth}-15`,
-					accountId: 'HDFC Savings',
-					category: 'Freelance',
-				},
-			],
-			creditCards: [
-				{
-					name: 'HDFC Regalia',
-					limit: 300000,
-					outstanding: 18500,
-					statementDay: 15,
-					billingCycleDays: 30,
-					gracePeriodDays: 20,
-					dueDate: `${thisMonth}-05`,
-					statementDate: `${thisMonth}-15`,
-				},
-			],
-			loans: [
-				{
-					name: 'Home Loan',
-					loanType: 'normal',
-					principalAmount: 2500000,
-					interestRate: 8.5,
-					tenureMonths: 240,
-					startDate: '2022-04-01',
-					emi: 21695,
-					paidMonths: 27,
-					accountId: 'HDFC Savings',
-				},
-				{
-					name: 'Car Loan',
-					loanType: 'normal',
-					principalAmount: 600000,
-					interestRate: 9.2,
-					tenureMonths: 60,
-					startDate: '2023-01-01',
-					emi: 12489,
-					paidMonths: 18,
-					accountId: 'SBI Salary Account',
-				},
-			],
-			recurringPayments: [
-				{
-					name: 'Netflix',
-					amount: 649,
-					frequency: 'monthly',
-					nextDate: `${thisMonth}-20`,
-					category: 'Subscriptions',
-					accountId: 'HDFC Savings',
-					isActive: true,
-				},
-				{
-					name: 'House Rent',
-					amount: 22000,
-					frequency: 'monthly',
-					nextDate: `${thisMonth}-01`,
-					category: 'Housing',
-					accountId: 'HDFC Savings',
-					isActive: true,
-				},
-			],
-		};
-
-		const json = JSON.stringify(sample, null, 2);
-		const blob = new Blob([json], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
+	// ── Download sample ─────────────────────────────────────────────────────────
+	const downloadSample = () => {
 		const a = document.createElement('a');
-		a.href = url;
+		a.href = '/sample-import.json';
 		a.download = 'fintracker-sample-import.json';
 		a.click();
-		URL.revokeObjectURL(url);
 	};
 
-	// ── Parse uploaded file ────────────────────────────────────────────────────
-	const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+	// ── File picked ─────────────────────────────────────────────────────────────
+	const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
 		if (!file) return;
 		setImportError('');
 		setImportResult(null);
+		setStep('idle');
+		e.target.value = '';
 
 		try {
 			const text = await file.text();
-			const parsed = JSON.parse(text) as Record<string, unknown>;
+			const raw = JSON.parse(text);
+			const plan = parseImportFile(raw, state);
+			setPlanRef(plan);
 
-			// Accept { data: { accounts: [...] } } wrapper OR bare { accounts: [...] }
-			const raw =
-				(parsed.data as Record<string, unknown[]>) ?? (parsed as Record<string, unknown[]>);
-
-			// Accept the file if it has at least one recognised entity key
-			const hasAny = IMPORTABLE.some(
-				(e) => Array.isArray(raw[e]) && (raw[e] as unknown[]).length > 0
-			);
-			if (!hasAny) {
-				throw new Error(
-					`No recognised data found. Expected at least one of: ${IMPORTABLE.join(', ')}.`
+			if (plan.intraFileDuplicates.length > 0) {
+				setIntraDups(
+					plan.intraFileDuplicates.map((d) => ({
+						kind: d.kind,
+						name: d.name,
+						options: d.items as unknown as Record<string, unknown>[],
+						choice: 0,
+					}))
 				);
+				setStep('intra_dup');
+				return;
 			}
 
-			setPendingData(raw as Record<string, unknown[]>);
-			setShowConfirm(true);
+			if (plan.existingDuplicates.length > 0) {
+				setExistingDups(
+					plan.existingDuplicates.map((d) => ({
+						kind: d.kind,
+						name: (d.incoming as Record<string, string>).name,
+						incoming: d.incoming,
+						existing: d.existing,
+						decision: null,
+					}))
+				);
+				setStep('existing_dup');
+				return;
+			}
+
+			await executePlan(plan, {});
 		} catch (err) {
-			setImportError(
-				(err as Error).message || 'Could not read file. Make sure it is valid JSON.'
+			setImportError((err as Error).message || 'Could not parse file.');
+		}
+	};
+
+	// ── After intra-file dup resolution ─────────────────────────────────────────
+	const handleIntraResolved = (choices: Record<string, number>) => {
+		if (!planRef) return;
+		// Keep only the chosen version from each duplicate group
+		// (simplification: remove all from plan, add back chosen)
+		// The plan's cleanAccounts already excluded these — we add the winners back
+		for (const [idxStr, choiceIdx] of Object.entries(choices)) {
+			const dup = planRef.intraFileDuplicates[Number(idxStr)];
+			if (!dup) continue;
+			const winner = (dup.items as unknown as Record<string, unknown>[])[choiceIdx];
+			if (dup.kind === 'account') {
+				const now = new Date().toISOString();
+				const id =
+					(winner.id as string | undefined) ??
+					(planRef as unknown as { generateId?: () => string }).generateId?.() ??
+					Math.random().toString(36).slice(2);
+				planRef.cleanAccounts.push({
+					...winner,
+					id,
+					createdAt: now,
+					updatedAt: now,
+				} as Partial<Account>);
+				planRef.resolvedAccounts.set((winner.name as string).toLowerCase(), id);
+			}
+		}
+		setIntraDups([]);
+
+		if (planRef.existingDuplicates.length > 0) {
+			setExistingDups(
+				planRef.existingDuplicates.map((d) => ({
+					kind: d.kind,
+					name: (d.incoming as Record<string, string>).name,
+					incoming: d.incoming,
+					existing: d.existing,
+					decision: null,
+				}))
 			);
+			setStep('existing_dup');
+		} else {
+			executePlan(planRef, {});
 		}
-		e.target.value = '';
 	};
 
-	// ── Execute import after confirmation ──────────────────────────────────────
-	const executeImport = async () => {
-		if (!pendingData) return;
-		setShowConfirm(false);
-		setImporting(true);
+	// ── After existing dup resolution ────────────────────────────────────────────
+	const handleExistingResolved = useCallback(
+		async (decisions: ('skip' | 'merge')[]) => {
+			if (!planRef) return;
+			setExistingDups([]);
 
-		let ok = 0,
-			errCount = 0;
-		const entities: Record<string, number> = {};
-
-		// Build a name→id map from EXISTING accounts + accounts in the import file
-		// so that accountId values that are names get resolved correctly.
-		const nameMap = new Map<string, string>();
-
-		// 1. Seed with existing accounts
-		state.accounts.forEach((a) => nameMap.set(a.name.toLowerCase().trim(), a.id));
-
-		// 2. Import accounts first and update the map with newly created IDs
-		const rawAccounts = pendingData.accounts;
-		if (Array.isArray(rawAccounts)) {
-			for (const raw of rawAccounts) {
-				try {
-					const rec = ensureBase(raw as Record<string, unknown>);
-					const saved = await save('accounts', rec);
-					// Map by name so subsequent entities can resolve references
-					const name = (rec.name as string | undefined)?.toLowerCase().trim();
-					if (name) nameMap.set(name, saved.id);
-					ok++;
-					entities.accounts = (entities.accounts ?? 0) + 1;
-				} catch {
-					errCount++;
-				}
-			}
-		}
-
-		// 3. Import remaining entities with accountId resolution
-		const RESOLVE_FIELDS: Partial<Record<EntityName, string[]>> = {
-			expenses: ['accountId'],
-			incomes: ['accountId'],
-			transfers: ['fromAccountId', 'toAccountId'],
-			recurringPayments: ['accountId'],
-			recurringIncomes: ['accountId'],
-			loans: ['accountId'],
-			receivables: ['accountId'],
-			investments: ['accountId'],
-		};
-
-		for (const entity of IMPORTABLE.filter((e) => e !== 'accounts')) {
-			const records = pendingData[entity];
-			if (!Array.isArray(records)) continue;
-			const fields = RESOLVE_FIELDS[entity] ?? [];
-
-			for (const raw of records) {
-				try {
-					let rec = ensureBase(raw as Record<string, unknown>);
-					// Resolve account name references to IDs
-					for (const field of fields) {
-						rec = resolveAccountId(rec, field, nameMap);
+			// mergeMap: existingId → incomingRecord (to update existing with new data + re-point txns)
+			const mergeMap: Record<string, Record<string, unknown>> = {};
+			for (let i = 0; i < planRef.existingDuplicates.length; i++) {
+				const dup = planRef.existingDuplicates[i];
+				if (decisions[i] === 'merge') {
+					const existingId = (dup.existing as Record<string, string>).id;
+					mergeMap[existingId] = dup.incoming;
+					// Ensure resolvedAccounts points to existing id
+					if (dup.kind === 'account') {
+						const name = (dup.incoming as Record<string, string>).name?.toLowerCase();
+						if (name) planRef.resolvedAccounts.set(name, existingId);
 					}
-					await save(entity, rec);
-					ok++;
-					entities[entity] = (entities[entity] ?? 0) + 1;
-				} catch {
-					errCount++;
 				}
 			}
-		}
 
-		setImporting(false);
-		setImportResult({ ok, err: errCount, entities });
-		setPendingData(null);
-	};
+			await executePlan(planRef, mergeMap);
+		},
+		[planRef]
+	);
 
-	// Pending import summary per entity
-	const pendingBreakdown = pendingData
-		? IMPORTABLE.filter(
-				(e) => Array.isArray(pendingData[e]) && (pendingData[e] as unknown[]).length > 0
-			).map((e) => ({ label: ENTITY_LABELS[e], count: (pendingData[e] as unknown[]).length }))
-		: [];
+	// ── Execute plan ─────────────────────────────────────────────────────────────
+	const executePlan = useCallback(
+		async (
+			plan: ReturnType<typeof parseImportFile>,
+			mergeMap: Record<string, Record<string, unknown>>
+		) => {
+			setStep('saving');
+			let ok = 0,
+				err = 0;
+
+			// Apply merges first (update existing records)
+			for (const [existingId, incoming] of Object.entries(mergeMap)) {
+				try {
+					await save((incoming._entity as EntityName) ?? 'accounts', {
+						...incoming,
+						id: existingId,
+					} as Record<string, unknown>);
+					ok++;
+				} catch {
+					err++;
+				}
+			}
+
+			// Save clean records
+			const toSave: [EntityName, Record<string, unknown>][] = [
+				...plan.cleanAccounts.map(
+					(r) => ['accounts', r] as [EntityName, Record<string, unknown>]
+				),
+				...plan.cleanLoans.map(
+					(r) => ['loans', r] as [EntityName, Record<string, unknown>]
+				),
+				...plan.cleanCreditCards.map(
+					(r) => ['creditCards', r] as [EntityName, Record<string, unknown>]
+				),
+				...plan.cleanExpenses.map(
+					(r) => ['expenses', r] as [EntityName, Record<string, unknown>]
+				),
+				...plan.cleanIncomes.map(
+					(r) => ['incomes', r] as [EntityName, Record<string, unknown>]
+				),
+			];
+
+			for (const [entity, record] of toSave) {
+				try {
+					await save(entity, record);
+					ok++;
+				} catch {
+					err++;
+				}
+			}
+
+			// Save transaction duplicate reviews for later resolution
+			const reviews = makeTxReviewRecords(plan.txDuplicates, plan.sessionId);
+			for (const r of reviews) {
+				try {
+					await save('importReviews', r as unknown as Record<string, unknown>);
+				} catch {
+					/* non-critical */
+				}
+			}
+
+			if (plan.errors.length) console.warn('[import] errors:', plan.errors);
+
+			setImportResult({ ok, err, reviews: reviews.length });
+			setStep('done');
+			setPlanRef(null);
+		},
+		[save]
+	);
 
 	return (
 		<div className="flex flex-col gap-3">
-			{/* Export */}
 			<Button
 				variant="outline"
 				onClick={handleExport}
 				className="w-full justify-start gap-2">
-				<Download className="h-4 w-4 text-cyan" />
-				Export all data as JSON
+				<Download className="h-4 w-4 text-cyan" /> Export all data as JSON
 			</Button>
-
-			{/* Sample */}
 			<Button
 				variant="outline"
-				onClick={handleDownloadSample}
+				onClick={downloadSample}
 				className="w-full justify-start gap-2">
-				<Download className="h-4 w-4 text-muted-foreground" />
-				Download sample import file
+				<Download className="h-4 w-4 text-muted-foreground" /> Download sample import JSON
 			</Button>
-			<p className="text-xs text-muted-foreground -mt-1">
-				Shows the format for accounts, expenses, incomes, credit cards, loans and recurring
-				payments. Use account <strong>names</strong> (not IDs) in the <code>accountId</code>{' '}
-				field — they'll be resolved automatically.
-			</p>
 
-			{/* Import */}
 			<input
 				ref={fileRef}
 				type="file"
 				accept=".json,application/json"
-				onChange={handleFileChange}
+				onChange={handleFile}
 				className="hidden"
 			/>
 			<Button
 				variant="outline"
 				onClick={() => fileRef.current?.click()}
-				disabled={importing}
+				disabled={step === 'saving'}
 				className="w-full justify-start gap-2">
 				<Upload className="h-4 w-4 text-warning" />
-				{importing ? 'Importing…' : 'Import from JSON'}
+				{step === 'saving' ? 'Importing…' : 'Import from JSON'}
 			</Button>
+			<p className="text-xs text-muted-foreground -mt-1">
+				Supported: accounts, incomes, expenses, loans, credit cards. IDs are generated
+				automatically. Account names are used as identifiers.
+			</p>
 
 			{importError && (
-				<div className="flex items-start gap-2 text-xs text-destructive rounded-lg bg-destructive/10 px-3 py-2">
-					<AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-					{importError}
+				<div className="flex items-center gap-2 text-xs text-destructive">
+					<AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {importError}
 				</div>
 			)}
 
 			{importResult && (
 				<div
-					className={`flex flex-col gap-1 text-xs rounded-lg px-3 py-2.5 ${importResult.err > 0 ? 'bg-warning/10 text-warning' : 'bg-profit/10 text-profit'}`}>
-					<div className="flex items-center gap-2 font-semibold">
-						<CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-						Imported {importResult.ok} records
-						{importResult.err > 0 ? ` (${importResult.err} failed)` : ' successfully'}
+					className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 ${importResult.err > 0 ? 'bg-warning/10 text-warning' : 'bg-profit/10 text-profit'}`}>
+					<CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+					<div>
+						<p>
+							Imported {importResult.ok} records
+							{importResult.err > 0
+								? `, ${importResult.err} failed`
+								: ' successfully'}
+							.
+						</p>
+						{importResult.reviews > 0 && (
+							<p className="text-warning mt-0.5">
+								{importResult.reviews} duplicate transaction
+								{importResult.reviews !== 1 ? 's' : ''} need review — see "Duplicate
+								Review" tab.
+							</p>
+						)}
 					</div>
-					{Object.entries(importResult.entities).map(([e, n]) => (
-						<span
-							key={e}
-							className="ml-5 text-[10px] opacity-80">
-							{n} {ENTITY_LABELS[e as EntityName] ?? e}
-						</span>
-					))}
 				</div>
 			)}
 
-			{/* Confirmation dialog */}
-			<Dialog
-				open={showConfirm}
-				onOpenChange={(o) => !o && setShowConfirm(false)}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Confirm Import</DialogTitle>
-					</DialogHeader>
-					<div className="flex flex-col gap-4 p-5 pt-2">
-						<div className="rounded-lg bg-muted/50 p-3 flex flex-col gap-1">
-							{pendingBreakdown.map(({ label, count }) => (
-								<div
-									key={label}
-									className="flex justify-between text-sm">
-									<span className="text-muted-foreground">{label}</span>
-									<span className="font-mono font-semibold">{count}</span>
-								</div>
-							))}
-						</div>
-						<p className="text-xs text-muted-foreground">
-							Account names in <code>accountId</code> fields will be matched to
-							existing accounts. If an account name doesn't exist, it will be created.
-							Records with existing IDs will be updated.
-						</p>
-						<div className="flex gap-2">
-							<Button
-								variant="outline"
-								className="flex-1"
-								onClick={() => setShowConfirm(false)}>
-								Cancel
-							</Button>
-							<Button
-								className="flex-1"
-								onClick={executeImport}>
-								Import
-							</Button>
-						</div>
-					</div>
-				</DialogContent>
-			</Dialog>
+			{/* Intra-file dup dialog */}
+			{step === 'intra_dup' && (
+				<IntraFileDupDialog
+					dups={intraDups}
+					onResolve={handleIntraResolved}
+				/>
+			)}
+
+			{/* Existing dup dialog */}
+			{step === 'existing_dup' && (
+				<ExistingDupDialog
+					dups={existingDups}
+					onResolve={handleExistingResolved}
+				/>
+			)}
 		</div>
 	);
 }
 
-// ── Main Settings view ────────────────────────────────────────────────────────
+// ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
 	const { state, connectFirebase } = useApp();
 	const [connected, setConnected] = useState(() => !!localStorage.getItem('ft_firebase_config'));
 	const [showQR, setShowQR] = useState(false);
 	const [qrData, setQrData] = useState('');
+	const pendingReviews = state.importReviews.filter((r) => r.status === 'pending').length;
 
 	const showQRModal = () => {
 		const cfg = localStorage.getItem('ft_firebase_config');
@@ -691,15 +899,51 @@ export function SettingsView() {
 		<div className="flex flex-col gap-4">
 			<h2 className="font-display text-xl font-bold">Settings</h2>
 
-			{/* Export / Import */}
-			<Card>
-				<CardHeader className="pb-2">
-					<CardTitle>📦 Export & Import</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<DataPortability />
-				</CardContent>
-			</Card>
+			<Tabs defaultValue="import">
+				<TabsList className="w-full">
+					<TabsTrigger
+						value="import"
+						className="flex-1">
+						Import / Export
+					</TabsTrigger>
+					<TabsTrigger
+						value="merge"
+						className="flex-1">
+						Merge Accounts
+					</TabsTrigger>
+					<TabsTrigger
+						value="review"
+						className="flex-1 relative">
+						Dup Review
+						{pendingReviews > 0 && (
+							<span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-warning text-[9px] font-bold text-background">
+								{pendingReviews}
+							</span>
+						)}
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent value="import">
+					<Card>
+						<CardContent className="pt-4">
+							<DataPortability />
+						</CardContent>
+					</Card>
+				</TabsContent>
+				<TabsContent value="merge">
+					<Card>
+						<CardContent className="pt-4">
+							<MergeAccountsSection />
+						</CardContent>
+					</Card>
+				</TabsContent>
+				<TabsContent value="review">
+					<Card>
+						<CardContent className="pt-4">
+							<TxDuplicateReview />
+						</CardContent>
+					</Card>
+				</TabsContent>
+			</Tabs>
 
 			{/* Firebase */}
 			<Card>
@@ -713,8 +957,7 @@ export function SettingsView() {
 					{connected ? (
 						<div className="flex flex-col gap-3">
 							<p className="text-sm text-muted-foreground">
-								Real-time sync is active. Changes propagate to all connected devices
-								instantly.
+								Real-time sync active across all devices.
 							</p>
 							<div className="flex gap-2">
 								<Button
@@ -745,7 +988,6 @@ export function SettingsView() {
 				</CardContent>
 			</Card>
 
-			{/* QR Modal */}
 			<Dialog
 				open={showQR}
 				onOpenChange={setShowQR}>
@@ -754,26 +996,19 @@ export function SettingsView() {
 						<DialogTitle>Scan on Your Phone</DialogTitle>
 					</DialogHeader>
 					<div className="flex flex-col items-center gap-4 p-5">
-						<div className="rounded-2xl bg-white p-4 shadow-lg shadow-primary/20">
+						<div className="rounded-2xl bg-white p-4">
 							<QRCanvas
 								data={qrData}
 								size={220}
 							/>
 						</div>
-						<div className="text-sm text-muted-foreground text-center space-y-2">
-							<p>
-								Scan this QR to open FinTracker on your phone with Firebase already
-								connected.
-							</p>
-							<p className="text-warning font-semibold">
-								⚠ Contains your Firebase config. Only scan on your own devices.
-							</p>
-						</div>
+						<p className="text-sm text-warning font-semibold text-center">
+							⚠ Contains your Firebase config. Only scan on your own devices.
+						</p>
 					</div>
 				</DialogContent>
 			</Dialog>
 
-			{/* PWA */}
 			<Card>
 				<CardHeader className="pb-2">
 					<CardTitle>📱 Install as App</CardTitle>
@@ -798,29 +1033,28 @@ export function SettingsView() {
 				</CardContent>
 			</Card>
 
-			{/* Data summary */}
 			<Card>
 				<CardHeader className="pb-2">
 					<CardTitle>📊 Data Summary</CardTitle>
 				</CardHeader>
 				<CardContent>
-					<div className="grid grid-cols-2 gap-2 text-sm">
-						{[
-							['Accounts', state.accounts.length],
-							['Expenses', state.expenses.length],
-							['Incomes', state.incomes.length],
-							['Transfers', state.transfers.length],
-							['Recurring Payments', state.recurringPayments.length],
-							['Recurring Incomes', state.recurringIncomes.length],
-							['Loans', state.loans.length],
-							['Credit Cards', state.creditCards.length],
-							['Receivables', state.receivables.length],
-							['Investments', state.investments.length],
-							['Goals', state.goals.length],
-							['Reconciliations', state.reconciliations.length],
-						].map(([label, count]) => (
+					<div className="grid grid-cols-2 gap-2">
+						{(
+							[
+								['Accounts', state.accounts.length],
+								['Account Heads', state.accountHeads.length],
+								['Expenses', state.expenses.length],
+								['Incomes', state.incomes.length],
+								['Transfers', state.transfers.length],
+								['Loans', state.loans.length],
+								['Credit Cards', state.creditCards.length],
+								['Investments', state.investments.length],
+								['Goals', state.goals.length],
+								['Import Reviews', state.importReviews.length],
+							] as [string, number][]
+						).map(([label, count]) => (
 							<div
-								key={label as string}
+								key={label}
 								className="flex justify-between rounded-lg bg-muted/40 px-3 py-2">
 								<span className="text-muted-foreground text-xs">{label}</span>
 								<span className="font-mono font-semibold text-xs">{count}</span>
@@ -829,23 +1063,138 @@ export function SettingsView() {
 					</div>
 				</CardContent>
 			</Card>
+		</div>
+	);
+}
 
-			{/* Architecture note */}
-			<Card>
-				<CardHeader className="pb-2">
-					<CardTitle>💾 Data & Storage</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<p className="text-sm text-muted-foreground mb-3">
-						All data is stored in{' '}
-						<span className="text-cyan font-semibold">IndexedDB</span> on your device
-						first. The app works fully offline. Firebase is an optional sync layer.
-					</p>
-					<code className="text-xs text-cyan bg-muted rounded-md px-2 py-1 block font-mono">
-						IDB → Repository → SyncQueue → Firebase
-					</code>
-				</CardContent>
-			</Card>
+// ── Account Heads Management ──────────────────────────────────────────────────
+export function AccountHeadsView() {
+	const { state, save, remove } = useApp();
+	const [newName, setNewName] = useState('');
+	const [newType, setNewType] = useState('expense');
+	const [newParent, setNewParent] = useState('head_expense');
+	const [adding, setAdding] = useState(false);
+
+	const roots = state.accountHeads.filter((h) => h.parentId === null);
+	const children = (pid: string) => state.accountHeads.filter((h) => h.parentId === pid);
+
+	const addHead = async () => {
+		if (!newName.trim()) return;
+		const now = new Date().toISOString();
+		const parent = state.accountHeads.find((h) => h.id === newParent);
+		await save('accountHeads', {
+			name: newName.trim(),
+			type: parent?.type ?? newType,
+			parentId: newParent || null,
+			isSystem: false,
+			createdAt: now,
+			updatedAt: now,
+		});
+		setNewName('');
+		setAdding(false);
+	};
+
+	const canDelete = (h: import('@/types').AccountHead) =>
+		!h.isSystem &&
+		children(h.id).length === 0 &&
+		!state.expenses.some((e) => e.accountHeadId === h.id) &&
+		!state.incomes.some((i) => i.accountHeadId === h.id);
+
+	return (
+		<div className="flex flex-col gap-3">
+			<p className="text-xs text-muted-foreground">
+				Five root heads are fixed. Add sub-heads under any root.
+			</p>
+			{roots.map((root) => (
+				<div
+					key={root.id}
+					className="rounded-xl border border-border overflow-hidden">
+					<div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+						<div className="flex items-center gap-2">
+							<span className="text-xs font-bold uppercase tracking-wide">
+								{root.name}
+							</span>
+							<Badge
+								variant="muted"
+								className="text-[9px]">
+								{root.type}
+							</Badge>
+						</div>
+						<Badge
+							variant="secondary"
+							className="text-[9px]">
+							System
+						</Badge>
+					</div>
+					{children(root.id).map((child) => (
+						<div
+							key={child.id}
+							className="flex items-center justify-between px-3 py-2 border-t border-border/50">
+							<span className="text-sm pl-3">└ {child.name}</span>
+							<Button
+								size="icon-sm"
+								variant="destructive"
+								disabled={!canDelete(child)}
+								onClick={() => remove('accountHeads', child.id)}
+								title={canDelete(child) ? 'Delete' : 'In use or has children'}>
+								<Trash2 className="h-3 w-3" />
+							</Button>
+						</div>
+					))}
+				</div>
+			))}
+
+			{!adding ? (
+				<Button
+					variant="outline"
+					onClick={() => setAdding(true)}
+					className="gap-2">
+					<Plus className="h-4 w-4" /> Add account head
+				</Button>
+			) : (
+				<div className="rounded-xl border border-border p-3 flex flex-col gap-2">
+					<FormField label="Name">
+						<Input
+							value={newName}
+							onChange={(e) => setNewName(e.target.value)}
+							placeholder="e.g. Rent, Salary, GST"
+							autoFocus
+						/>
+					</FormField>
+					<FormField label="Under (parent)">
+						<Select
+							value={newParent}
+							onValueChange={setNewParent}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{roots.map((r) => (
+									<SelectItem
+										key={r.id}
+										value={r.id}>
+										{r.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</FormField>
+					<div className="flex gap-2">
+						<Button
+							variant="outline"
+							className="flex-1"
+							onClick={() => setAdding(false)}>
+							Cancel
+						</Button>
+						<Button
+							className="flex-1"
+							onClick={addHead}
+							disabled={!newName.trim()}>
+							Add
+						</Button>
+					</div>
+				</div>
+			)}
 		</div>
 	);
 }

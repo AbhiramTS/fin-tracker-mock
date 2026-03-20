@@ -14,7 +14,15 @@ import {
 	ResponsiveContainer,
 } from 'recharts';
 import { fmt, fmtShort } from '@/utils/format';
-import type { ForecastDay, Expense, Investment, Account, Loan, CreditCard } from '@/types';
+import type {
+	ForecastDay,
+	Expense,
+	Investment,
+	Account,
+	Loan,
+	CreditCard,
+	ComputedBalances,
+} from '@/types';
 
 const CHART_COLORS = [
 	'#00d4f5',
@@ -208,15 +216,17 @@ export function NetWorthChart({
 	investments,
 	loans,
 	creditCards,
+	computedBalances = {},
 	height = 110,
 }: {
 	accounts: Account[];
 	investments: Investment[];
 	loans: Loan[];
 	creditCards: CreditCard[];
+	computedBalances?: ComputedBalances;
 	height?: number;
 }) {
-	const bal = accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
+	const bal = accounts.reduce((s, a) => s + (computedBalances[a.id] ?? a.openingBalance ?? 0), 0);
 	const inv = investments.reduce((s, i) => s + (i.value ?? 0), 0);
 	const debt =
 		loans.reduce(

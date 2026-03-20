@@ -280,6 +280,7 @@ export function DashboardView() {
 							investments={state.investments}
 							loans={state.loans}
 							creditCards={state.creditCards}
+							computedBalances={state.computedBalances}
 							height={110}
 						/>
 					</CardContent>
@@ -400,7 +401,7 @@ export function DashboardView() {
 										</Badge>
 									</div>
 									<span className="font-mono text-sm font-bold">
-										{fmt(a.balance)}
+										{fmt(state.computedBalances[a.id] ?? a.openingBalance ?? 0)}
 									</span>
 								</div>
 							</div>

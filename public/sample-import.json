@@ -1,0 +1,107 @@
+{
+	"version": "4.0",
+	"description": "FinTracker sample import file. Remove/replace records with your own data. Fields marked with * are required. Account names are used as identifiers — they must match exactly across all entities.",
+	"accounts": [
+		{
+			"name": "HDFC Savings",
+			"type": "bank",
+			"openingBalance": 25000,
+			"color": "#00d4f5",
+			"currency": "INR",
+			"notes": "Primary salary account"
+		},
+		{
+			"name": "ICICI Savings",
+			"type": "bank",
+			"openingBalance": 10000,
+			"color": "#00e5a0"
+		},
+		{
+			"name": "Cash Wallet",
+			"type": "cash",
+			"openingBalance": 2000
+		}
+	],
+	"incomes": [
+		{
+			"name": "Salary — March",
+			"amount": 85000,
+			"date": "2026-03-01",
+			"account": "HDFC Savings",
+			"category": "Salary",
+			"notes": "Monthly salary credit"
+		},
+		{
+			"name": "Freelance project — XYZ Corp",
+			"amount": 15000,
+			"date": "2026-03-10",
+			"account": "ICICI Savings",
+			"category": "Freelance"
+		}
+	],
+	"expenses": [
+		{
+			"name": "Electricity bill",
+			"amount": 1850,
+			"date": "2026-03-05",
+			"account": "HDFC Savings",
+			"category": "Bills"
+		},
+		{
+			"name": "Grocery — DMart",
+			"amount": 3200,
+			"date": "2026-03-08",
+			"account": "HDFC Savings",
+			"category": "Food"
+		},
+		{
+			"name": "Netflix subscription",
+			"amount": 649,
+			"date": "2026-03-10",
+			"account": "HDFC Savings",
+			"category": "Subscriptions"
+		},
+		{
+			"name": "Auto to office",
+			"amount": 120,
+			"date": "2026-03-12",
+			"account": "Cash Wallet",
+			"category": "Transport"
+		}
+	],
+	"loans": [
+		{
+			"name": "Home Loan — SBI",
+			"principalAmount": 4500000,
+			"interestRate": 8.5,
+			"tenureMonths": 240,
+			"startDate": "2023-04-01",
+			"paidMonths": 35,
+			"account": "HDFC Savings",
+			"loanType": "normal",
+			"notes": "20-year home loan. EMI auto-calculated if omitted."
+		},
+		{
+			"name": "Car Loan — ICICI",
+			"principalAmount": 600000,
+			"interestRate": 9.0,
+			"tenureMonths": 60,
+			"startDate": "2024-01-01",
+			"paidMonths": 14,
+			"account": "ICICI Savings",
+			"emi": 12450,
+			"notes": "Override EMI with exact bank figure"
+		}
+	],
+	"creditCards": [
+		{
+			"name": "HDFC Regalia",
+			"limit": 200000,
+			"outstanding": 18500,
+			"statementDay": 15,
+			"billingCycleDays": 30,
+			"gracePeriodDays": 20,
+			"notes": "Rewards card. Statement defaults: day 1, 30d cycle, 20d grace if omitted."
+		}
+	]
+}

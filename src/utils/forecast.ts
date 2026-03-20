@@ -4,9 +4,10 @@ import type { AppState, ForecastResult, ForecastDay, ForecastEvent } from '@/typ
 
 export function buildForecast(data: Partial<AppState>, horizonDays = 60): ForecastResult {
 	const today = new Date();
+	const balances = data.computedBalances ?? {};
 	const totalBalance = (data.accounts ?? [])
 		.filter((a) => a.type !== 'credit_card' && a.type !== 'loan')
-		.reduce((s, a) => s + (a.balance ?? 0), 0);
+		.reduce((s, a) => s + (balances[a.id] ?? a.openingBalance ?? 0), 0);
 
 	const events: ForecastEvent[] = [];
 

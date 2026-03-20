@@ -11,19 +11,22 @@ import { openDB } from '@/db/indexedDB';
 import { Repos } from '@/repositories';
 import { registerSyncAdapter } from '@/sync/syncQueue';
 import { FirebaseSyncAdapter } from '@/sync/FirebaseSyncAdapter';
+import { computeBalances } from '@/workers/balanceWorker';
 import type {
 	AppState,
 	AppAction,
 	EntityName,
 	BaseRecord,
 	FirebaseConfig,
-	Account,
-	Expense,
-	Income,
+	AccountHead,
+	ComputedBalances,
 } from '@/types';
+import { ROOT_HEADS } from '@/types';
 
+// ─────────────────────────────────────────────────────────────────────────────
 const INITIAL: AppState = {
 	accounts: [],
+	accountHeads: [],
 	expenses: [],
 	incomes: [],
 	transfers: [],
@@ -37,10 +40,17 @@ const INITIAL: AppState = {
 	reconciliations: [],
 	goals: [],
 	paymentOccurrences: [],
+	importReviews: [],
+	computedBalances: {},
 	loading: true,
 	error: null,
 	syncStatus: 'idle',
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Entities that affect account balance calculations
+// ─────────────────────────────────────────────────────────────────────────────
+const BALANCE_ENTITIES = new Set<EntityName>(['accounts', 'expenses', 'incomes', 'transfers']);
 
 function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -50,9 +60,11 @@ function reducer(state: AppState, action: AppAction): AppState {
 			return { ...state, error: action.payload, loading: false };
 		case 'SET_SYNC':
 			return { ...state, syncStatus: action.payload };
+		case 'SET_BALANCES':
+			return { ...state, computedBalances: action.payload };
 		case 'UPSERT': {
 			const { entity, record } = action.payload;
-			const list = (state[entity] as BaseRecord[]) ?? [];
+			const list = (state[entity as keyof AppState] as BaseRecord[]) ?? [];
 			const idx = list.findIndex((r) => r.id === record.id);
 			return {
 				...state,
@@ -66,7 +78,7 @@ function reducer(state: AppState, action: AppAction): AppState {
 			return {
 				...state,
 				[action.payload.entity]: (
-					(state[action.payload.entity] as BaseRecord[]) ?? []
+					(state[action.payload.entity as keyof AppState] as BaseRecord[]) ?? []
 				).filter((r) => r.id !== action.payload.id),
 			};
 		case 'RELOAD_ENTITY':
@@ -76,24 +88,90 @@ function reducer(state: AppState, action: AppAction): AppState {
 	}
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
 interface AppContextValue {
 	state: AppState;
 	save: (entity: EntityName, record: Record<string, unknown>) => Promise<BaseRecord>;
-	saveRaw: (entity: EntityName, record: Record<string, unknown>) => Promise<BaseRecord>; // import only — no balance side-effects
 	remove: (entity: EntityName, id: string) => Promise<void>;
 	connectFirebase: (config: FirebaseConfig) => Promise<void>;
 }
 
 const AppCtx = createContext<AppContextValue | null>(null);
 
+// ─────────────────────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
 	const [state, dispatch] = useReducer(reducer, INITIAL);
-
-	// Always-current state so save/remove don't go stale inside useCallback
 	const stateRef = useRef(state);
+	const workerRef = useRef<Worker | null>(null);
+	const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	useEffect(() => {
 		stateRef.current = state;
 	}, [state]);
+
+	// ── Balance worker setup ──────────────────────────────────────────────────
+	useEffect(() => {
+		try {
+			const w = new Worker(new URL('../workers/balanceWorker.ts', import.meta.url), {
+				type: 'module',
+			});
+			w.onmessage = (e: MessageEvent<ComputedBalances>) => {
+				if (!e.data.error) dispatch({ type: 'SET_BALANCES', payload: e.data });
+			};
+			workerRef.current = w;
+		} catch {
+			workerRef.current = null;
+		}
+		return () => {
+			workerRef.current?.terminate();
+			if (debounceRef.current) clearTimeout(debounceRef.current);
+		};
+	}, []);
+
+	// ── Trigger balance recalculation (debounced 300 ms) ──────────────────────
+	// Reads from stateRef inside the timer so it always uses the latest data,
+	// not a stale closure capture from when the effect first scheduled the timer.
+	const triggerBalance = useCallback(() => {
+		if (debounceRef.current) clearTimeout(debounceRef.current);
+		debounceRef.current = setTimeout(() => {
+			const s = stateRef.current;
+			if (s.loading) return;
+			const input = {
+				accounts: s.accounts,
+				expenses: s.expenses,
+				incomes: s.incomes,
+				transfers: s.transfers,
+			};
+			if (workerRef.current) {
+				workerRef.current.postMessage(input);
+			} else {
+				const result = computeBalances(input);
+				dispatch({ type: 'SET_BALANCES', payload: result });
+			}
+		}, 300);
+	}, []); // stable — no deps needed; reads latest state via stateRef
+
+	// Schedule a recalculation whenever a balance-affecting entity changes.
+	// The debounce ensures a burst of rapid saves (e.g. bulk import) results
+	// in exactly one computation 300 ms after the last change settles.
+	useEffect(() => {
+		if (!state.loading) triggerBalance();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [state.accounts, state.expenses, state.incomes, state.transfers, state.loading]);
+
+	// ── Seed system account heads if they don't exist ─────────────────────────
+	const seedAccountHeads = useCallback(async (existing: AccountHead[]) => {
+		const existingIds = new Set(existing.map((h) => h.id));
+		const now = new Date().toISOString();
+		for (const head of ROOT_HEADS) {
+			if (!existingIds.has(head.id)) {
+				const record: AccountHead = { ...head, createdAt: now, updatedAt: now };
+				await Repos.accountHeads.save(
+					record as Parameters<typeof Repos.accountHeads.save>[0]
+				);
+				dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record } });
+			}
+		}
+	}, []);
 
 	const reloadEntity = useCallback(async (entity: string) => {
 		const repo = Repos[entity as EntityName];
@@ -102,6 +180,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		dispatch({ type: 'RELOAD_ENTITY', payload: { entity: entity as EntityName, records } });
 	}, []);
 
+	// ── Initial load ──────────────────────────────────────────────────────────
 	useEffect(() => {
 		(async () => {
 			try {
@@ -109,9 +188,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				const entries = await Promise.all(
 					Object.entries(Repos).map(async ([k, r]) => [k, await r.getAll()])
 				);
-				dispatch({ type: 'LOAD_ALL', payload: Object.fromEntries(entries) });
+				const payload = Object.fromEntries(entries) as Partial<AppState>;
+				dispatch({ type: 'LOAD_ALL', payload });
 
-				// Restore saved Firebase config
+				// Seed system heads after load
+				await seedAccountHeads((payload.accountHeads ?? []) as AccountHead[]);
+
+				// Firebase restore
 				const saved = localStorage.getItem('ft_firebase_config');
 				if (saved) {
 					const cfg = JSON.parse(saved) as FirebaseConfig;
@@ -120,7 +203,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					dispatch({ type: 'SET_SYNC', payload: 'firebase' });
 				}
 
-				// Handle ?fbc= QR param (mobile auto-connect)
 				const fbc = new URLSearchParams(window.location.search).get('fbc');
 				if (fbc && !saved) {
 					try {
@@ -131,99 +213,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
 						dispatch({ type: 'SET_SYNC', payload: 'firebase' });
 						window.history.replaceState({}, '', window.location.pathname);
 					} catch {
-						/* invalid fbc */
+						/* invalid */
 					}
 				}
 			} catch (err) {
 				dispatch({ type: 'SET_ERROR', payload: (err as Error).message });
 			}
 		})();
-	}, [reloadEntity]);
+	}, [reloadEntity, seedAccountHeads]);
 
-	// ── Balance reconciliation helper ───────────────────────────────────────────
-	// Applies `delta` to an account's balance and persists it atomically.
-	const adjustBalance = useCallback(async (accountId: string, delta: number) => {
-		if (!accountId || delta === 0) return;
-		const account = stateRef.current.accounts.find((a) => a.id === accountId) as
-			| Account
-			| undefined;
-		if (!account) return;
-		const updated = { ...account, balance: account.balance + delta };
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const saved = await Repos.accounts.save(updated as any);
-		dispatch({ type: 'UPSERT', payload: { entity: 'accounts', record: saved } });
-	}, []);
-
-	// ── Save ────────────────────────────────────────────────────────────────────
-	const save = useCallback(
-		async (entity: EntityName, record: Record<string, unknown>) => {
-			// Auto-update account balance when a transaction is created or edited.
-			// Expenses debit the account; incomes credit it.
-			if (entity === 'expenses' || entity === 'incomes') {
-				const isIncome = entity === 'incomes';
-				const newAmount = (record.amount as number) ?? 0;
-				const newAccId = record.accountId as string;
-				const existingId = record.id as string | undefined;
-
-				if (existingId) {
-					// EDIT: undo the old transaction then apply the new one
-					const list = isIncome
-						? (stateRef.current.incomes as Income[])
-						: (stateRef.current.expenses as Expense[]);
-					const old = list.find((r) => r.id === existingId);
-					if (old) {
-						// Reverse the old effect on the old account
-						await adjustBalance(old.accountId, isIncome ? -old.amount : old.amount);
-						// Apply the new effect on the (possibly different) new account
-						await adjustBalance(newAccId, isIncome ? newAmount : -newAmount);
-					}
-				} else {
-					// CREATE: apply the new transaction
-					await adjustBalance(newAccId, isIncome ? newAmount : -newAmount);
-				}
-			}
-
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const saved = await Repos[entity].save(record as any);
-			dispatch({ type: 'UPSERT', payload: { entity, record: saved } });
-			return saved;
-		},
-		[adjustBalance]
-	);
-
-	// ── Remove ──────────────────────────────────────────────────────────────────
-	const remove = useCallback(
-		async (entity: EntityName, id: string) => {
-			// Reverse the account balance effect when deleting a transaction
-			if (entity === 'expenses' || entity === 'incomes') {
-				const isIncome = entity === 'incomes';
-				const list = isIncome
-					? (stateRef.current.incomes as Income[])
-					: (stateRef.current.expenses as Expense[]);
-				const record = list.find((r) => r.id === id);
-				if (record) {
-					// Undo: income credited → debit back; expense debited → credit back
-					await adjustBalance(
-						record.accountId,
-						isIncome ? -record.amount : record.amount
-					);
-				}
-			}
-
-			await Repos[entity].delete(id);
-			dispatch({ type: 'REMOVE', payload: { entity, id } });
-		},
-		[adjustBalance]
-	);
-
-	// ── saveRaw — bypasses balance auto-adjustment ──────────────────────────────
-	// Use only for bulk import where account balances are imported separately
-	// and are already the ground truth.
-	const saveRaw = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
+	// ── Save ──────────────────────────────────────────────────────────────────
+	// Balance is now DERIVED — we never mutate account.balance directly.
+	// The worker recomputes automatically after every UPSERT to a balance entity.
+	const save = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const saved = await Repos[entity].save(record as any);
 		dispatch({ type: 'UPSERT', payload: { entity, record: saved } });
 		return saved;
+	}, []);
+
+	// ── Remove ────────────────────────────────────────────────────────────────
+	const remove = useCallback(async (entity: EntityName, id: string) => {
+		await Repos[entity].delete(id);
+		dispatch({ type: 'REMOVE', payload: { entity, id } });
 	}, []);
 
 	const connectFirebase = useCallback(
@@ -237,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	);
 
 	return (
-		<AppCtx.Provider value={{ state, save, saveRaw, remove, connectFirebase }}>
+		<AppCtx.Provider value={{ state, save, remove, connectFirebase }}>
 			{children}
 		</AppCtx.Provider>
 	);

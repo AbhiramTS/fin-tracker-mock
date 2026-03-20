@@ -643,6 +643,8 @@ export function AccountLedgerDialog({
 	onClose: () => void;
 }) {
 	const allRows = useAccountRows(account?.id ?? '');
+	const { state } = useApp();
+	const { computedBalances } = state;
 	if (!account) return null;
 
 	return (
@@ -666,7 +668,9 @@ export function AccountLedgerDialog({
 			subtitle={
 				<>
 					Balance:{' '}
-					<span className="font-mono font-bold text-cyan">{fmt(account.balance)}</span>
+					<span className="font-mono font-bold text-cyan">
+						{fmt(computedBalances[account.id] ?? account.openingBalance ?? 0)}
+					</span>
 				</>
 			}
 			allRows={allRows}

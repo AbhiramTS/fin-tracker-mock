@@ -37,7 +37,7 @@ export function IncomeView() {
 	} = useEditDelete<Income>({
 		entity: 'incomes',
 		FormComp: IncomeForm,
-		formProps: { accounts: state.accounts },
+		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
 		formTitle: 'Income',
 	});
 	const {
@@ -47,7 +47,7 @@ export function IncomeView() {
 	} = useEditDelete<RecurringIncome>({
 		entity: 'recurringIncomes',
 		FormComp: RecurringIncomeForm,
-		formProps: { accounts: state.accounts },
+		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
 		formTitle: 'Recurring Income',
 	});
 
@@ -196,6 +196,7 @@ export function IncomeView() {
 					</DialogHeader>
 					<IncomeForm
 						accounts={state.accounts}
+						accountHeads={state.accountHeads}
 						onSave={async (d) => {
 							await save('incomes', d);
 							setAddOneoff(false);

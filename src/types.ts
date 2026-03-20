@@ -1,7 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  types.ts  –  All domain types for FinTracker v4
-//  Aligns with BRD/PRD/FRD requirements including:
-//    double-entry ledger, transfers, receivables, reconciliation, goals
+//  types.ts  –  FinTracker v4  (double-entry rebuild)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BaseRecord {
@@ -10,27 +8,53 @@ export interface BaseRecord {
 	updatedAt: string;
 }
 
+// ── Chart of Accounts ─────────────────────────────────────────────────────────
+// Five root heads are fixed and cannot be deleted.
+// Users may create sub-heads under any root.
+
+export type RootAccountHeadType = 'asset' | 'liability' | 'income' | 'expense' | 'equity';
+
+export interface AccountHead extends BaseRecord {
+	name: string;
+	type: RootAccountHeadType;
+	parentId: string | null; // null = root head
+	isSystem: boolean; // true = built-in, cannot be deleted
+	notes?: string;
+}
+
+// Built-in root heads (seeded on first launch)
+export const ROOT_HEADS: Omit<AccountHead, 'createdAt' | 'updatedAt'>[] = [
+	{ id: 'head_asset', name: 'Assets', type: 'asset', parentId: null, isSystem: true },
+	{
+		id: 'head_liability',
+		name: 'Liabilities',
+		type: 'liability',
+		parentId: null,
+		isSystem: true,
+	},
+	{ id: 'head_income', name: 'Income', type: 'income', parentId: null, isSystem: true },
+	{ id: 'head_expense', name: 'Expenses', type: 'expense', parentId: null, isSystem: true },
+	{ id: 'head_equity', name: 'Equity', type: 'equity', parentId: null, isSystem: true },
+];
+
 // ── Accounts ──────────────────────────────────────────────────────────────────
-export type AccountType =
-	| 'bank' // standard bank account
-	| 'cash' // physical cash wallet
-	| 'credit_card' // credit card (liability)
-	| 'loan' // loan liability account
-	| 'investment' // investment/brokerage account
-	| 'receivable'; // money lent to others
+export type AccountType = 'bank' | 'cash' | 'credit_card' | 'loan' | 'investment' | 'receivable';
 
 export interface Account extends BaseRecord {
 	name: string;
 	type: AccountType;
-	balance: number; // current tracked balance (positive = asset, negative = liability)
+	openingBalance: number; // balance before any recorded transactions
 	color?: string;
 	currency?: string; // default "INR"
 	notes?: string;
 	isArchived?: boolean;
+	accountHeadId?: string; // which AccountHead this account maps to
 }
 
 // ── Transactions ──────────────────────────────────────────────────────────────
-export type TransactionType = 'expense' | 'income' | 'transfer';
+// Every transaction MUST carry an accountHeadId (double-entry requirement).
+// A transaction records the economic event on ONE account.
+// Transfers create two transactions (debit + credit) linked by a transferId.
 
 export interface Expense extends BaseRecord {
 	name: string;
@@ -38,8 +62,11 @@ export interface Expense extends BaseRecord {
 	date: string;
 	category: string;
 	accountId: string;
+	accountHeadId: string; // REQUIRED — the expense account head
 	notes?: string;
 	tags?: string[];
+	isRecurring?: boolean;
+	recurringId?: string; // if converted to/from a recurring payment
 }
 
 export interface Income extends BaseRecord {
@@ -47,8 +74,11 @@ export interface Income extends BaseRecord {
 	amount: number;
 	date: string;
 	accountId: string;
+	accountHeadId: string; // REQUIRED — the income account head
 	category?: string;
 	notes?: string;
+	isRecurring?: boolean;
+	recurringId?: string;
 }
 
 export interface Transfer extends BaseRecord {
@@ -56,8 +86,14 @@ export interface Transfer extends BaseRecord {
 	toAccountId: string;
 	amount: number;
 	date: string;
+	fromAccountHeadId: string; // REQUIRED — account head for the debit side
+	toAccountHeadId: string; // REQUIRED — account head for the credit side
 	notes?: string;
 }
+
+// ── Computed balances (derived, not stored) ───────────────────────────────────
+// Keyed by accountId. Populated by the balance worker.
+export type ComputedBalances = Record<string, number>;
 
 // ── Recurring items ───────────────────────────────────────────────────────────
 export type Frequency = 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly';
@@ -66,7 +102,7 @@ export interface RecurringPayment extends BaseRecord {
 	name: string;
 	amount: number;
 	frequency: Frequency;
-	nextDate: string; // next due date — advanced automatically on mark-paid
+	nextDate: string;
 	category: string;
 	accountId: string;
 	notes?: string;
@@ -77,17 +113,13 @@ export interface RecurringIncome extends BaseRecord {
 	name: string;
 	amount: number;
 	frequency: Frequency;
-	nextDate: string; // next due date — advanced automatically on mark-paid
+	nextDate: string;
 	accountId: string;
 	notes?: string;
 	isActive: boolean;
 }
 
 // ── Payment occurrences ───────────────────────────────────────────────────────
-// One record per scheduled payment instance (recurring, EMI, CC bill).
-// Occurrences are generated month-by-month and stored so the user can
-// mark them paid/skipped. Until marked, they remain "unpaid".
-
 export type PaymentOccurrenceStatus = 'unpaid' | 'paid' | 'skipped';
 
 export type PaymentOccurrenceKind =
@@ -98,16 +130,15 @@ export type PaymentOccurrenceKind =
 
 export interface PaymentOccurrence extends BaseRecord {
 	kind: PaymentOccurrenceKind;
-	sourceId: string; // id of the RecurringPayment / Loan / CreditCard
-	dueDate: string; // yyyy-MM-dd
-	amount: number; // expected amount (positive)
+	sourceId: string;
+	dueDate: string;
+	amount: number;
 	status: PaymentOccurrenceStatus;
-	paidDate?: string; // yyyy-MM-dd, set when marked paid
-	paidAmount?: number; // actual amount paid (if different from amount)
-	transactionId?: string; // id of the Expense/Income created on mark-paid
+	paidDate?: string;
+	paidAmount?: number;
+	transactionId?: string;
 	notes?: string;
-	// Denormalised display fields (avoid lookups in hot render path)
-	label: string; // e.g. "Netflix", "Home Loan EMI #7"
+	label: string;
 	category?: string;
 	accountId?: string;
 }
@@ -117,18 +148,17 @@ export type LoanType = 'normal' | 'credit_card';
 
 export interface Loan extends BaseRecord {
 	name: string;
-	loanType: LoanType; // normal vs credit-card-linked (kept separate per FRD 4.4)
+	loanType: LoanType;
 	principalAmount: number;
-	interestRate: number; // annual % rate (pure interest, before tax)
+	interestRate: number;
 	tenureMonths: number;
 	startDate: string;
-	emi: number; // calculated or overridden (principal + interest, before tax)
+	emi: number;
 	paidMonths: number;
-	accountId: string; // bank account EMI is debited from
-	linkedCreditCardId?: string; // only for loanType "credit_card"
-	// Tax on interest component
-	taxRate?: number; // % tax levied on the interest portion (e.g. 18 for 18% GST)
-	taxIncludedInRate?: boolean; // true = interestRate already includes tax; false (default) = tax is on top
+	accountId: string;
+	linkedCreditCardId?: string;
+	taxRate?: number;
+	taxIncludedInRate?: boolean;
 	notes?: string;
 }
 
@@ -136,11 +166,11 @@ export interface AmortisationRow {
 	month: number;
 	date: string;
 	openingBalance: number;
-	emi: number; // base EMI (principal + interest, no tax)
+	emi: number;
 	principal: number;
 	interest: number;
-	tax: number; // tax on interest component for this period
-	totalPayable: number; // emi + tax — actual cash out for this period
+	tax: number;
+	totalPayable: number;
 	closingBalance: number;
 	isPaid: boolean;
 }
@@ -149,32 +179,25 @@ export interface AmortisationRow {
 export interface CreditCard extends BaseRecord {
 	name: string;
 	limit: number;
-	outstanding: number; // current statement outstanding (spend + CC-EMI principal)
-
-	// Billing cycle
-	statementDay: number; // day-of-month statement is generated (1–28)
-	billingCycleDays: number; // length of billing cycle in days (typically 30)
-	gracePeriodDays: number; // days after statement date to pay (typically 20–25)
-
-	// Computed / tracked
-	dueDate: string; // next payment due date (yyyy-MM-dd)
-	statementDate: string; // date of next/current statement (yyyy-MM-dd)
-
-	// Tax on interest/charges
-	taxRate?: number; // % tax on credit card interest charges (e.g. 18% GST)
-
+	outstanding: number;
+	statementDay: number;
+	billingCycleDays: number;
+	gracePeriodDays: number;
+	dueDate: string;
+	statementDate: string;
+	taxRate?: number;
 	notes?: string;
 }
 
-// ── Receivables (money lent) ──────────────────────────────────────────────────
+// ── Receivables ───────────────────────────────────────────────────────────────
 export interface Receivable extends BaseRecord {
-	personName: string; // who owes money
+	personName: string;
 	description?: string;
 	amountLent: number;
-	amountRepaid: number; // running total of repayments
+	amountRepaid: number;
 	dateLent: string;
 	expectedRepaymentDate?: string;
-	accountId: string; // account money was sent from
+	accountId: string;
 	isSettled: boolean;
 	notes?: string;
 }
@@ -200,8 +223,8 @@ export type InvestmentType =
 
 export interface Investment extends BaseRecord {
 	name: string;
-	value: number; // current market value
-	costBasis?: number; // purchase cost
+	value: number;
+	costBasis?: number;
 	type: InvestmentType;
 	accountId?: string;
 	notes?: string;
@@ -213,11 +236,11 @@ export type ReconciliationStatus = 'pending' | 'completed' | 'in_progress';
 export interface Reconciliation extends BaseRecord {
 	accountId: string;
 	reconciledDate: string;
-	trackedBalance: number; // what the app shows
-	actualBalance: number; // what the bank/statement shows
-	difference: number; // actualBalance - trackedBalance
+	trackedBalance: number;
+	actualBalance: number;
+	difference: number;
 	status: ReconciliationStatus;
-	adjustmentTransactionId?: string; // if adjustment was recorded
+	adjustmentTransactionId?: string;
 	notes?: string;
 }
 
@@ -235,27 +258,27 @@ export interface Goal extends BaseRecord {
 	name: string;
 	type: GoalType;
 	targetAmount: number;
-	currentAmount: number; // manually updated or linked account balance
+	currentAmount: number;
 	targetDate?: string;
 	monthlyContribution?: number;
 	linkedAccountId?: string;
 	status: GoalStatus;
 	notes?: string;
-	icon?: string; // emoji
+	icon?: string;
 }
 
-// ── Double-entry ledger (underlying model) ────────────────────────────────────
-export type LedgerAccountType = 'asset' | 'liability' | 'income' | 'expense' | 'equity';
+// ── Import review (pending duplicate decisions) ───────────────────────────────
+export type ImportReviewStatus = 'pending' | 'resolved';
+export type ImportReviewDecision = 'skip' | 'overwrite' | 'create_new';
 
-export interface LedgerEntry extends BaseRecord {
-	transactionId: string; // groups debit + credit pair
-	accountId: string;
-	amount: number; // always positive; direction from entryType
-	entryType: 'debit' | 'credit';
-	description: string;
-	date: string;
-	sourceType: 'expense' | 'income' | 'transfer' | 'loan' | 'adjustment' | 'goal';
-	sourceId: string;
+export interface ImportReview extends BaseRecord {
+	sessionId: string; // groups all reviews from one import run
+	entity: EntityName;
+	incoming: Record<string, unknown>; // the record from the import file
+	existing: Record<string, unknown>; // the matched existing record
+	status: ImportReviewStatus;
+	decision?: ImportReviewDecision;
+	resolvedAt?: string;
 }
 
 // ── Sync / queue ──────────────────────────────────────────────────────────────
@@ -278,6 +301,7 @@ export interface PushResult {
 // ── App state ─────────────────────────────────────────────────────────────────
 export type EntityName =
 	| 'accounts'
+	| 'accountHeads'
 	| 'expenses'
 	| 'incomes'
 	| 'transfers'
@@ -290,12 +314,14 @@ export type EntityName =
 	| 'investments'
 	| 'reconciliations'
 	| 'goals'
-	| 'paymentOccurrences';
+	| 'paymentOccurrences'
+	| 'importReviews';
 
 export type SyncStatus = 'idle' | 'firebase' | 'rest';
 
 export interface AppState {
 	accounts: Account[];
+	accountHeads: AccountHead[];
 	expenses: Expense[];
 	incomes: Income[];
 	transfers: Transfer[];
@@ -309,6 +335,8 @@ export interface AppState {
 	reconciliations: Reconciliation[];
 	goals: Goal[];
 	paymentOccurrences: PaymentOccurrence[];
+	importReviews: ImportReview[];
+	computedBalances: ComputedBalances; // derived by worker, not stored in IDB
 	loading: boolean;
 	error: string | null;
 	syncStatus: SyncStatus;
@@ -320,13 +348,14 @@ export type AppAction =
 	| { type: 'SET_SYNC'; payload: SyncStatus }
 	| { type: 'UPSERT'; payload: { entity: EntityName; record: BaseRecord } }
 	| { type: 'REMOVE'; payload: { entity: EntityName; id: string } }
-	| { type: 'RELOAD_ENTITY'; payload: { entity: EntityName; records: BaseRecord[] } };
+	| { type: 'RELOAD_ENTITY'; payload: { entity: EntityName; records: BaseRecord[] } }
+	| { type: 'SET_BALANCES'; payload: ComputedBalances };
 
 // ── Forecast types ────────────────────────────────────────────────────────────
 export interface ForecastEvent {
 	date: string;
 	label: string;
-	amount: number; // positive = inflow, negative = outflow
+	amount: number;
 	type: 'income' | 'payment' | 'emi' | 'credit' | 'goal_contribution';
 }
 
@@ -352,4 +381,5 @@ export interface FirebaseConfig {
 	storageBucket?: string;
 	messagingSenderId?: string;
 	appId: string;
+	databaseURL?: string;
 }

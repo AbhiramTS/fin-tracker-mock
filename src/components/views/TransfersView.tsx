@@ -12,7 +12,7 @@ export function TransfersView() {
 	const { startEdit, doRemove, EditDialog } = useEditDelete<Transfer>({
 		entity: 'transfers',
 		FormComp: TransferForm,
-		formProps: { accounts: state.accounts },
+		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
 		formTitle: 'Transfer',
 	});
 	const sorted = [...state.transfers].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
@@ -23,7 +23,7 @@ export function TransfersView() {
 			subtitle={`${state.transfers.length} transfers`}
 			entity="transfers"
 			FormComp={TransferForm}
-			formProps={{ accounts: state.accounts }}>
+			formProps={{ accounts: state.accounts, accountHeads: state.accountHeads }}>
 			{sorted.length === 0 ? (
 				<EmptyState
 					icon="🔄"

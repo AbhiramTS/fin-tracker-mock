@@ -14,7 +14,7 @@ import type { Account } from '@/types';
 
 export function AccountsView() {
 	const { state, save } = useApp();
-	const total = state.accounts.reduce((s, a) => s + (a.balance ?? 0), 0);
+	const total = Object.values(state.computedBalances).reduce((s, b) => s + b, 0);
 
 	const [reconId, setReconId] = useState<string | null>(null);
 	const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null);
@@ -32,7 +32,8 @@ export function AccountsView() {
 			title="Accounts"
 			subtitle={`Total: ${fmt(total)}`}
 			entity="accounts"
-			FormComp={AccountForm}>
+			FormComp={AccountForm}
+			formProps={{ accountHeads: state.accountHeads }}>
 			{state.accounts.length === 0 ? (
 				<EmptyState
 					icon="🏦"
@@ -62,7 +63,7 @@ export function AccountsView() {
 							</div>
 							<div className="flex items-center gap-2 ml-3">
 								<span className="font-mono font-bold text-cyan">
-									{fmt(a.balance)}
+									{fmt(state.computedBalances[a.id] ?? a.openingBalance ?? 0)}
 								</span>
 								<Button
 									size="icon-sm"
@@ -101,14 +102,24 @@ export function AccountsView() {
 					{recon && (
 						<ReconciliationForm
 							account={recon}
-							trackedBalance={recon.balance}
+							trackedBalance={state.computedBalances[recon.id] ?? 0}
 							onSave={async (d) => {
-								await save('reconciliations', d);
-								if (d.difference && d.difference !== 0)
-									await save('accounts', {
-										...recon,
-										balance: d.actualBalance ?? recon.balance,
+								// If there's a difference, create an adjustment income/expense entry
+								if (d.difference && d.difference !== 0) {
+									const adjEntity = d.difference > 0 ? 'incomes' : 'expenses';
+									const adj = await save(adjEntity, {
+										name: `Reconciliation adjustment — ${recon.name}`,
+										amount: Math.abs(d.difference),
+										date: d.reconciledDate,
+										accountId: recon.id,
+										accountHeadId:
+											d.difference > 0 ? 'head_income' : 'head_expense',
+										category: 'Reconciliation',
+										notes: d.notes ?? '',
 									});
+									d.adjustmentTransactionId = adj.id;
+								}
+								await save('reconciliations', d);
 								setReconId(null);
 							}}
 							onCancel={() => setReconId(null)}

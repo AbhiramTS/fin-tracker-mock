@@ -40,6 +40,7 @@ import type { PaymentOccurrence, Account } from '@/types';
 interface PayDialogProps {
 	occ: PaymentOccurrence | null;
 	accounts: Account[];
+	computedBalances: Record<string, number>;
 	onConfirm: (opts: {
 		paidDate: string;
 		paidAmount: number;
@@ -49,17 +50,16 @@ interface PayDialogProps {
 	onCancel: () => void;
 }
 
-function PayDialog({ occ, accounts, onConfirm, onCancel }: PayDialogProps) {
+function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: PayDialogProps) {
 	const isIncome = occ?.kind === 'recurring_income';
 
 	const [paidDate, setPaidDate] = useState(todayStr());
 	const [paidAmount, setPaidAmount] = useState('');
 	const [accountId, setAccountId] = useState('');
 	const [topUp, setTopUp] = useState(false);
-	const [topUpAmount, setTopUpAmount] = useState(''); // editable inline amount
+	const [topUpAmount, setTopUpAmount] = useState('');
 	const [saving, setSaving] = useState(false);
 
-	// Reset fields whenever a new occurrence is opened
 	useEffect(() => {
 		if (!occ) return;
 		setPaidDate(todayStr());
@@ -73,7 +73,7 @@ function PayDialog({ occ, accounts, onConfirm, onCancel }: PayDialogProps) {
 
 	const amount = parseFloat(paidAmount) || 0;
 	const account = accounts.find((a) => a.id === accountId);
-	const balance = account?.balance ?? 0;
+	const balance = computedBalances[accountId] ?? account?.openingBalance ?? 0;
 	const shortfall = !isIncome && amount > 0 && balance < amount;
 	const shortfallAmt = shortfall ? amount - balance : 0;
 	const topUpAmt = parseFloat(topUpAmount) || shortfallAmt;
@@ -185,8 +185,10 @@ function PayDialog({ occ, accounts, onConfirm, onCancel }: PayDialogProps) {
 											/>
 											{a.name}
 											<span
-												className={`font-mono text-xs ml-auto ${a.balance < 0 ? 'text-loss' : 'text-muted-foreground'}`}>
-												{fmt(a.balance)}
+												className={`font-mono text-xs ml-auto ${(computedBalances[a.id] ?? 0) < 0 ? 'text-loss' : 'text-muted-foreground'}`}>
+												{fmt(
+													computedBalances[a.id] ?? a.openingBalance ?? 0
+												)}
 											</span>
 										</span>
 									</SelectItem>
@@ -895,6 +897,7 @@ export function PaymentsView() {
 			<PayDialog
 				occ={payingOcc}
 				accounts={state.accounts}
+				computedBalances={state.computedBalances}
 				onConfirm={(opts) => confirmPaid(payingOcc!, opts)}
 				onCancel={() => setPayingOcc(null)}
 			/>

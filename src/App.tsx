@@ -39,7 +39,7 @@ import { SimulatorView } from '@/components/views/SimulatorView';
 import { AccountsView } from '@/components/views/AccountsView';
 import { ReconciliationView } from '@/components/views/ReconciliationView';
 import { LedgerView } from '@/components/views/LedgerView';
-import { SettingsView } from '@/components/views/SettingsView';
+import { SettingsView, AccountHeadsView } from '@/components/views/SettingsView';
 
 // ── Nav config ────────────────────────────────────────────────────────────────
 type TabId =
@@ -59,6 +59,7 @@ type TabId =
 	| 'accounts'
 	| 'reconciliation'
 	| 'ledger'
+	| 'accountheads'
 	| 'settings';
 
 interface NavItem {
@@ -88,6 +89,7 @@ const NAV: NavItem[] = [
 
 	{ id: 'goals', label: 'Goals', icon: Target, group: 'Planning' },
 	{ id: 'reconciliation', label: 'Reconciliation', icon: RefreshCw, group: 'Planning' },
+	{ id: 'accountheads', label: 'Account Heads', icon: BookOpen, group: 'Planning' },
 
 	{ id: 'settings', label: 'Settings', icon: Settings },
 ];
@@ -111,6 +113,7 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	simulator: SimulatorView,
 	accounts: AccountsView,
 	reconciliation: ReconciliationView,
+	accountheads: AccountHeadsView,
 	settings: SettingsView,
 };
 
