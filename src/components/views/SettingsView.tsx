@@ -886,6 +886,12 @@ function DataPortability() {
 const CLEAR_GROUPS: { label: string; description: string; icon: string; entities: EntityName[] }[] =
 	[
 		{
+			label: 'Account Heads',
+			description: 'Chart of accounts categories and hierarchy',
+			icon: '🗂️',
+			entities: ['accountHeads'],
+		},
+		{
 			label: 'Transactions',
 			description: 'All journal entries (expenses, income, transfers)',
 			icon: '🧾',
