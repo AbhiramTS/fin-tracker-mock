@@ -16,7 +16,7 @@ import {
 import { fmt, fmtShort } from '@/utils/format';
 import type {
 	ForecastDay,
-	Expense,
+	JournalEntry,
 	Investment,
 	Account,
 	Loan,
@@ -111,15 +111,17 @@ export function ForecastChart({
 	);
 }
 
+// expenses: JournalEntry[] filtered to type==="expense", with headName pre-computed as category
 export function SpendingDonut({
 	expenses,
 	height = 160,
 }: {
-	expenses: Expense[];
+	expenses: (JournalEntry & { category?: string })[];
 	height?: number;
 }) {
 	const totals = expenses.reduce<Record<string, number>>((a, e) => {
-		a[e.category] = (a[e.category] ?? 0) + (e.amount ?? 0);
+		const cat = e.category ?? e.description ?? 'Other';
+		a[cat] = (a[cat] ?? 0) + (e.amount ?? 0);
 		return a;
 	}, {});
 	const data = Object.entries(totals)
@@ -161,7 +163,7 @@ export function MonthlyBarsChart({
 	expenses,
 	height = 120,
 }: {
-	expenses: Expense[];
+	expenses: (JournalEntry & { category?: string })[];
 	height?: number;
 }) {
 	const months: Record<string, { label: string; v: number }> = {};

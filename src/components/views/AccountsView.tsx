@@ -104,17 +104,18 @@ export function AccountsView() {
 							account={recon}
 							trackedBalance={state.computedBalances[recon.id] ?? 0}
 							onSave={async (d) => {
-								// If there's a difference, create an adjustment income/expense entry
+								// Create a double-entry adjustment journal entry for the difference
 								if (d.difference && d.difference !== 0) {
-									const adjEntity = d.difference > 0 ? 'incomes' : 'expenses';
-									const adj = await save(adjEntity, {
-										name: `Reconciliation adjustment — ${recon.name}`,
+									// Positive difference: actual > tracked → credit equity, debit account (asset increases)
+									// Negative difference: actual < tracked → debit equity, credit account (asset decreases)
+									const isPositive = d.difference > 0;
+									const adj = await save('journalEntries', {
+										description: `Reconciliation adjustment — ${recon.name}`,
 										amount: Math.abs(d.difference),
 										date: d.reconciledDate,
-										accountId: recon.id,
-										accountHeadId:
-											d.difference > 0 ? 'head_income' : 'head_expense',
-										category: 'Reconciliation',
+										type: 'adjustment',
+										debitAccountHeadId: isPositive ? recon.id : 'head_equity',
+										creditAccountHeadId: isPositive ? 'head_equity' : recon.id,
 										notes: d.notes ?? '',
 									});
 									d.adjustmentTransactionId = adj.id;

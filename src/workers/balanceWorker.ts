@@ -1,20 +1,26 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //  balanceWorker.ts
-//  Runs in a Web Worker. Receives account + transaction data and returns
-//  a ComputedBalances map.  Posted from AppContext whenever transactions change.
+//  Computes per-account balance from journal entries using double-entry rules:
+//
+//   Asset / Expense accounts:   balance increases on DEBIT,  decreases on CREDIT
+//   Income / Liability accounts: balance increases on CREDIT, decreases on DEBIT
+//
+//  For balance sheet purposes we track the NET position of each account head
+//  that corresponds to a real account (bank, cash, credit card, loan):
+//    balance = openingBalance + Σ debits - Σ credits   (for asset accounts)
+//    balance = openingBalance + Σ credits - Σ debits   (for liability accounts)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Account, Expense, Income, Transfer, ComputedBalances } from '@/types';
+import type { Account, AccountHead, JournalEntry, ComputedBalances } from '@/types';
 
 export interface BalanceWorkerInput {
 	accounts: Account[];
-	expenses: Expense[];
-	incomes: Income[];
-	transfers: Transfer[];
+	accountHeads: AccountHead[];
+	journalEntries: JournalEntry[];
 }
 
 export function computeBalances(input: BalanceWorkerInput): ComputedBalances {
-	const { accounts, expenses, incomes, transfers } = input;
+	const { accounts, accountHeads, journalEntries } = input;
 	const balances: ComputedBalances = {};
 
 	// Seed with opening balances
@@ -22,39 +28,56 @@ export function computeBalances(input: BalanceWorkerInput): ComputedBalances {
 		balances[acc.id] = acc.openingBalance ?? 0;
 	}
 
-	// Income → credit the account
-	for (const inc of incomes) {
-		if (balances[inc.accountId] !== undefined) {
-			balances[inc.accountId] += inc.amount;
+	// Build a set of account ids that map to real accounts
+	const accountIds = new Set(accounts.map((a) => a.id));
+
+	// Find the root type for an account head
+	const headMap = new Map(accountHeads.map((h) => [h.id, h]));
+	function getRootType(headId: string): string | null {
+		let h = headMap.get(headId);
+		while (h) {
+			if (h.parentId === null) return h.type;
+			h = headMap.get(h.parentId ?? '');
 		}
+		return null;
 	}
 
-	// Expense → debit the account
-	for (const exp of expenses) {
-		if (balances[exp.accountId] !== undefined) {
-			balances[exp.accountId] -= exp.amount;
-		}
-	}
+	for (const entry of journalEntries) {
+		const { debitAccountHeadId: debit, creditAccountHeadId: credit, amount } = entry;
 
-	// Transfer → debit from, credit to
-	for (const tr of transfers) {
-		if (balances[tr.fromAccountId] !== undefined) {
-			balances[tr.fromAccountId] -= tr.amount;
+		// Apply to debit side if it maps to a real account
+		if (accountIds.has(debit)) {
+			const rootType = getRootType(debit);
+			// Asset/Expense: debit increases balance
+			// Liability/Income/Equity: debit decreases balance
+			if (rootType === 'asset' || rootType === 'expense') {
+				balances[debit] = (balances[debit] ?? 0) + amount;
+			} else {
+				balances[debit] = (balances[debit] ?? 0) - amount;
+			}
 		}
-		if (balances[tr.toAccountId] !== undefined) {
-			balances[tr.toAccountId] += tr.amount;
+
+		// Apply to credit side if it maps to a real account
+		if (accountIds.has(credit)) {
+			const rootType = getRootType(credit);
+			// Asset/Expense: credit decreases balance
+			// Liability/Income/Equity: credit increases balance
+			if (rootType === 'asset' || rootType === 'expense') {
+				balances[credit] = (balances[credit] ?? 0) - amount;
+			} else {
+				balances[credit] = (balances[credit] ?? 0) + amount;
+			}
 		}
 	}
 
 	return balances;
 }
 
-// Worker message handler — only active when running inside a Worker context
+// Worker message handler
 if (typeof self !== 'undefined' && typeof (self as unknown as Worker).postMessage === 'function') {
 	self.onmessage = (e: MessageEvent<BalanceWorkerInput>) => {
 		try {
-			const result = computeBalances(e.data);
-			(self as unknown as Worker).postMessage(result);
+			(self as unknown as Worker).postMessage(computeBalances(e.data));
 		} catch (err) {
 			(self as unknown as Worker).postMessage({ error: String(err) });
 		}

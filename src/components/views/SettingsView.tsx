@@ -175,11 +175,10 @@ function MergeAccountsSection() {
 		setMerging(true);
 		try {
 			// Re-point all transactions from deleteId to keepId
+			// For journalEntries we need to re-point both debit and credit sides
 			const TRANSACTION_ENTITIES: { entity: EntityName; field: string }[] = [
-				{ entity: 'expenses', field: 'accountId' },
-				{ entity: 'incomes', field: 'accountId' },
-				{ entity: 'transfers', field: 'fromAccountId' },
-				{ entity: 'transfers', field: 'toAccountId' },
+				{ entity: 'journalEntries', field: 'debitAccountHeadId' },
+				{ entity: 'journalEntries', field: 'creditAccountHeadId' },
 				{ entity: 'recurringPayments', field: 'accountId' },
 				{ entity: 'recurringIncomes', field: 'accountId' },
 				{ entity: 'loans', field: 'accountId' },
@@ -347,7 +346,11 @@ function TxDuplicateReview() {
 						className="rounded-xl border border-warning/30 bg-warning/5 overflow-hidden">
 						<div className="px-3 py-2.5 border-b border-warning/20">
 							<p className="text-xs font-semibold text-warning">
-								Duplicate {review.entity === 'expenses' ? 'Expense' : 'Income'}
+								Duplicate{' '}
+								{review.entity === 'journalEntries'
+									? ((review.incoming as Record<string, string>).type ??
+										'Journal Entry')
+									: review.entity}
 							</p>
 							<p className="text-sm font-bold mt-0.5">{String(inc.name)}</p>
 							<p className="text-xs text-muted-foreground">
@@ -540,9 +543,7 @@ function ExistingDupDialog({
 const EXPORT_ENTITIES: EntityName[] = [
 	'accounts',
 	'accountHeads',
-	'expenses',
-	'incomes',
-	'transfers',
+	'journalEntries',
 	'recurringPayments',
 	'recurringIncomes',
 	'loans',
@@ -756,11 +757,8 @@ function DataPortability() {
 				...plan.cleanCreditCards.map(
 					(r) => ['creditCards', r] as [EntityName, Record<string, unknown>]
 				),
-				...plan.cleanExpenses.map(
-					(r) => ['expenses', r] as [EntityName, Record<string, unknown>]
-				),
-				...plan.cleanIncomes.map(
-					(r) => ['incomes', r] as [EntityName, Record<string, unknown>]
+				...plan.cleanJournalEntries.map(
+					(r) => ['journalEntries', r] as [EntityName, Record<string, unknown>]
 				),
 			];
 
@@ -881,9 +879,9 @@ const CLEAR_GROUPS: { label: string; description: string; icon: string; entities
 	[
 		{
 			label: 'Transactions',
-			description: 'Expenses, incomes, transfers',
+			description: 'All journal entries (expenses, income, transfers)',
 			icon: '🧾',
-			entities: ['expenses', 'incomes', 'transfers'],
+			entities: ['journalEntries'],
 		},
 		{
 			label: 'Accounts',
@@ -1120,7 +1118,7 @@ function ClearDataSection() {
 					setConfirmText('');
 					setShowConfirm(true);
 				}}
-				className="w-full gap-2">
+				className="w-full h-auto items-center justify-center gap-2 whitespace-normal py-2">
 				<Trash2 className="h-4 w-4" />
 				Clear {selected.size > 0 ? selectedGroups.join(', ') : 'selected data'}
 			</Button>
@@ -1477,9 +1475,20 @@ export function SettingsView() {
 							[
 								['Accounts', state.accounts.length],
 								['Account Heads', state.accountHeads.length],
-								['Expenses', state.expenses.length],
-								['Incomes', state.incomes.length],
-								['Transfers', state.transfers.length],
+								['Journal Entries', state.journalEntries.length],
+								[
+									'Expenses',
+									state.journalEntries.filter((e) => e.type === 'expense').length,
+								],
+								[
+									'Income',
+									state.journalEntries.filter((e) => e.type === 'income').length,
+								],
+								[
+									'Transfers',
+									state.journalEntries.filter((e) => e.type === 'transfer')
+										.length,
+								],
 								['Loans', state.loans.length],
 								['Credit Cards', state.creditCards.length],
 								['Investments', state.investments.length],
@@ -1530,9 +1539,11 @@ export function AccountHeadsView() {
 
 	const canDelete = (h: import('@/types').AccountHead) =>
 		!h.isSystem &&
+		!h.isAccount &&
 		children(h.id).length === 0 &&
-		!state.expenses.some((e) => e.accountHeadId === h.id) &&
-		!state.incomes.some((i) => i.accountHeadId === h.id);
+		!state.journalEntries.some(
+			(e) => e.debitAccountHeadId === h.id || e.creditAccountHeadId === h.id
+		);
 
 	return (
 		<div className="flex flex-col gap-3">

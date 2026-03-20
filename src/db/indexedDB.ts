@@ -1,5 +1,5 @@
 const DB_NAME = 'fintracker_v4';
-const DB_VERSION = 3; // v3: added accountHeads, importReviews; cleared expenses/incomes/transfers
+const DB_VERSION = 4; // v4: journalEntries replaces expenses/incomes/transfers
 
 interface StoreDef {
 	keyPath: string;
@@ -8,10 +8,11 @@ interface StoreDef {
 
 export const STORE_DEFS: Record<string, StoreDef> = {
 	accounts: { keyPath: 'id', indexes: [] },
-	accountHeads: { keyPath: 'id', indexes: ['type', 'parentId'] },
-	expenses: { keyPath: 'id', indexes: ['date', 'accountId', 'category', 'accountHeadId'] },
-	incomes: { keyPath: 'id', indexes: ['date', 'accountId', 'accountHeadId'] },
-	transfers: { keyPath: 'id', indexes: ['date', 'fromAccountId', 'toAccountId'] },
+	accountHeads: { keyPath: 'id', indexes: ['type', 'parentId', 'isAccount'] },
+	journalEntries: {
+		keyPath: 'id',
+		indexes: ['date', 'type', 'debitAccountHeadId', 'creditAccountHeadId'],
+	},
 	recurringPayments: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	recurringIncomes: { keyPath: 'id', indexes: ['nextDate', 'accountId'] },
 	loans: { keyPath: 'id', indexes: ['accountId', 'loanType'] },
@@ -36,8 +37,9 @@ export function openDB(): Promise<IDBDatabase> {
 		req.onupgradeneeded = (e) => {
 			const db = (e.target as IDBOpenDBRequest).result;
 			const oldVer = e.oldVersion;
+			const tx = (e.target as IDBOpenDBRequest).transaction!;
 
-			// Create any stores that don't exist yet
+			// Create any stores not yet present
 			for (const [name, cfg] of Object.entries(STORE_DEFS)) {
 				if (!db.objectStoreNames.contains(name)) {
 					const s = db.createObjectStore(name, { keyPath: cfg.keyPath });
@@ -45,15 +47,15 @@ export function openDB(): Promise<IDBDatabase> {
 				}
 			}
 
-			// v3 migration: clear transaction data (fresh start per user decision)
-			if (oldVer < 3 && oldVer > 0) {
-				const tx = (e.target as IDBOpenDBRequest).transaction!;
+			// v4: clear old transaction stores, add journalEntries
+			if (oldVer > 0 && oldVer < 4) {
 				for (const store of ['expenses', 'incomes', 'transfers']) {
 					if (db.objectStoreNames.contains(store)) {
 						tx.objectStore(store).clear();
+						// Note: we leave the store definition but won't use it
 					}
 				}
-				// Migrate account.balance → openingBalance
+				// Migrate account.balance → account.openingBalance if still on v2 shape
 				if (db.objectStoreNames.contains('accounts')) {
 					const acctStore = tx.objectStore('accounts');
 					acctStore.openCursor().onsuccess = (ev) => {

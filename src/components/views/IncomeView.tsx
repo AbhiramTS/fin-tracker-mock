@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/ui/empty-state';
 import { RowActions, useEditDelete } from './EntityView';
 import { IncomeForm, RecurringIncomeForm } from '@/components/forms';
-import type { Income, RecurringIncome } from '@/types';
+import type { JournalEntry, RecurringIncome } from '@/types';
 
 const FREQ_MULT: Record<string, number> = {
 	daily: 30,
@@ -26,18 +26,25 @@ export function IncomeView() {
 	const [addRecurring, setAddRecurring] = useState(false);
 	const [addOneoff, setAddOneoff] = useState(false);
 
+	const incomes = state.journalEntries.filter((e) => e.type === 'income');
 	const monthlyRecurring = state.recurringIncomes
 		.filter((r) => r.isActive)
 		.reduce((s, i) => s + (i.amount ?? 0) * (FREQ_MULT[i.frequency] ?? 1), 0);
+
+	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? '?';
 
 	const {
 		startEdit: startEditInc,
 		doRemove: removeInc,
 		EditDialog: EditIncDialog,
-	} = useEditDelete<Income>({
-		entity: 'incomes',
+	} = useEditDelete<JournalEntry>({
+		entity: 'journalEntries',
 		FormComp: IncomeForm,
-		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
+		formProps: {
+			accounts: state.accounts,
+			accountHeads: state.accountHeads,
+			defaultType: 'income',
+		},
 		formTitle: 'Income',
 	});
 	const {
@@ -129,25 +136,24 @@ export function IncomeView() {
 								<Plus className="h-4 w-4" /> Add
 							</Button>
 						</div>
-						{state.incomes.length === 0 ? (
+						{incomes.length === 0 ? (
 							<EmptyState
 								icon="💵"
 								title="No income records"
 								description="Log one-off income payments here"
 							/>
 						) : (
-							[...state.incomes]
-								.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
+							[...incomes]
+								.sort((a, b) => b.date.localeCompare(a.date))
 								.map((inc) => (
 									<Card key={inc.id}>
 										<CardContent className="flex items-center justify-between p-4">
 											<div>
-												<p className="font-semibold">{inc.name}</p>
+												<p className="font-semibold">{inc.description}</p>
 												<p className="text-xs text-muted-foreground mt-1">
-													{fmtDate(inc.date)} ·{' '}
-													{state.accounts.find(
-														(a) => a.id === inc.accountId
-													)?.name ?? '?'}
+													Dr: {headName(inc.debitAccountHeadId)} · Cr:{' '}
+													{headName(inc.creditAccountHeadId)} ·{' '}
+													{fmtDate(inc.date)}
 												</p>
 											</div>
 											<div className="flex items-center gap-2">
@@ -179,6 +185,7 @@ export function IncomeView() {
 					</DialogHeader>
 					<RecurringIncomeForm
 						accounts={state.accounts}
+						accountHeads={state.accountHeads}
 						onSave={async (d) => {
 							await save('recurringIncomes', d);
 							setAddRecurring(false);
@@ -198,7 +205,7 @@ export function IncomeView() {
 						accounts={state.accounts}
 						accountHeads={state.accountHeads}
 						onSave={async (d) => {
-							await save('incomes', d);
+							await save('journalEntries', d);
 							setAddOneoff(false);
 						}}
 						onCancel={() => setAddOneoff(false)}

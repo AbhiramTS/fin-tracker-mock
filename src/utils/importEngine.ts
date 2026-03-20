@@ -9,8 +9,7 @@ import { todayStr } from './format';
 import { calculateEMI, nextStatementDate, dueFromStatement } from './amortisation';
 import type {
 	Account,
-	Expense,
-	Income,
+	JournalEntry,
 	Loan,
 	CreditCard,
 	AppState,
@@ -117,23 +116,19 @@ export interface ExistingDuplicate {
 	existing: Record<string, unknown>;
 }
 
-/** A transaction that matches an existing one (same name+date+amount+account) */
+/** A transaction that matches an existing one (same description+date+amount) */
 export interface TransactionDuplicate {
-	entity: 'expenses' | 'incomes';
+	entity: 'journalEntries';
 	incoming: Record<string, unknown>;
 	existing: Record<string, unknown>;
 }
 
 export interface ImportPlan {
-	// Accounts resolved by name (includes new ones without duplicates)
-	resolvedAccounts: Map<string, string>; // name → final account id
-	// Clean records ready to save immediately
+	resolvedAccounts: Map<string, string>;
 	cleanAccounts: Partial<Account>[];
 	cleanLoans: Partial<Loan>[];
 	cleanCreditCards: Partial<CreditCard>[];
-	cleanExpenses: Partial<Expense>[];
-	cleanIncomes: Partial<Income>[];
-	// Duplicates requiring user decisions
+	cleanJournalEntries: Partial<JournalEntry>[];
 	intraFileDuplicates: IntraFileDuplicate[];
 	existingDuplicates: ExistingDuplicate[];
 	txDuplicates: TransactionDuplicate[];
@@ -148,8 +143,7 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		cleanAccounts: [],
 		cleanLoans: [],
 		cleanCreditCards: [],
-		cleanExpenses: [],
-		cleanIncomes: [],
+		cleanJournalEntries: [],
 		intraFileDuplicates: [],
 		existingDuplicates: [],
 		txDuplicates: [],
@@ -320,7 +314,7 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 		});
 	}
 
-	// ── 4. Expenses ──────────────────────────────────────────────────────────────
+	// ── 4. Expenses → JournalEntries (type: "expense") ───────────────────────────
 	const rawExpenses: RawExpense[] = file.expenses ?? [];
 	for (const e of rawExpenses) {
 		if (!e.name || !e.amount || !e.date) {
@@ -333,38 +327,42 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 			continue;
 		}
 
-		// Duplicate check: same name + date + amount + account
-		const existing = state.expenses.find(
+		// Duplicate: same description + date + amount + credit account
+		const existing = state.journalEntries.find(
 			(x) =>
-				x.name === e.name &&
+				x.type === 'expense' &&
+				x.description === e.name &&
 				x.date === e.date &&
 				x.amount === e.amount &&
-				x.accountId === acctId
+				x.creditAccountHeadId === acctId
 		);
 		if (existing) {
 			plan.txDuplicates.push({
-				entity: 'expenses',
-				incoming: { ...e, accountId: acctId } as unknown as Record<string, unknown>,
+				entity: 'journalEntries',
+				incoming: { ...e, creditAccountHeadId: acctId } as unknown as Record<
+					string,
+					unknown
+				>,
 				existing: existing as unknown as Record<string, unknown>,
 			});
 			continue;
 		}
 
-		plan.cleanExpenses.push({
+		plan.cleanJournalEntries.push({
 			id: e.id ?? generateId(),
-			name: e.name,
+			description: e.name,
 			amount: e.amount,
 			date: e.date,
-			category: e.category ?? 'Other',
-			accountId: acctId,
-			accountHeadId: e.accountHeadId ?? 'head_expense',
+			type: 'expense',
+			debitAccountHeadId: e.accountHeadId ?? 'head_expense', // expense head (Dr)
+			creditAccountHeadId: acctId, // asset account (Cr)
 			notes: e.notes,
 			createdAt: now,
 			updatedAt: now,
 		});
 	}
 
-	// ── 5. Incomes ────────────────────────────────────────────────────────────────
+	// ── 5. Incomes → JournalEntries (type: "income") ─────────────────────────────
 	const rawIncomes: RawIncome[] = file.incomes ?? [];
 	for (const i of rawIncomes) {
 		if (!i.name || !i.amount || !i.date) {
@@ -377,30 +375,34 @@ export function parseImportFile(raw: unknown, state: AppState): ImportPlan {
 			continue;
 		}
 
-		const existing = state.incomes.find(
+		const existing = state.journalEntries.find(
 			(x) =>
-				x.name === i.name &&
+				x.type === 'income' &&
+				x.description === i.name &&
 				x.date === i.date &&
 				x.amount === i.amount &&
-				x.accountId === acctId
+				x.debitAccountHeadId === acctId
 		);
 		if (existing) {
 			plan.txDuplicates.push({
-				entity: 'incomes',
-				incoming: { ...i, accountId: acctId } as unknown as Record<string, unknown>,
+				entity: 'journalEntries',
+				incoming: { ...i, debitAccountHeadId: acctId } as unknown as Record<
+					string,
+					unknown
+				>,
 				existing: existing as unknown as Record<string, unknown>,
 			});
 			continue;
 		}
 
-		plan.cleanIncomes.push({
+		plan.cleanJournalEntries.push({
 			id: i.id ?? generateId(),
-			name: i.name,
+			description: i.name,
 			amount: i.amount,
 			date: i.date,
-			accountId: acctId,
-			accountHeadId: i.accountHeadId ?? 'head_income',
-			category: i.category,
+			type: 'income',
+			debitAccountHeadId: acctId, // asset account (Dr)
+			creditAccountHeadId: i.accountHeadId ?? 'head_income', // income head (Cr)
 			notes: i.notes,
 			createdAt: now,
 			updatedAt: now,

@@ -31,31 +31,39 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { FormField } from '@/components/ui/form-field';
-import type { PaymentOccurrence, Account } from '@/types';
+import type { PaymentOccurrence, Account, AccountHead } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Pay Dialog — shown when user taps "Mark Paid"
+//  Pay Dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PayDialogProps {
 	occ: PaymentOccurrence | null;
 	accounts: Account[];
+	accountHeads: AccountHead[];
 	computedBalances: Record<string, number>;
 	onConfirm: (opts: {
 		paidDate: string;
 		paidAmount: number;
-		accountId: string;
+		creditAccountId: string;
 		topUpAmount: number;
 	}) => Promise<void>;
 	onCancel: () => void;
 }
 
-function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: PayDialogProps) {
+function PayDialog({
+	occ,
+	accounts,
+	accountHeads,
+	computedBalances,
+	onConfirm,
+	onCancel,
+}: PayDialogProps) {
 	const isIncome = occ?.kind === 'recurring_income';
 
 	const [paidDate, setPaidDate] = useState(todayStr());
 	const [paidAmount, setPaidAmount] = useState('');
-	const [accountId, setAccountId] = useState('');
+	const [creditAccountId, setCreditAccountId] = useState('');
 	const [topUp, setTopUp] = useState(false);
 	const [topUpAmount, setTopUpAmount] = useState('');
 	const [saving, setSaving] = useState(false);
@@ -64,7 +72,7 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 		if (!occ) return;
 		setPaidDate(todayStr());
 		setPaidAmount(String(occ.amount));
-		setAccountId(occ.accountId ?? accounts[0]?.id ?? '');
+		setCreditAccountId(occ.accountId ?? accounts[0]?.id ?? '');
 		setTopUp(false);
 		setTopUpAmount('');
 	}, [occ?.id]);
@@ -72,37 +80,36 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 	if (!occ) return null;
 
 	const amount = parseFloat(paidAmount) || 0;
-	const account = accounts.find((a) => a.id === accountId);
-	const balance = computedBalances[accountId] ?? account?.openingBalance ?? 0;
+	const account = accounts.find((a) => a.id === creditAccountId);
+	const balance = computedBalances[creditAccountId] ?? account?.openingBalance ?? 0;
 	const shortfall = !isIncome && amount > 0 && balance < amount;
 	const shortfallAmt = shortfall ? amount - balance : 0;
 	const topUpAmt = parseFloat(topUpAmount) || shortfallAmt;
-
-	// Balance after payment, incorporating optional top-up
 	const balanceAfter = isIncome
 		? balance + amount
 		: topUp
 			? balance + topUpAmt - amount
 			: balance - amount;
 
+	const debitHead = accountHeads.find((h) => h.id === occ.debitAccountHeadId);
+
 	const payableAccounts = isIncome
 		? accounts.filter((a) => !['investment'].includes(a.type))
 		: accounts.filter((a) => !['investment', 'loan'].includes(a.type));
 
-	// When shortfall appears, seed the top-up input with the exact shortfall
 	useEffect(() => {
 		if (shortfall) setTopUpAmount(String(shortfallAmt));
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [shortfall, accountId, paidAmount]);
+	}, [shortfall, creditAccountId, paidAmount]);
 
 	const handleConfirm = async () => {
-		if (!accountId || amount <= 0) return;
+		if (!creditAccountId || amount <= 0) return;
 		setSaving(true);
 		try {
 			await onConfirm({
 				paidDate,
 				paidAmount: amount,
-				accountId,
+				creditAccountId,
 				topUpAmount: topUp ? topUpAmt : 0,
 			});
 		} finally {
@@ -118,9 +125,7 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 				<DialogHeader>
 					<DialogTitle>{isIncome ? 'Mark as Received' : 'Mark as Paid'}</DialogTitle>
 				</DialogHeader>
-
 				<div className="flex flex-col gap-4 p-5 pt-2">
-					{/* Occurrence info */}
 					<div className="rounded-lg bg-muted/50 p-3 text-sm">
 						<p className="font-semibold truncate">{occ.label}</p>
 						<p className="text-xs text-muted-foreground mt-0.5">
@@ -129,7 +134,14 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 						</p>
 					</div>
 
-					{/* Payment date */}
+					{/* Debit head — read-only, pre-set from recurring payment */}
+					{debitHead && (
+						<div className="flex items-center justify-between text-xs rounded-lg bg-muted/30 px-3 py-2">
+							<span className="text-muted-foreground">Debit head (Dr)</span>
+							<span className="font-semibold">{debitHead.name}</span>
+						</div>
+					)}
+
 					<FormField label="Payment Date">
 						<Input
 							type="date"
@@ -139,7 +151,6 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 						/>
 					</FormField>
 
-					{/* Actual amount */}
 					<FormField label={isIncome ? 'Amount Received (₹)' : 'Amount Paid (₹)'}>
 						<Input
 							type="number"
@@ -160,12 +171,12 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 						)}
 					</FormField>
 
-					{/* Account selector */}
-					<FormField label={isIncome ? 'Credit Account' : 'Debit Account'}>
+					<FormField
+						label={isIncome ? 'Receive into account (Dr)' : 'Pay from account (Cr)'}>
 						<Select
-							value={accountId}
+							value={creditAccountId}
 							onValueChange={(v) => {
-								setAccountId(v);
+								setCreditAccountId(v);
 								setTopUp(false);
 							}}>
 							<SelectTrigger>
@@ -195,8 +206,6 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 								))}
 							</SelectContent>
 						</Select>
-
-						{/* Balance after payment */}
 						{account && amount > 0 && (
 							<div className="mt-2 flex items-center justify-between text-xs rounded-lg bg-muted/40 px-3 py-2">
 								<span className="text-muted-foreground flex items-center gap-1.5">
@@ -210,26 +219,20 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 						)}
 					</FormField>
 
-					{/* Shortfall — inline editable top-up */}
 					{shortfall && (
 						<div className="rounded-xl border border-warning/30 bg-warning/5 overflow-hidden">
-							{/* Header */}
 							<div className="flex items-center gap-2.5 px-3 pt-3 pb-2">
 								<AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
 								<p className="text-sm font-semibold text-warning">
 									{account?.name} is short by {fmt(shortfallAmt)}
 								</p>
 							</div>
-
-							{/* Inline top-up toggle row */}
 							<button
 								type="button"
 								onClick={() => setTopUp((v) => !v)}
-								className={`w-full flex items-start gap-3 px-3 pb-3 transition-colors text-left group`}>
-								{/* Checkbox */}
+								className="w-full flex items-start gap-3 px-3 pb-3 transition-colors text-left group">
 								<div
-									className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors
-                  ${topUp ? 'bg-profit border-profit' : 'border-border group-hover:border-profit/60'}`}>
+									className={`mt-0.5 h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${topUp ? 'bg-profit border-profit' : 'border-border group-hover:border-profit/60'}`}>
 									{topUp && (
 										<svg
 											className="h-2.5 w-2.5 text-white"
@@ -245,8 +248,6 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 										</svg>
 									)}
 								</div>
-
-								{/* Inline sentence with editable amount */}
 								<p
 									className="text-sm leading-relaxed flex-1 flex flex-wrap items-baseline gap-x-1 gap-y-0.5"
 									onClick={(e) => e.stopPropagation()}>
@@ -274,12 +275,7 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 												setTopUpAmount(e.target.value);
 												if (!topUp) setTopUp(true);
 											}}
-											className={`w-24 bg-transparent border-b-2 outline-none font-mono text-sm font-semibold transition-colors px-0.5
-                        ${
-							topUp
-								? 'border-profit text-profit focus:border-profit'
-								: 'border-border text-muted-foreground focus:border-primary focus:text-foreground'
-						}`}
+											className={`w-24 bg-transparent border-b-2 outline-none font-mono text-sm font-semibold transition-colors px-0.5 ${topUp ? 'border-profit text-profit' : 'border-border text-muted-foreground focus:border-primary'}`}
 										/>
 									</span>
 									<span
@@ -303,7 +299,6 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 						</div>
 					)}
 
-					{/* Actions */}
 					<div className="flex gap-2 pt-1">
 						<Button
 							variant="outline"
@@ -316,7 +311,7 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 							className="flex-1"
 							variant={isIncome ? 'profit' : 'default'}
 							onClick={handleConfirm}
-							disabled={saving || amount <= 0 || !accountId}>
+							disabled={saving || amount <= 0 || !creditAccountId}>
 							{saving
 								? 'Saving…'
 								: topUp
@@ -332,10 +327,7 @@ function PayDialog({ occ, accounts, computedBalances, onConfirm, onCancel }: Pay
 	);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Month navigator
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ── Month navigator ───────────────────────────────────────────────────────────
 function MonthNav({
 	date,
 	onPrev,
@@ -372,10 +364,7 @@ function MonthNav({
 	);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Month summary strip
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ── Month summary ─────────────────────────────────────────────────────────────
 function MonthSummary({ occs }: { occs: PaymentOccurrence[] }) {
 	const payments = occs.filter((o) => o.kind !== 'recurring_income');
 	const incomes = occs.filter((o) => o.kind === 'recurring_income');
@@ -422,10 +411,7 @@ function MonthSummary({ occs }: { occs: PaymentOccurrence[] }) {
 	);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-//  Single occurrence card
-// ─────────────────────────────────────────────────────────────────────────────
-
+// ── Occurrence card ───────────────────────────────────────────────────────────
 function OccurrenceCard({
 	occ,
 	accounts,
@@ -452,7 +438,6 @@ function OccurrenceCard({
 	return (
 		<div className={`rounded-xl border p-3.5 transition-all ${bg} ${border}`}>
 			<div className="flex items-start gap-3">
-				{/* Status icon */}
 				<div className="mt-0.5 shrink-0">
 					{occ.status === 'paid' ? (
 						<CheckCircle2 className="h-5 w-5 text-profit" />
@@ -462,8 +447,6 @@ function OccurrenceCard({
 						<Circle className={`h-5 w-5 ${text}`} />
 					)}
 				</div>
-
-				{/* Body */}
 				<div className="flex-1 min-w-0">
 					<div className="flex items-start justify-between gap-2">
 						<div className="min-w-0">
@@ -483,24 +466,18 @@ function OccurrenceCard({
 									· {fmtDate(occ.dueDate)}
 								</span>
 							</div>
-							{/* Paid details */}
-							{occ.status === 'paid' && (
-								<div className="mt-1.5 flex items-center gap-2 text-[10px] text-muted-foreground">
-									{paidAcct && (
-										<span className="flex items-center gap-1">
-											<span
-												className="inline-block h-1.5 w-1.5 rounded-full"
-												style={{
-													background:
-														paidAcct.color ?? 'hsl(191 100% 47%)',
-												}}
-											/>
-											{paidAcct.name}
-										</span>
-									)}
+							{occ.status === 'paid' && paidAcct && (
+								<div className="mt-1 text-[10px] text-muted-foreground flex items-center gap-1">
+									<span
+										className="inline-block h-1.5 w-1.5 rounded-full"
+										style={{
+											background: paidAcct.color ?? 'hsl(191 100% 47%)',
+										}}
+									/>
+									{paidAcct.name}
 									{occ.paidAmount !== undefined &&
 										occ.paidAmount !== occ.amount && (
-											<span className="text-warning">
+											<span className="text-warning ml-1">
 												actual: {fmt(occ.paidAmount)}
 											</span>
 										)}
@@ -517,17 +494,8 @@ function OccurrenceCard({
 										: occ.amount
 								)}
 							</p>
-							{occ.status === 'paid' &&
-								occ.paidAmount !== undefined &&
-								occ.paidAmount !== occ.amount && (
-									<p className="text-[10px] text-muted-foreground line-through">
-										{fmt(occ.amount)}
-									</p>
-								)}
 						</div>
 					</div>
-
-					{/* Action buttons */}
 					<div className="flex gap-1.5 mt-2.5">
 						{occ.status !== 'paid' && (
 							<button
@@ -561,7 +529,6 @@ function OccurrenceCard({
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main view
 // ─────────────────────────────────────────────────────────────────────────────
-
 export function PaymentsView() {
 	const { state, save, remove } = useApp();
 	const today = new Date();
@@ -577,7 +544,6 @@ export function PaymentsView() {
 		[state, year, month]
 	);
 
-	// Auto-save newly-generated occurrences (useEffect, not useMemo)
 	const storedIds = useMemo(
 		() => new Set((state.paymentOccurrences ?? []).map((o) => o.id)),
 		[state.paymentOccurrences]
@@ -600,92 +566,86 @@ export function PaymentsView() {
 	const paid = payments.filter((o) => o.status === 'paid');
 	const skipped = payments.filter((o) => o.status === 'skipped');
 
-	// ── Confirm payment ─────────────────────────────────────────────────────────
+	// ── Confirm payment — creates a JournalEntry ────────────────────────────────
 	const confirmPaid = useCallback(
 		async (
 			occ: PaymentOccurrence,
-			opts: { paidDate: string; paidAmount: number; accountId: string; topUpAmount: number }
+			opts: {
+				paidDate: string;
+				paidAmount: number;
+				creditAccountId: string;
+				topUpAmount: number;
+			}
 		) => {
-			const { paidDate, paidAmount, accountId, topUpAmount } = opts;
+			const { paidDate, paidAmount, creditAccountId, topUpAmount } = opts;
 			const isIncome = occ.kind === 'recurring_income';
 
-			// 0. Top-up income if requested — save() auto-credits the account
+			// 0. Top-up: income journal entry (debit the account, credit Equity/Adjustments)
 			if (topUpAmount > 0) {
-				await save('incomes', {
-					name: `Top-up for ${occ.label}`,
+				await save('journalEntries', {
+					description: `Top-up for ${occ.label}`,
 					amount: topUpAmount,
 					date: paidDate,
-					accountId,
-					category: 'Top-up',
-					notes: `Top-up to cover ${occ.label} payment`,
+					type: 'income',
+					debitAccountHeadId: creditAccountId, // asset account being credited (Dr)
+					creditAccountHeadId: 'head_equity', // equity/adjustment (Cr)
+					notes: `Top-up to cover ${occ.label}`,
 				});
 			}
 
-			// 1. Create the transaction — save() auto-debits/credits the account
-			let txId: string | undefined;
-			if (!isIncome) {
-				const expense = await save('expenses', {
-					name: occ.label,
-					amount: paidAmount,
-					date: paidDate,
-					category: occ.category ?? 'Bills',
-					accountId,
-					notes: `Auto-created from payment: ${occ.label}`,
-				});
-				txId = expense.id;
-			} else {
-				const income = await save('incomes', {
-					name: occ.label,
-					amount: paidAmount,
-					date: paidDate,
-					accountId,
-					category: occ.category,
-					notes: `Auto-created from payment: ${occ.label}`,
-				});
-				txId = income.id;
-			}
+			// 1. Main journal entry
+			// Expense: Dr expense head, Cr asset account
+			// Income:  Dr asset account, Cr income head
+			const debitId = isIncome ? creditAccountId : (occ.debitAccountHeadId ?? 'head_expense');
+			const creditId = isIncome ? (occ.debitAccountHeadId ?? 'head_income') : creditAccountId;
 
-			// 2. Mark occurrence paid with transaction reference
-			const updated: PaymentOccurrence = {
+			const entry = await save('journalEntries', {
+				description: occ.label,
+				amount: paidAmount,
+				date: paidDate,
+				type: isIncome ? 'income' : 'expense',
+				debitAccountHeadId: debitId,
+				creditAccountHeadId: creditId,
+				notes: `From payment: ${occ.label}`,
+			});
+
+			// 2. Mark occurrence paid
+			await save('paymentOccurrences', {
 				...occ,
 				status: 'paid',
 				paidDate,
 				paidAmount,
-				accountId, // record which account was actually used
-				transactionId: txId,
+				accountId: creditAccountId,
+				transactionId: entry.id,
 				updatedAt: new Date().toISOString(),
-			};
-			await save('paymentOccurrences', updated as unknown as Record<string, unknown>);
+			} as unknown as Record<string, unknown>);
 
-			// 4. Advance nextDate on source recurring item
+			// 3. Advance nextDate on recurring source
 			if (occ.kind === 'recurring_payment') {
 				const src = state.recurringPayments.find((r) => r.id === occ.sourceId);
-				if (src && occ.dueDate >= src.nextDate) {
+				if (src && occ.dueDate >= src.nextDate)
 					await save('recurringPayments', {
 						...src,
 						nextDate: advanceByFrequency(src.nextDate, src.frequency),
 					} as unknown as Record<string, unknown>);
-				}
 			}
 			if (occ.kind === 'recurring_income') {
 				const src = state.recurringIncomes.find((r) => r.id === occ.sourceId);
-				if (src && occ.dueDate >= src.nextDate) {
+				if (src && occ.dueDate >= src.nextDate)
 					await save('recurringIncomes', {
 						...src,
 						nextDate: advanceByFrequency(src.nextDate, src.frequency),
 					} as unknown as Record<string, unknown>);
-				}
 			}
 
-			// 5. For loan EMIs: increment paidMonths
+			// 4. Increment paidMonths for loan EMIs
 			if (occ.kind === 'loan_emi') {
 				const src = state.loans.find((l) => l.id === occ.sourceId);
-				if (src) {
+				if (src)
 					await save('loans', {
 						...src,
 						paidMonths: (src.paidMonths ?? 0) + 1,
 					} as unknown as Record<string, unknown>);
-				}
 			}
 
 			setPayingOcc(null);
@@ -693,16 +653,14 @@ export function PaymentsView() {
 		[state, save]
 	);
 
-	// ── Skip ─────────────────────────────────────────────────────────────────────
+	// ── Skip ───────────────────────────────────────────────────────────────────
 	const markSkipped = useCallback(
 		async (occ: PaymentOccurrence) => {
-			const updated: PaymentOccurrence = {
+			await save('paymentOccurrences', {
 				...occ,
 				status: 'skipped',
 				updatedAt: new Date().toISOString(),
-			};
-			await save('paymentOccurrences', updated as unknown as Record<string, unknown>);
-
+			} as unknown as Record<string, unknown>);
 			if (occ.kind === 'recurring_payment') {
 				const src = state.recurringPayments.find((r) => r.id === occ.sourceId);
 				if (src && occ.dueDate >= src.nextDate)
@@ -723,38 +681,29 @@ export function PaymentsView() {
 		[state, save]
 	);
 
-	// ── Undo ─────────────────────────────────────────────────────────────────────
+	// ── Undo ───────────────────────────────────────────────────────────────────
 	const markUnpaid = useCallback(
 		async (occ: PaymentOccurrence) => {
-			const isIncome = occ.kind === 'recurring_income';
-
-			// Delete the linked transaction — remove() auto-restores the account balance
 			if (occ.transactionId) {
 				try {
-					await remove(isIncome ? 'incomes' : 'expenses', occ.transactionId);
+					await remove('journalEntries', occ.transactionId);
 				} catch {
-					// Transaction may already be gone — continue
+					/* gone already */
 				}
 			}
-
-			// Revert occurrence
-			const updated: PaymentOccurrence = {
+			await save('paymentOccurrences', {
 				...occ,
 				status: 'unpaid',
 				paidDate: undefined,
 				paidAmount: undefined,
 				transactionId: undefined,
 				updatedAt: new Date().toISOString(),
-			};
-			await save('paymentOccurrences', updated as unknown as Record<string, unknown>);
+			} as unknown as Record<string, unknown>);
 		},
-		[state, save, remove]
+		[save, remove]
 	);
 
-	// ─────────────────────────────────────────────────────────────────────────────
-	//  Render
-	// ─────────────────────────────────────────────────────────────────────────────
-
+	// ── Render ─────────────────────────────────────────────────────────────────
 	const Section = ({
 		title,
 		count,
@@ -817,7 +766,6 @@ export function PaymentsView() {
 			) : (
 				<>
 					<MonthSummary occs={allOccs} />
-
 					{overdue.length > 0 && (
 						<Section
 							title="Overdue"
@@ -832,7 +780,6 @@ export function PaymentsView() {
 							))}
 						</Section>
 					)}
-
 					{upcoming.length > 0 && (
 						<Section
 							title="Upcoming"
@@ -846,7 +793,6 @@ export function PaymentsView() {
 							))}
 						</Section>
 					)}
-
 					{paid.length > 0 && (
 						<Section
 							title="Paid"
@@ -860,7 +806,6 @@ export function PaymentsView() {
 							))}
 						</Section>
 					)}
-
 					{skipped.length > 0 && (
 						<Section
 							title="Skipped"
@@ -873,7 +818,6 @@ export function PaymentsView() {
 							))}
 						</Section>
 					)}
-
 					{incomes.length > 0 && (
 						<>
 							<Separator />
@@ -893,10 +837,10 @@ export function PaymentsView() {
 				</>
 			)}
 
-			{/* Pay dialog */}
 			<PayDialog
 				occ={payingOcc}
 				accounts={state.accounts}
+				accountHeads={state.accountHeads}
 				computedBalances={state.computedBalances}
 				onConfirm={(opts) => confirmPaid(payingOcc!, opts)}
 				onCancel={() => setPayingOcc(null)}

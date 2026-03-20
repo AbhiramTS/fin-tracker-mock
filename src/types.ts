@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-//  types.ts  –  FinTracker v4  (double-entry rebuild)
+//  types.ts  –  FinTracker v4  (unified double-entry model)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface BaseRecord {
@@ -9,8 +9,9 @@ export interface BaseRecord {
 }
 
 // ── Chart of Accounts ─────────────────────────────────────────────────────────
-// Five root heads are fixed and cannot be deleted.
-// Users may create sub-heads under any root.
+// Five root heads are fixed.  Every bank account, credit card and loan
+// is ALSO an AccountHead (same id) placed under the correct root.
+// User-defined sub-heads (Food, Salary, Netflix…) live here too.
 
 export type RootAccountHeadType = 'asset' | 'liability' | 'income' | 'expense' | 'equity';
 
@@ -18,11 +19,11 @@ export interface AccountHead extends BaseRecord {
 	name: string;
 	type: RootAccountHeadType;
 	parentId: string | null; // null = root head
-	isSystem: boolean; // true = built-in, cannot be deleted
+	isSystem: boolean; // true = built-in root, cannot be deleted
+	isAccount?: boolean; // true = auto-created mirror of an Account/CreditCard/Loan
 	notes?: string;
 }
 
-// Built-in root heads (seeded on first launch)
 export const ROOT_HEADS: Omit<AccountHead, 'createdAt' | 'updatedAt'>[] = [
 	{ id: 'head_asset', name: 'Assets', type: 'asset', parentId: null, isSystem: true },
 	{
@@ -37,62 +38,75 @@ export const ROOT_HEADS: Omit<AccountHead, 'createdAt' | 'updatedAt'>[] = [
 	{ id: 'head_equity', name: 'Equity', type: 'equity', parentId: null, isSystem: true },
 ];
 
+// Root head id for a given account type
+export function rootHeadForAccountType(type: AccountType): string {
+	switch (type) {
+		case 'bank':
+		case 'cash':
+		case 'investment':
+		case 'receivable':
+			return 'head_asset';
+		case 'credit_card':
+		case 'loan':
+			return 'head_liability';
+	}
+}
+
 // ── Accounts ──────────────────────────────────────────────────────────────────
+// An Account is ALSO an AccountHead (shares the same id).
+// AccountHead is auto-created/updated/deleted when an Account is saved/removed.
+
 export type AccountType = 'bank' | 'cash' | 'credit_card' | 'loan' | 'investment' | 'receivable';
 
 export interface Account extends BaseRecord {
 	name: string;
 	type: AccountType;
-	openingBalance: number; // balance before any recorded transactions
+	openingBalance: number;
 	color?: string;
-	currency?: string; // default "INR"
+	currency?: string;
 	notes?: string;
 	isArchived?: boolean;
-	accountHeadId?: string; // which AccountHead this account maps to
 }
 
-// ── Transactions ──────────────────────────────────────────────────────────────
-// Every transaction MUST carry an accountHeadId (double-entry requirement).
-// A transaction records the economic event on ONE account.
-// Transfers create two transactions (debit + credit) linked by a transferId.
+// ── Journal Entries (unified transaction model) ───────────────────────────────
+// Every economic event is ONE journal entry with explicit debit + credit sides.
+//
+//  Expense  (Netflix ₹649 from HDFC):
+//    debit  = Bills → Netflix     (expense head)
+//    credit = Assets → HDFC       (account head = HDFC account id)
+//
+//  Income   (Salary ₹85k into HDFC):
+//    debit  = Assets → HDFC       (account head)
+//    credit = Income → Salary     (income head)
+//
+//  Transfer (₹10k HDFC → ICICI):
+//    debit  = Assets → ICICI      (account head)
+//    credit = Assets → HDFC       (account head)
 
-export interface Expense extends BaseRecord {
-	name: string;
-	amount: number;
-	date: string;
-	category: string;
-	accountId: string;
-	accountHeadId: string; // REQUIRED — the expense account head
+export type JournalEntryType =
+	| 'expense'
+	| 'income'
+	| 'transfer'
+	| 'emi'
+	| 'adjustment'
+	| 'opening_balance';
+
+export interface JournalEntry extends BaseRecord {
+	date: string; // yyyy-MM-dd
+	description: string;
+	amount: number; // always positive
+	type: JournalEntryType;
+	debitAccountHeadId: string; // account head being debited
+	creditAccountHeadId: string; // account head being credited
 	notes?: string;
 	tags?: string[];
-	isRecurring?: boolean;
-	recurringId?: string; // if converted to/from a recurring payment
-}
-
-export interface Income extends BaseRecord {
-	name: string;
-	amount: number;
-	date: string;
-	accountId: string;
-	accountHeadId: string; // REQUIRED — the income account head
-	category?: string;
-	notes?: string;
-	isRecurring?: boolean;
-	recurringId?: string;
-}
-
-export interface Transfer extends BaseRecord {
-	fromAccountId: string;
-	toAccountId: string;
-	amount: number;
-	date: string;
-	fromAccountHeadId: string; // REQUIRED — account head for the debit side
-	toAccountHeadId: string; // REQUIRED — account head for the credit side
-	notes?: string;
+	// Convenience back-refs for balance worker (the "real" account ids)
+	// These are the AccountHead ids that correspond to actual Accounts
+	// i.e. if debit/credit head IS an account, its id here equals accountId
+	linkedAccountIds?: string[]; // [debitId, creditId] when they are accounts
 }
 
 // ── Computed balances (derived, not stored) ───────────────────────────────────
-// Keyed by accountId. Populated by the balance worker.
 export type ComputedBalances = Record<string, number>;
 
 // ── Recurring items ───────────────────────────────────────────────────────────
@@ -104,7 +118,8 @@ export interface RecurringPayment extends BaseRecord {
 	frequency: Frequency;
 	nextDate: string;
 	category: string;
-	accountId: string;
+	accountId: string; // credit side (bank account to pay from)
+	debitAccountHeadId?: string; // expense head (e.g. "Bills → Netflix") — optional default
 	notes?: string;
 	isActive: boolean;
 }
@@ -121,7 +136,6 @@ export interface RecurringIncome extends BaseRecord {
 
 // ── Payment occurrences ───────────────────────────────────────────────────────
 export type PaymentOccurrenceStatus = 'unpaid' | 'paid' | 'skipped';
-
 export type PaymentOccurrenceKind =
 	| 'recurring_payment'
 	| 'recurring_income'
@@ -136,11 +150,12 @@ export interface PaymentOccurrence extends BaseRecord {
 	status: PaymentOccurrenceStatus;
 	paidDate?: string;
 	paidAmount?: number;
-	transactionId?: string;
+	transactionId?: string; // id of JournalEntry created on mark-paid
 	notes?: string;
 	label: string;
 	category?: string;
-	accountId?: string;
+	accountId?: string; // default credit account
+	debitAccountHeadId?: string; // pre-filled debit head
 }
 
 // ── Loans & amortisation ──────────────────────────────────────────────────────
@@ -267,15 +282,15 @@ export interface Goal extends BaseRecord {
 	icon?: string;
 }
 
-// ── Import review (pending duplicate decisions) ───────────────────────────────
+// ── Import review ─────────────────────────────────────────────────────────────
 export type ImportReviewStatus = 'pending' | 'resolved';
 export type ImportReviewDecision = 'skip' | 'overwrite' | 'create_new';
 
 export interface ImportReview extends BaseRecord {
-	sessionId: string; // groups all reviews from one import run
+	sessionId: string;
 	entity: EntityName;
-	incoming: Record<string, unknown>; // the record from the import file
-	existing: Record<string, unknown>; // the matched existing record
+	incoming: Record<string, unknown>;
+	existing: Record<string, unknown>;
 	status: ImportReviewStatus;
 	decision?: ImportReviewDecision;
 	resolvedAt?: string;
@@ -302,9 +317,7 @@ export interface PushResult {
 export type EntityName =
 	| 'accounts'
 	| 'accountHeads'
-	| 'expenses'
-	| 'incomes'
-	| 'transfers'
+	| 'journalEntries'
 	| 'recurringPayments'
 	| 'recurringIncomes'
 	| 'loans'
@@ -321,20 +334,18 @@ export type SyncStatus = 'idle' | 'firebase' | 'rest';
 export type SyncPhase = 'idle' | 'syncing' | 'success' | 'error';
 
 export interface SyncState {
-	status: SyncStatus; // which adapter is connected
-	phase: SyncPhase; // current operation state
-	pendingCount: number; // changes not yet pushed to cloud
+	status: SyncStatus;
+	phase: SyncPhase;
+	pendingCount: number;
 	lastSyncedAt: string | null;
-	lastSyncedCount: number; // records synced in the last flush
+	lastSyncedCount: number;
 	lastError: string | null;
 }
 
 export interface AppState {
 	accounts: Account[];
 	accountHeads: AccountHead[];
-	expenses: Expense[];
-	incomes: Income[];
-	transfers: Transfer[];
+	journalEntries: JournalEntry[];
 	recurringPayments: RecurringPayment[];
 	recurringIncomes: RecurringIncome[];
 	loans: Loan[];
@@ -349,8 +360,8 @@ export interface AppState {
 	computedBalances: ComputedBalances;
 	loading: boolean;
 	error: string | null;
-	syncStatus: SyncStatus; // kept for backwards compat with existing reads
-	sync: SyncState; // full sync detail
+	syncStatus: SyncStatus;
+	sync: SyncState;
 }
 
 export type AppAction =

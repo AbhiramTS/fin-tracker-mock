@@ -183,7 +183,7 @@ export function DashboardView() {
 			</div>
 
 			{/* Spending donut */}
-			{state.expenses.length > 0 && (
+			{state.journalEntries.filter((e) => e.type === 'expense').length > 0 && (
 				<Card>
 					<CardHeader className="pb-0">
 						<CardTitle>Spending Breakdown</CardTitle>
@@ -192,61 +192,74 @@ export function DashboardView() {
 						<div className="flex gap-4 items-center">
 							<div className="shrink-0">
 								<SpendingDonut
-									expenses={state.expenses}
+									expenses={state.journalEntries
+										.filter((e) => e.type === 'expense')
+										.map((e) => ({
+											...e,
+											category:
+												state.accountHeads.find(
+													(h) => h.id === e.debitAccountHeadId
+												)?.name ?? 'Other',
+										}))}
 									height={150}
 								/>
 							</div>
 							<div className="flex flex-col gap-1.5 flex-1 min-w-0">
-								{Object.entries(
-									state.expenses.reduce<Record<string, number>>((a, e) => {
-										a[e.category] = (a[e.category] ?? 0) + (e.amount ?? 0);
-										return a;
-									}, {})
-								)
-									.sort((a, b) => b[1] - a[1])
-									.slice(0, 5)
-									.map(([cat, amt], i) => {
-										const total = state.expenses.reduce(
-											(s, e) => s + (e.amount ?? 0),
-											0
-										);
-										const pct = (amt / Math.max(total, 1)) * 100;
-										const colors = [
-											'text-cyan',
-											'text-profit',
-											'text-[#a78bfa]',
-											'text-warning',
-											'text-loss',
-										];
-										const barColors = [
-											'hsl(191 100% 47%)',
-											'hsl(158 84% 44%)',
-											'#a78bfa',
-											'hsl(38 95% 55%)',
-											'hsl(350 85% 60%)',
-										];
-										return (
-											<div key={cat}>
-												<div className="flex justify-between text-xs mb-0.5">
-													<span className={`${colors[i]} font-medium`}>
-														{cat}
-													</span>
-													<span className="font-mono text-muted-foreground">
-														{pct.toFixed(0)}%
-													</span>
+								{(() => {
+									const byHead = state.journalEntries
+										.filter((e) => e.type === 'expense')
+										.reduce<Record<string, number>>((a, e) => {
+											const cat =
+												state.accountHeads.find(
+													(h) => h.id === e.debitAccountHeadId
+												)?.name ?? 'Other';
+											a[cat] = (a[cat] ?? 0) + (e.amount ?? 0);
+											return a;
+										}, {});
+									const total = Object.values(byHead).reduce((s, v) => s + v, 0);
+									const colors = [
+										'text-cyan',
+										'text-profit',
+										'text-[#a78bfa]',
+										'text-warning',
+										'text-loss',
+									];
+									const barColors = [
+										'hsl(191 100% 47%)',
+										'hsl(158 84% 44%)',
+										'#a78bfa',
+										'hsl(38 95% 55%)',
+										'hsl(350 85% 60%)',
+									];
+									return Object.entries(byHead)
+										.sort((a, b) => b[1] - a[1])
+										.slice(0, 5)
+										.map(([cat, amt], i) => {
+											const pct = (amt / Math.max(total, 1)) * 100;
+											return (
+												<div key={cat}>
+													<div className="flex justify-between text-xs mb-0.5">
+														<span
+															className={`${colors[i]} font-medium`}>
+															{cat}
+														</span>
+														<span className="font-mono text-muted-foreground">
+															{pct.toFixed(0)}%
+														</span>
+													</div>
+													<div className="h-1 w-full rounded-full bg-secondary overflow-hidden">
+														<div
+															className="h-full rounded-full transition-all duration-500"
+															style={{
+																width: `${Math.min(100, pct)}%`,
+																background: barColors[i],
+															}}
+														/>
+													</div>
 												</div>
-												<div className="h-1 w-full rounded-full bg-secondary overflow-hidden">
-													<div
-														className="h-full rounded-full transition-all duration-500"
-														style={{
-															width: `${Math.min(100, pct)}%`,
-															background: barColors[i],
-														}}
-													/>
-												</div>
-											</div>
-										);
-									})}
+											);
+										});
+								})()}
 							</div>
 						</div>
 					</CardContent>
@@ -254,14 +267,14 @@ export function DashboardView() {
 			)}
 
 			{/* Monthly bars */}
-			{state.expenses.length > 0 && (
+			{state.journalEntries.filter((e) => e.type === 'expense').length > 0 && (
 				<Card>
 					<CardHeader className="pb-0">
 						<CardTitle>Monthly Spending</CardTitle>
 					</CardHeader>
 					<CardContent className="pt-3">
 						<MonthlyBarsChart
-							expenses={state.expenses}
+							expenses={state.journalEntries.filter((e) => e.type === 'expense')}
 							height={120}
 						/>
 					</CardContent>

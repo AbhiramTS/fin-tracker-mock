@@ -7,7 +7,7 @@ import { RowActions, useEditDelete } from './EntityView';
 import { EntityView } from './EntityView';
 import { ExpenseForm } from '@/components/forms';
 import { MonthlyBarsChart } from '@/components/charts';
-import type { Expense } from '@/types';
+import type { JournalEntry } from '@/types';
 
 const COLORS = [
 	'hsl(191 100% 47%)',
@@ -22,35 +22,52 @@ export function ExpensesView() {
 	const { state } = useApp();
 	const [cat, setCat] = useState('all');
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Expense>({
-		entity: 'expenses',
+	const expenses = state.journalEntries.filter((e) => e.type === 'expense');
+
+	const { startEdit, doRemove, EditDialog } = useEditDelete<JournalEntry>({
+		entity: 'journalEntries',
 		FormComp: ExpenseForm,
-		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
+		formProps: {
+			accounts: state.accounts,
+			accountHeads: state.accountHeads,
+			defaultType: 'expense',
+		},
 		formTitle: 'Expense',
 	});
 
-	const allCats = ['all', ...new Set(state.expenses.map((e) => e.category))];
+	// Derive category from the debit account head name
+	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? 'Other';
+	const allCats = ['all', ...new Set(expenses.map((e) => headName(e.debitAccountHeadId)))];
 	const filtered =
-		cat === 'all' ? state.expenses : state.expenses.filter((e) => e.category === cat);
-	const sorted = [...filtered].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-	const total = filtered.reduce((s, e) => s + (e.amount ?? 0), 0);
-	const grandTotal = state.expenses.reduce((s, e) => s + (e.amount ?? 0), 0);
-	const catTotals = state.expenses.reduce<Record<string, number>>((a, e) => {
-		a[e.category] = (a[e.category] ?? 0) + (e.amount ?? 0);
+		cat === 'all' ? expenses : expenses.filter((e) => headName(e.debitAccountHeadId) === cat);
+	const sorted = [...filtered].sort((a, b) => b.date.localeCompare(a.date));
+	const total = filtered.reduce((s, e) => s + e.amount, 0);
+	const grandTotal = expenses.reduce((s, e) => s + e.amount, 0);
+
+	const catTotals = expenses.reduce<Record<string, number>>((a, e) => {
+		const c = headName(e.debitAccountHeadId);
+		a[c] = (a[c] ?? 0) + e.amount;
 		return a;
 	}, {});
 	const topCats = Object.entries(catTotals)
 		.sort((a, b) => b[1] - a[1])
 		.slice(0, 5);
 
+	// Build fake expenses-compatible array for chart (chart expects {date, amount, category})
+	const chartData = expenses.map((e) => ({ ...e, category: headName(e.debitAccountHeadId) }));
+
 	return (
 		<EntityView
 			title="Expenses"
 			subtitle={`${filtered.length} records · ${fmt(total)}`}
-			entity="expenses"
+			entity="journalEntries"
 			FormComp={ExpenseForm}
-			formProps={{ accounts: state.accounts, accountHeads: state.accountHeads }}>
-			{state.expenses.length > 0 && (
+			formProps={{
+				accounts: state.accounts,
+				accountHeads: state.accountHeads,
+				defaultType: 'expense',
+			}}>
+			{expenses.length > 0 && (
 				<>
 					<Card>
 						<CardHeader className="pb-0">
@@ -58,7 +75,7 @@ export function ExpensesView() {
 						</CardHeader>
 						<CardContent className="pt-3">
 							<MonthlyBarsChart
-								expenses={state.expenses}
+								expenses={chartData as never}
 								height={110}
 							/>
 						</CardContent>
@@ -117,29 +134,36 @@ export function ExpensesView() {
 				/>
 			) : (
 				<div className="flex flex-col gap-2">
-					{sorted.map((e) => (
-						<Card key={e.id}>
-							<CardContent className="flex items-center justify-between p-3">
-								<div className="min-w-0 flex-1">
-									<p className="font-medium truncate">{e.name}</p>
-									<p className="text-xs text-muted-foreground">
-										{e.category} · {fmtDate(e.date)} ·{' '}
-										{state.accounts.find((a) => a.id === e.accountId)?.name ??
-											'?'}
-									</p>
-								</div>
-								<div className="flex items-center gap-2 ml-3">
-									<span className="font-mono font-bold text-loss">
-										{fmt(e.amount)}
-									</span>
-									<RowActions
-										onEdit={() => startEdit(e)}
-										onDelete={() => doRemove(e.id)}
-									/>
-								</div>
-							</CardContent>
-						</Card>
-					))}
+					{sorted.map((e) => {
+						const debitHead = state.accountHeads.find(
+							(h) => h.id === e.debitAccountHeadId
+						);
+						const creditHead = state.accountHeads.find(
+							(h) => h.id === e.creditAccountHeadId
+						);
+						return (
+							<Card key={e.id}>
+								<CardContent className="flex items-center justify-between p-3">
+									<div className="min-w-0 flex-1">
+										<p className="font-medium truncate">{e.description}</p>
+										<p className="text-xs text-muted-foreground">
+											Dr: {debitHead?.name ?? '?'} · Cr:{' '}
+											{creditHead?.name ?? '?'} · {fmtDate(e.date)}
+										</p>
+									</div>
+									<div className="flex items-center gap-2 ml-3">
+										<span className="font-mono font-bold text-loss">
+											{fmt(e.amount)}
+										</span>
+										<RowActions
+											onEdit={() => startEdit(e)}
+											onDelete={() => doRemove(e.id)}
+										/>
+									</div>
+								</CardContent>
+							</Card>
+						);
+					})}
 				</div>
 			)}
 			{EditDialog}

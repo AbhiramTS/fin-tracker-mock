@@ -2,9 +2,7 @@ import { BaseRepository } from './BaseRepository';
 import type {
 	Account,
 	AccountHead,
-	Expense,
-	Income,
-	Transfer,
+	JournalEntry,
 	RecurringPayment,
 	RecurringIncome,
 	Loan,
@@ -22,9 +20,7 @@ import type {
 
 export const accountRepo = new BaseRepository<Account>('accounts');
 export const accountHeadRepo = new BaseRepository<AccountHead>('accountHeads');
-export const expenseRepo = new BaseRepository<Expense>('expenses');
-export const incomeRepo = new BaseRepository<Income>('incomes');
-export const transferRepo = new BaseRepository<Transfer>('transfers');
+export const journalEntryRepo = new BaseRepository<JournalEntry>('journalEntries');
 export const recurringPaymentRepo = new BaseRepository<RecurringPayment>('recurringPayments');
 export const recurringIncomeRepo = new BaseRepository<RecurringIncome>('recurringIncomes');
 export const loanRepo = new BaseRepository<Loan>('loans');
@@ -40,9 +36,7 @@ export const importReviewRepo = new BaseRepository<ImportReview>('importReviews'
 export const Repos: Record<EntityName, BaseRepository<BaseRecord>> = {
 	accounts: accountRepo as BaseRepository<BaseRecord>,
 	accountHeads: accountHeadRepo as BaseRepository<BaseRecord>,
-	expenses: expenseRepo as BaseRepository<BaseRecord>,
-	incomes: incomeRepo as BaseRepository<BaseRecord>,
-	transfers: transferRepo as BaseRepository<BaseRecord>,
+	journalEntries: journalEntryRepo as BaseRepository<BaseRecord>,
 	recurringPayments: recurringPaymentRepo as BaseRepository<BaseRecord>,
 	recurringIncomes: recurringIncomeRepo as BaseRepository<BaseRecord>,
 	loans: loanRepo as BaseRepository<BaseRecord>,

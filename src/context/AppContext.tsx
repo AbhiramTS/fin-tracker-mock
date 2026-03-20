@@ -27,8 +27,11 @@ import type {
 	AccountHead,
 	ComputedBalances,
 	SyncState,
+	Account,
+	CreditCard,
+	Loan,
 } from '@/types';
-import { ROOT_HEADS } from '@/types';
+import { ROOT_HEADS, rootHeadForAccountType } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 const INITIAL_SYNC: SyncState = {
@@ -43,9 +46,7 @@ const INITIAL_SYNC: SyncState = {
 const INITIAL: AppState = {
 	accounts: [],
 	accountHeads: [],
-	expenses: [],
-	incomes: [],
-	transfers: [],
+	journalEntries: [],
 	recurringPayments: [],
 	recurringIncomes: [],
 	loans: [],
@@ -63,11 +64,6 @@ const INITIAL: AppState = {
 	syncStatus: 'idle',
 	sync: INITIAL_SYNC,
 };
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Entities that affect account balance calculations
-// ─────────────────────────────────────────────────────────────────────────────
-const BALANCE_ENTITIES = new Set<EntityName>(['accounts', 'expenses', 'incomes', 'transfers']);
 
 function reducer(state: AppState, action: AppAction): AppState {
 	switch (action.type) {
@@ -111,7 +107,6 @@ function reducer(state: AppState, action: AppAction): AppState {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 interface AppContextValue {
 	state: AppState;
 	save: (entity: EntityName, record: Record<string, unknown>) => Promise<BaseRecord>;
@@ -123,6 +118,53 @@ interface AppContextValue {
 
 const AppCtx = createContext<AppContextValue | null>(null);
 
+// ── AccountHead mirror helpers ────────────────────────────────────────────────
+// Every Account, CreditCard, Loan is ALSO an AccountHead (same id, isAccount: true).
+// These helpers sync the AccountHead when the underlying entity changes.
+
+function accountToHead(a: Account): AccountHead {
+	const now = new Date().toISOString();
+	return {
+		id: a.id,
+		name: a.name,
+		type: a.type === 'credit_card' || a.type === 'loan' ? 'liability' : 'asset',
+		parentId: rootHeadForAccountType(a.type),
+		isSystem: false,
+		isAccount: true,
+		notes: a.notes,
+		createdAt: (a as unknown as Record<string, string>).createdAt ?? now,
+		updatedAt: now,
+	};
+}
+
+function creditCardToHead(c: CreditCard): AccountHead {
+	const now = new Date().toISOString();
+	return {
+		id: c.id,
+		name: c.name,
+		type: 'liability',
+		parentId: 'head_liability',
+		isSystem: false,
+		isAccount: true,
+		createdAt: (c as unknown as Record<string, string>).createdAt ?? now,
+		updatedAt: now,
+	};
+}
+
+function loanToHead(l: Loan): AccountHead {
+	const now = new Date().toISOString();
+	return {
+		id: l.id,
+		name: l.name,
+		type: 'liability',
+		parentId: 'head_liability',
+		isSystem: false,
+		isAccount: true,
+		createdAt: (l as unknown as Record<string, string>).createdAt ?? now,
+		updatedAt: now,
+	};
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: ReactNode }) {
 	const [state, dispatch] = useReducer(reducer, INITIAL);
@@ -133,7 +175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		stateRef.current = state;
 	}, [state]);
 
-	// ── Balance worker setup ──────────────────────────────────────────────────
+	// ── Balance worker ────────────────────────────────────────────────────────
 	useEffect(() => {
 		try {
 			const w = new Worker(new URL('../workers/balanceWorker.ts', import.meta.url), {
@@ -152,9 +194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		};
 	}, []);
 
-	// ── Trigger balance recalculation (debounced 300 ms) ──────────────────────
-	// Reads from stateRef inside the timer so it always uses the latest data,
-	// not a stale closure capture from when the effect first scheduled the timer.
+	// ── Debounced balance trigger ─────────────────────────────────────────────
 	const triggerBalance = useCallback(() => {
 		if (debounceRef.current) clearTimeout(debounceRef.current);
 		debounceRef.current = setTimeout(() => {
@@ -162,28 +202,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			if (s.loading) return;
 			const input = {
 				accounts: s.accounts,
-				expenses: s.expenses,
-				incomes: s.incomes,
-				transfers: s.transfers,
+				accountHeads: s.accountHeads,
+				journalEntries: s.journalEntries,
 			};
 			if (workerRef.current) {
 				workerRef.current.postMessage(input);
 			} else {
-				const result = computeBalances(input);
-				dispatch({ type: 'SET_BALANCES', payload: result });
+				dispatch({ type: 'SET_BALANCES', payload: computeBalances(input) });
 			}
 		}, 300);
-	}, []); // stable — no deps needed; reads latest state via stateRef
+	}, []);
 
-	// Schedule a recalculation whenever a balance-affecting entity changes.
-	// The debounce ensures a burst of rapid saves (e.g. bulk import) results
-	// in exactly one computation 300 ms after the last change settles.
 	useEffect(() => {
 		if (!state.loading) triggerBalance();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [state.accounts, state.expenses, state.incomes, state.transfers, state.loading]);
+	}, [state.accounts, state.accountHeads, state.journalEntries, state.loading]);
 
-	// ── Seed system account heads if they don't exist ─────────────────────────
+	// ── Seed system account heads ─────────────────────────────────────────────
 	const seedAccountHeads = useCallback(async (existing: AccountHead[]) => {
 		const existingIds = new Set(existing.map((h) => h.id));
 		const now = new Date().toISOString();
@@ -196,6 +231,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record } });
 			}
 		}
+	}, []);
+
+	// ── Flush callback ────────────────────────────────────────────────────────
+	useEffect(() => {
+		onFlushResult(async ({ synced, error }) => {
+			const pending = await getPendingCount();
+			dispatch({
+				type: 'SET_SYNC_STATE',
+				payload: {
+					phase: error ? 'error' : 'success',
+					pendingCount: pending,
+					lastSyncedAt:
+						synced > 0 ? new Date().toISOString() : stateRef.current.sync.lastSyncedAt,
+					lastSyncedCount: synced,
+					lastError: error,
+				},
+			});
+		});
+		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
 	const reloadEntity = useCallback(async (entity: string) => {
@@ -215,11 +269,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				);
 				const payload = Object.fromEntries(entries) as Partial<AppState>;
 				dispatch({ type: 'LOAD_ALL', payload });
-
-				// Seed system heads after load
 				await seedAccountHeads((payload.accountHeads ?? []) as AccountHead[]);
 
-				// Firebase restore
 				const saved = localStorage.getItem('ft_firebase_config');
 				if (saved) {
 					const cfg = JSON.parse(saved) as FirebaseConfig;
@@ -227,7 +278,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					registerSyncAdapter(adapter, reloadEntity);
 					dispatch({ type: 'SET_SYNC', payload: 'firebase' });
 				}
-
 				const fbc = new URLSearchParams(window.location.search).get('fbc');
 				if (fbc && !saved) {
 					try {
@@ -248,11 +298,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, [reloadEntity, seedAccountHeads]);
 
 	// ── Save ──────────────────────────────────────────────────────────────────
+	// When saving an Account, CreditCard, or Loan → also upsert its AccountHead mirror.
 	const save = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const saved = await Repos[entity].save(record as any);
 		dispatch({ type: 'UPSERT', payload: { entity, record: saved } });
-		// Update pending count so the UI reflects the queue depth immediately
+
+		// Mirror to AccountHead
+		if (entity === 'accounts') {
+			const head = accountToHead(saved as unknown as Account);
+			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
+			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+		} else if (entity === 'creditCards') {
+			const head = creditCardToHead(saved as unknown as CreditCard);
+			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
+			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+		} else if (entity === 'loans') {
+			const head = loanToHead(saved as unknown as Loan);
+			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
+			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+		}
+
 		getPendingCount()
 			.then((n) => dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } }))
 			.catch(() => {});
@@ -260,30 +326,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	}, []);
 
 	// ── Remove ────────────────────────────────────────────────────────────────
+	// When removing an Account, CreditCard, or Loan → also remove its AccountHead mirror.
 	const remove = useCallback(async (entity: EntityName, id: string) => {
 		await Repos[entity].delete(id);
 		dispatch({ type: 'REMOVE', payload: { entity, id } });
+
+		if (entity === 'accounts' || entity === 'creditCards' || entity === 'loans') {
+			await Repos.accountHeads.delete(id);
+			dispatch({ type: 'REMOVE', payload: { entity: 'accountHeads', id } });
+		}
 	}, []);
 
 	// ── Clear data ────────────────────────────────────────────────────────────
-	// Wipes selected entities from local IDB and/or Firestore cloud.
 	const clearData = useCallback(
 		async (opts: { local: boolean; cloud: boolean; entities: EntityName[] }) => {
 			const { local, cloud, entities } = opts;
-
 			if (local) {
 				for (const entity of entities) {
 					await dbClear(entity);
 					dispatch({ type: 'RELOAD_ENTITY', payload: { entity, records: [] } });
 				}
-				// Clear sync queue so stale delete operations don't re-upload to cloud
 				await dbClear('syncQueue');
-				// Re-seed system account heads if they were cleared
-				if (entities.includes('accountHeads') || entities.length === 0) {
+				if (entities.includes('accountHeads') || entities.length === 0)
 					await seedAccountHeads([]);
-				}
 			}
-
 			if (cloud) {
 				const adapter = getAdapter();
 				if (adapter && adapter instanceof FirebaseSyncAdapter) {
@@ -294,28 +360,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		[seedAccountHeads]
 	);
 
-	// ── Wire flush callback ───────────────────────────────────────────────────
-	// Called by syncQueue after every flush (automatic or manual).
-	useEffect(() => {
-		onFlushResult(async ({ synced, error }) => {
-			const pending = await getPendingCount();
-			dispatch({
-				type: 'SET_SYNC_STATE',
-				payload: {
-					phase: error ? 'error' : 'success',
-					pendingCount: pending,
-					lastSyncedAt:
-						synced > 0 ? new Date().toISOString() : stateRef.current.sync.lastSyncedAt,
-					lastSyncedCount: synced,
-					lastError: error,
-				},
-			});
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
-
 	// ── syncNow ───────────────────────────────────────────────────────────────
-	// Manually trigger a flush and update sync state with live phase tracking.
 	const syncNow = useCallback(async () => {
 		if (!getAdapter()) return;
 		const pending = await getPendingCount();
@@ -324,7 +369,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			payload: { phase: 'syncing', pendingCount: pending, lastError: null },
 		});
 		await flush();
-		// Phase and counts are updated by the onFlushResult callback above
 	}, []);
 
 	const connectFirebase = useCallback(

@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -9,15 +10,17 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { FormField, FormGrid, FormActions } from '@/components/ui/form-field';
+import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { todayStr } from '@/utils/format';
 import { calculateEMI, nextStatementDate, dueFromStatement } from '@/utils/amortisation';
+import { useApp } from '@/context/AppContext';
 import type {
 	Account,
 	AccountHead,
-	Expense,
-	Income,
-	Transfer,
+	JournalEntry,
+	JournalEntryType,
 	RecurringPayment,
 	RecurringIncome,
 	Loan,
@@ -104,62 +107,171 @@ export const GOAL_ICONS: Record<GoalType, string> = {
 	custom: '🎯',
 };
 
-// ── Generic form props ────────────────────────────────────────────────────────
 type FP<T> = { initialData?: Partial<T>; onSave: (d: Partial<T>) => void; onCancel: () => void };
 type WithAccounts<T> = FP<T> & { accounts: Account[]; accountHeads?: AccountHead[] };
 
-// ── Account head selector helper ─────────────────────────────────────────────
-// Renders a grouped Select showing root heads + their user-defined children.
-function HeadSelect({
+// ── Inline AccountHead creator ────────────────────────────────────────────────
+// Shown as a small modal when user picks "+ Create new head" in a head selector.
+function CreateHeadDialog({
+	open,
+	parentId,
+	parentName,
+	onCreated,
+	onCancel,
+}: {
+	open: boolean;
+	parentId: string;
+	parentName: string;
+	onCreated: (head: AccountHead) => void;
+	onCancel: () => void;
+}) {
+	const { save, state } = useApp();
+	const [name, setName] = useState('');
+	const parent = state.accountHeads.find((h) => h.id === parentId);
+
+	const handleCreate = async () => {
+		if (!name.trim()) return;
+		const now = new Date().toISOString();
+		const saved = await save('accountHeads', {
+			name: name.trim(),
+			type: parent?.type ?? 'expense',
+			parentId,
+			isSystem: false,
+			isAccount: false,
+			createdAt: now,
+			updatedAt: now,
+		});
+		setName('');
+		onCreated(saved as unknown as AccountHead);
+	};
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(o) => !o && onCancel()}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>New account head under "{parentName}"</DialogTitle>
+				</DialogHeader>
+				<div className="flex flex-col gap-4 p-5 pt-2">
+					<FormField label="Name">
+						<Input
+							value={name}
+							onChange={(e) => setName(e.target.value)}
+							placeholder={`e.g. Netflix, Salary, Rent`}
+							autoFocus
+							onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+						/>
+					</FormField>
+					<div className="flex gap-2">
+						<Button
+							variant="outline"
+							className="flex-1"
+							onClick={onCancel}>
+							Cancel
+						</Button>
+						<Button
+							className="flex-1"
+							onClick={handleCreate}
+							disabled={!name.trim()}>
+							Create
+						</Button>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ── AccountHead selector with inline create ───────────────────────────────────
+// rootType: if set, only shows heads under that root (e.g. "expense" for expense entries)
+// allowCreate: shows "+ Create new head" option
+
+interface HeadSelectProps {
+	heads: AccountHead[];
+	value: string;
+	onChange: (id: string) => void;
+	placeholder?: string;
+	rootType?: string;
+	allowCreate?: boolean;
+}
+
+export function HeadSelect({
 	heads,
 	value,
 	onChange,
 	placeholder,
 	rootType,
-}: {
-	heads: AccountHead[];
-	value: string;
-	onChange: (v: string) => void;
-	placeholder?: string;
-	rootType?: string; // filter to heads of this root type
-}) {
-	const roots = heads.filter((h) => h.parentId === null && (!rootType || h.type === rootType));
-	const children = (parentId: string) => heads.filter((h) => h.parentId === parentId);
-	const allOpts = rootType
-		? heads.filter(
-				(h) =>
-					h.type === rootType ||
-					roots.some((r) => r.id === h.parentId && r.type === rootType)
-			)
-		: heads;
+	allowCreate = true,
+}: HeadSelectProps) {
+	const [showCreate, setShowCreate] = useState(false);
+	const [createParentId, setCreateParentId] = useState('');
+	const [createParentName, setCreateParentName] = useState('');
 
-	if (allOpts.length === 0)
-		return <p className="text-xs text-muted-foreground py-2">No account heads available</p>;
+	const roots = heads.filter((h) => h.parentId === null && (!rootType || h.type === rootType));
+	const childrenOf = (pid: string) => heads.filter((h) => h.parentId === pid);
+
+	const handleSelect = (v: string) => {
+		if (v.startsWith('__create__')) {
+			const parentId = v.replace('__create__', '');
+			const parent = heads.find((h) => h.id === parentId);
+			setCreateParentId(parentId);
+			setCreateParentName(parent?.name ?? '');
+			setShowCreate(true);
+			return;
+		}
+		onChange(v);
+	};
 
 	return (
-		<Select
-			value={value}
-			onValueChange={onChange}>
-			<SelectTrigger>
-				<SelectValue placeholder={placeholder ?? 'Select account head'} />
-			</SelectTrigger>
-			<SelectContent>
-				{roots.map((root) => (
-					<div key={root.id}>
-						<SelectItem value={root.id}>
-							<span className="font-semibold">{root.name}</span>
-						</SelectItem>
-						{children(root.id).map((child) => (
-							<SelectItem
-								key={child.id}
-								value={child.id}>
-								<span className="pl-3 text-muted-foreground">└ {child.name}</span>
+		<>
+			<Select
+				value={value}
+				onValueChange={handleSelect}>
+				<SelectTrigger>
+					<SelectValue placeholder={placeholder ?? 'Select account head'} />
+				</SelectTrigger>
+				<SelectContent>
+					{roots.map((root) => (
+						<div key={root.id}>
+							{/* Root label — selectable */}
+							<SelectItem value={root.id}>
+								<span className="font-semibold">{root.name}</span>
 							</SelectItem>
-						))}
-					</div>
-				))}
-			</SelectContent>
-		</Select>
+							{/* Children */}
+							{childrenOf(root.id).map((child) => (
+								<SelectItem
+									key={child.id}
+									value={child.id}>
+									<span className="pl-3 text-muted-foreground">
+										└ {child.name}
+									</span>
+								</SelectItem>
+							))}
+							{/* Inline create option */}
+							{allowCreate && (
+								<SelectItem value={`__create__${root.id}`}>
+									<span className="pl-3 text-primary flex items-center gap-1">
+										<Plus className="h-3 w-3" /> New under {root.name}…
+									</span>
+								</SelectItem>
+							)}
+						</div>
+					))}
+				</SelectContent>
+			</Select>
+
+			<CreateHeadDialog
+				open={showCreate}
+				parentId={createParentId}
+				parentName={createParentName}
+				onCreated={(head) => {
+					setShowCreate(false);
+					onChange(head.id);
+				}}
+				onCancel={() => setShowCreate(false)}
+			/>
+		</>
 	);
 }
 
@@ -263,31 +375,64 @@ export function AccountForm({ initialData, onSave, onCancel }: FP<Account>) {
 	);
 }
 
-// ── ExpenseForm ───────────────────────────────────────────────────────────────
-export function ExpenseForm({
+// ── JournalEntryForm ──────────────────────────────────────────────────────────
+// Handles expense, income, transfer — the type determines which side is which.
+
+interface JEFormProps {
+	initialData?: Partial<JournalEntry>;
+	onSave: (d: Partial<JournalEntry>) => void;
+	onCancel: () => void;
+	accounts: Account[];
+	accountHeads: AccountHead[];
+	defaultType?: JournalEntryType;
+	// If set, locks the debit or credit side (e.g. from PaymentsView)
+	lockedDebitId?: string;
+	lockedCreditId?: string;
+}
+
+export function JournalEntryForm({
 	initialData,
 	onSave,
 	onCancel,
 	accounts,
-	accountHeads = [],
-}: WithAccounts<Expense>) {
-	// Default to the "Expenses" root head if no accountHeadId
-	const defaultHead =
-		accountHeads.find((h) => h.id === 'head_expense')?.id ?? accountHeads[0]?.id ?? '';
-	const [f, setF] = useState<Partial<Expense>>({
-		name: '',
+	accountHeads,
+	defaultType = 'expense',
+	lockedDebitId,
+	lockedCreditId,
+}: JEFormProps) {
+	const type = (initialData?.type ?? defaultType) as JournalEntryType;
+	const [f, setF] = useState<Partial<JournalEntry>>({
+		description: '',
 		amount: undefined,
 		date: todayStr(),
-		category: 'Food',
-		accountId: accounts[0]?.id ?? '',
-		accountHeadId: defaultHead,
+		type,
+		debitAccountHeadId: lockedDebitId ?? '',
+		creditAccountHeadId: lockedCreditId ?? '',
 		...initialData,
 	});
-	const canSave = !!(f.name && f.amount && f.accountId && f.accountHeadId);
+
+	const canSave = !!(f.description && f.amount && f.debitAccountHeadId && f.creditAccountHeadId);
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (canSave) onSave(f);
 	};
+
+	// Labels change per type
+	const debitLabel =
+		type === 'expense'
+			? 'Expense Head (Debit) *'
+			: type === 'income'
+				? 'Asset Account (Debit) *'
+				: 'Destination Account (Debit) *';
+	const creditLabel =
+		type === 'expense'
+			? 'Asset Account (Credit) *'
+			: type === 'income'
+				? 'Income Head (Credit) *'
+				: 'Source Account (Credit) *';
+
+	const debitRootType = type === 'expense' ? 'expense' : type === 'income' ? 'asset' : 'asset';
+	const creditRootType = type === 'expense' ? 'asset' : type === 'income' ? 'income' : 'asset';
 
 	return (
 		<form
@@ -298,9 +443,15 @@ export function ExpenseForm({
 					label="Description"
 					span={2}>
 					<Input
-						value={f.name ?? ''}
-						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Swiggy lunch"
+						value={f.description ?? ''}
+						onChange={(e) => setF({ ...f, description: e.target.value })}
+						placeholder={
+							type === 'expense'
+								? 'e.g. Swiggy lunch'
+								: type === 'income'
+									? 'e.g. Salary'
+									: 'e.g. Transfer to savings'
+						}
 						required
 					/>
 				</FormField>
@@ -324,53 +475,49 @@ export function ExpenseForm({
 						required
 					/>
 				</FormField>
-				<FormField label="Category">
-					<Select
-						value={f.category ?? 'Food'}
-						onValueChange={(v) => setF({ ...f, category: v })}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{EXPENSE_CATS.map((c) => (
-								<SelectItem
-									key={c}
-									value={c}>
-									{c}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</FormField>
-				<FormField label="Debit Account">
-					<Select
-						value={f.accountId ?? ''}
-						onValueChange={(v) => setF({ ...f, accountId: v })}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{accounts.map((a) => (
-								<SelectItem
-									key={a.id}
-									value={a.id}>
-									{a.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</FormField>
+
+				{/* Debit side */}
 				<FormField
-					label="Account Head *"
+					label={debitLabel}
 					span={2}
-					hint="Required for double-entry bookkeeping">
-					<HeadSelect
-						heads={accountHeads}
-						value={f.accountHeadId ?? ''}
-						onChange={(v) => setF({ ...f, accountHeadId: v })}
-						rootType="expense"
-					/>
+					hint="The account being debited (Dr)">
+					{lockedDebitId ? (
+						<div className="flex h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm text-muted-foreground">
+							{accountHeads.find((h) => h.id === lockedDebitId)?.name ??
+								lockedDebitId}
+						</div>
+					) : (
+						<HeadSelect
+							heads={accountHeads}
+							value={f.debitAccountHeadId ?? ''}
+							onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+							rootType={debitRootType}
+							placeholder="Select debit head"
+						/>
+					)}
 				</FormField>
+
+				{/* Credit side */}
+				<FormField
+					label={creditLabel}
+					span={2}
+					hint="The account being credited (Cr)">
+					{lockedCreditId ? (
+						<div className="flex h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-sm text-muted-foreground">
+							{accountHeads.find((h) => h.id === lockedCreditId)?.name ??
+								lockedCreditId}
+						</div>
+					) : (
+						<HeadSelect
+							heads={accountHeads}
+							value={f.creditAccountHeadId ?? ''}
+							onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
+							rootType={creditRootType}
+							placeholder="Select credit head"
+						/>
+					)}
+				</FormField>
+
 				<FormField
 					label="Notes (optional)"
 					span={2}>
@@ -385,228 +532,29 @@ export function ExpenseForm({
 	);
 }
 
-// ── IncomeForm ────────────────────────────────────────────────────────────────
-export function IncomeForm({
-	initialData,
-	onSave,
-	onCancel,
-	accounts,
-	accountHeads = [],
-}: WithAccounts<Income>) {
-	const defaultHead =
-		accountHeads.find((h) => h.id === 'head_income')?.id ?? accountHeads[0]?.id ?? '';
-	const [f, setF] = useState<Partial<Income>>({
-		name: '',
-		amount: undefined,
-		date: todayStr(),
-		accountId: accounts[0]?.id ?? '',
-		accountHeadId: defaultHead,
-		...initialData,
-	});
-	const canSave = !!(f.name && f.amount && f.accountId && f.accountHeadId);
-	const submit = (e: FormEvent) => {
-		e.preventDefault();
-		if (canSave) onSave(f);
-	};
-
+// Convenience wrappers that set the default type
+export function ExpenseForm(props: Omit<JEFormProps, 'defaultType'>) {
 	return (
-		<form
-			onSubmit={submit}
-			className="flex flex-col gap-4 p-5 pt-2">
-			<FormGrid>
-				<FormField
-					label="Source"
-					span={2}>
-					<Input
-						value={f.name ?? ''}
-						onChange={(e) => setF({ ...f, name: e.target.value })}
-						placeholder="e.g. Salary"
-						required
-					/>
-				</FormField>
-				<FormField label="Amount (₹)">
-					<Input
-						type="number"
-						min="0"
-						value={f.amount ?? ''}
-						onChange={(e) =>
-							setF({ ...f, amount: parseFloat(e.target.value) || undefined })
-						}
-						required
-					/>
-				</FormField>
-				<FormField label="Date">
-					<Input
-						type="date"
-						value={f.date ?? ''}
-						onChange={(e) => setF({ ...f, date: e.target.value })}
-						required
-					/>
-				</FormField>
-				<FormField
-					label="Credit Account"
-					span={2}>
-					<Select
-						value={f.accountId ?? ''}
-						onValueChange={(v) => setF({ ...f, accountId: v })}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{accounts.map((a) => (
-								<SelectItem
-									key={a.id}
-									value={a.id}>
-									{a.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</FormField>
-				<FormField
-					label="Account Head *"
-					span={2}
-					hint="Required for double-entry bookkeeping">
-					<HeadSelect
-						heads={accountHeads}
-						value={f.accountHeadId ?? ''}
-						onChange={(v) => setF({ ...f, accountHeadId: v })}
-						rootType="income"
-					/>
-				</FormField>
-				<FormField
-					label="Notes (optional)"
-					span={2}>
-					<Input
-						value={f.notes ?? ''}
-						onChange={(e) => setF({ ...f, notes: e.target.value })}
-					/>
-				</FormField>
-			</FormGrid>
-			<FormActions onCancel={onCancel} />
-		</form>
+		<JournalEntryForm
+			{...props}
+			defaultType="expense"
+		/>
 	);
 }
-
-// ── TransferForm ──────────────────────────────────────────────────────────────
-export function TransferForm({
-	initialData,
-	onSave,
-	onCancel,
-	accounts,
-	accountHeads = [],
-}: WithAccounts<Transfer>) {
-	const assetHead = accountHeads.find((h) => h.id === 'head_asset')?.id ?? '';
-	const [f, setF] = useState<Partial<Transfer>>({
-		fromAccountId: accounts[0]?.id ?? '',
-		toAccountId: accounts[1]?.id ?? '',
-		amount: undefined,
-		date: todayStr(),
-		fromAccountHeadId: assetHead,
-		toAccountHeadId: assetHead,
-		...initialData,
-	});
-	const canSave = !!(
-		f.fromAccountId &&
-		f.toAccountId &&
-		f.amount &&
-		f.fromAccountHeadId &&
-		f.toAccountHeadId
-	);
-	const submit = (e: FormEvent) => {
-		e.preventDefault();
-		if (canSave) onSave(f);
-	};
-
+export function IncomeForm(props: Omit<JEFormProps, 'defaultType'>) {
 	return (
-		<form
-			onSubmit={submit}
-			className="flex flex-col gap-4 p-5 pt-2">
-			<FormGrid>
-				<FormField label="From Account">
-					<Select
-						value={f.fromAccountId ?? ''}
-						onValueChange={(v) => setF({ ...f, fromAccountId: v })}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{accounts.map((a) => (
-								<SelectItem
-									key={a.id}
-									value={a.id}>
-									{a.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</FormField>
-				<FormField label="To Account">
-					<Select
-						value={f.toAccountId ?? ''}
-						onValueChange={(v) => setF({ ...f, toAccountId: v })}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							{accounts.map((a) => (
-								<SelectItem
-									key={a.id}
-									value={a.id}>
-									{a.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-				</FormField>
-				<FormField label="Amount (₹)">
-					<Input
-						type="number"
-						min="0"
-						value={f.amount ?? ''}
-						onChange={(e) =>
-							setF({ ...f, amount: parseFloat(e.target.value) || undefined })
-						}
-						required
-					/>
-				</FormField>
-				<FormField label="Date">
-					<Input
-						type="date"
-						value={f.date ?? ''}
-						onChange={(e) => setF({ ...f, date: e.target.value })}
-						required
-					/>
-				</FormField>
-				<FormField
-					label="Debit Head *"
-					hint="Account head for the source side">
-					<HeadSelect
-						heads={accountHeads}
-						value={f.fromAccountHeadId ?? ''}
-						onChange={(v) => setF({ ...f, fromAccountHeadId: v })}
-					/>
-				</FormField>
-				<FormField
-					label="Credit Head *"
-					hint="Account head for the destination side">
-					<HeadSelect
-						heads={accountHeads}
-						value={f.toAccountHeadId ?? ''}
-						onChange={(v) => setF({ ...f, toAccountHeadId: v })}
-					/>
-				</FormField>
-				<FormField
-					label="Notes (optional)"
-					span={2}>
-					<Input
-						value={f.notes ?? ''}
-						onChange={(e) => setF({ ...f, notes: e.target.value })}
-					/>
-				</FormField>
-			</FormGrid>
-			<FormActions onCancel={onCancel} />
-		</form>
+		<JournalEntryForm
+			{...props}
+			defaultType="income"
+		/>
+	);
+}
+export function TransferForm(props: Omit<JEFormProps, 'defaultType'>) {
+	return (
+		<JournalEntryForm
+			{...props}
+			defaultType="transfer"
+		/>
 	);
 }
 
@@ -616,6 +564,7 @@ export function RecurringPaymentForm({
 	onSave,
 	onCancel,
 	accounts,
+	accountHeads = [],
 }: WithAccounts<RecurringPayment>) {
 	const [f, setF] = useState<Partial<RecurringPayment>>({
 		name: '',
@@ -624,6 +573,7 @@ export function RecurringPaymentForm({
 		nextDate: todayStr(),
 		category: 'Housing',
 		accountId: accounts[0]?.id ?? '',
+		debitAccountHeadId: '',
 		isActive: true,
 		...initialData,
 	});
@@ -631,6 +581,15 @@ export function RecurringPaymentForm({
 		e.preventDefault();
 		if (f.name && f.amount) onSave(f);
 	};
+
+	// Expense-type heads for the debit side
+	const expenseHeads = accountHeads.filter(
+		(h) =>
+			h.type === 'expense' ||
+			h.parentId === 'head_expense' ||
+			accountHeads.find((p) => p.id === h.parentId)?.type === 'expense'
+	);
+
 	return (
 		<form
 			onSubmit={submit}
@@ -702,8 +661,9 @@ export function RecurringPaymentForm({
 					</Select>
 				</FormField>
 				<FormField
-					label="Debit Account"
-					span={2}>
+					label="Default Credit Account (pay from)"
+					span={2}
+					hint="Which account to debit money from when paying">
 					<Select
 						value={f.accountId ?? ''}
 						onValueChange={(v) => setF({ ...f, accountId: v })}>
@@ -720,6 +680,18 @@ export function RecurringPaymentForm({
 							))}
 						</SelectContent>
 					</Select>
+				</FormField>
+				<FormField
+					label="Default Expense Head (debit)"
+					span={2}
+					hint="The expense account head (e.g. Bills → Netflix). Can be changed at pay time.">
+					<HeadSelect
+						heads={accountHeads}
+						value={f.debitAccountHeadId ?? ''}
+						onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+						rootType="expense"
+						placeholder="Select or create expense head…"
+					/>
 				</FormField>
 			</FormGrid>
 			<FormActions onCancel={onCancel} />
@@ -947,9 +919,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						required
 					/>
 				</FormField>
-				<FormField
-					label="Tax on Interest (%)"
-					hint="e.g. 18 for GST">
+				<FormField label="Tax on Interest (%)">
 					<Input
 						type="number"
 						min="0"
@@ -1096,9 +1066,7 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						}
 					/>
 				</FormField>
-				<FormField
-					label="Statement Day (1-28)"
-					hint="Day of month statement is generated">
+				<FormField label="Statement Day (1-28)">
 					<Input
 						type="number"
 						min="1"
@@ -1134,9 +1102,7 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<CreditCard>
 						Next due date: <span className="font-mono font-bold">{previewDueDate}</span>
 					</div>
 				)}
-				<FormField
-					label="Tax on Interest (%)"
-					hint="e.g. 18 for GST">
+				<FormField label="Tax on Interest (%)">
 					<Input
 						type="number"
 						min="0"
@@ -1262,7 +1228,6 @@ export function ReceivableForm({
 	);
 }
 
-// ── RepaymentForm ─────────────────────────────────────────────────────────────
 export function RepaymentForm({
 	receivableId,
 	onSave,
@@ -1322,7 +1287,6 @@ export function RepaymentForm({
 	);
 }
 
-// ── InvestmentForm ────────────────────────────────────────────────────────────
 export function InvestmentForm({ initialData, onSave, onCancel }: FP<Investment>) {
 	const [f, setF] = useState<Partial<Investment>>({
 		name: '',
@@ -1403,7 +1367,6 @@ export function InvestmentForm({ initialData, onSave, onCancel }: FP<Investment>
 	);
 }
 
-// ── ReconciliationForm ────────────────────────────────────────────────────────
 export function ReconciliationForm({
 	account,
 	trackedBalance,
@@ -1447,7 +1410,7 @@ export function ReconciliationForm({
 					</span>
 				</p>
 			</div>
-			<FormField label="Actual Balance (₹) — from your bank statement">
+			<FormField label="Actual Balance (₹)">
 				<Input
 					type="number"
 					step="0.01"
@@ -1482,7 +1445,6 @@ export function ReconciliationForm({
 	);
 }
 
-// ── GoalForm ──────────────────────────────────────────────────────────────────
 export function GoalForm({ initialData, onSave, onCancel }: FP<Goal>) {
 	const [f, setF] = useState<Partial<Goal>>({
 		name: '',
