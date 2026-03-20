@@ -874,6 +874,333 @@ function DataPortability() {
 	);
 }
 
+// ── Clear Data ────────────────────────────────────────────────────────────────
+
+const CLEAR_GROUPS: { label: string; description: string; icon: string; entities: EntityName[] }[] =
+	[
+		{
+			label: 'Transactions',
+			description: 'Expenses, incomes, transfers',
+			icon: '🧾',
+			entities: ['expenses', 'incomes', 'transfers'],
+		},
+		{
+			label: 'Accounts',
+			description: 'All bank, cash, and card accounts',
+			icon: '🏦',
+			entities: ['accounts'],
+		},
+		{
+			label: 'Loans & Credit Cards',
+			description: 'Loans, EMI schedules, credit cards, payment occurrences',
+			icon: '🏠',
+			entities: ['loans', 'creditCards', 'paymentOccurrences'],
+		},
+		{
+			label: 'Recurring',
+			description: 'Recurring payments and incomes',
+			icon: '🔁',
+			entities: ['recurringPayments', 'recurringIncomes'],
+		},
+		{
+			label: 'Receivables',
+			description: 'Money lent and repayment records',
+			icon: '🤝',
+			entities: ['receivables', 'repaymentRecords'],
+		},
+		{
+			label: 'Investments',
+			description: 'Portfolio and investment records',
+			icon: '📊',
+			entities: ['investments'],
+		},
+		{
+			label: 'Goals',
+			description: 'Financial goals',
+			icon: '🎯',
+			entities: ['goals'],
+		},
+		{
+			label: 'Import Reviews',
+			description: 'Pending duplicate import decisions',
+			icon: '📋',
+			entities: ['importReviews'],
+		},
+	];
+
+type ClearScope = 'local' | 'cloud' | 'both';
+
+function ClearDataSection() {
+	const { state, clearData } = useApp();
+	const isConnected = state.syncStatus === 'firebase';
+
+	const [selected, setSelected] = useState<Set<number>>(new Set());
+	const [scope, setScope] = useState<ClearScope>('local');
+	const [showConfirm, setShowConfirm] = useState(false);
+	const [confirmText, setConfirmText] = useState('');
+	const [clearing, setClearing] = useState(false);
+	const [done, setDone] = useState<string | null>(null);
+
+	const toggleGroup = (i: number) =>
+		setSelected((s) => {
+			const n = new Set(s);
+			n.has(i) ? n.delete(i) : n.add(i);
+			return n;
+		});
+
+	const selectAll = () => setSelected(new Set(CLEAR_GROUPS.map((_, i) => i)));
+	const selectNone = () => setSelected(new Set());
+
+	const selectedEntities: EntityName[] = [...selected].flatMap((i) => CLEAR_GROUPS[i].entities);
+
+	const selectedGroups = [...selected].map((i) => CLEAR_GROUPS[i].label);
+
+	const scopeLabel =
+		scope === 'local'
+			? 'local device only'
+			: scope === 'cloud'
+				? 'Firestore cloud only'
+				: 'local device + Firestore cloud';
+
+	const canProceed = selected.size > 0 && confirmText === 'DELETE';
+
+	const handleClear = async () => {
+		if (!canProceed) return;
+		setClearing(true);
+		try {
+			await clearData({
+				local: scope === 'local' || scope === 'both',
+				cloud: scope === 'cloud' || scope === 'both',
+				entities: selectedEntities,
+			});
+			setDone(`Cleared ${selectedGroups.join(', ')} from ${scopeLabel}.`);
+		} finally {
+			setClearing(false);
+			setShowConfirm(false);
+			setConfirmText('');
+			setSelected(new Set());
+		}
+	};
+
+	return (
+		<div className="flex flex-col gap-4">
+			<p className="text-xs text-muted-foreground">
+				Select what to delete and where.{' '}
+				<span className="text-loss font-semibold">This cannot be undone.</span>
+			</p>
+
+			{/* Entity group checkboxes */}
+			<div className="flex flex-col gap-1.5">
+				<div className="flex items-center justify-between mb-1">
+					<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+						What to clear
+					</p>
+					<div className="flex gap-2">
+						<button
+							onClick={selectAll}
+							className="text-[10px] text-primary hover:underline">
+							All
+						</button>
+						<button
+							onClick={selectNone}
+							className="text-[10px] text-muted-foreground hover:underline">
+							None
+						</button>
+					</div>
+				</div>
+				{CLEAR_GROUPS.map((g, i) => {
+					const checked = selected.has(i);
+					return (
+						<button
+							key={i}
+							type="button"
+							onClick={() => toggleGroup(i)}
+							className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors
+                ${checked ? 'border-loss/40 bg-loss/5' : 'border-border hover:border-loss/20'}`}>
+							<div
+								className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors
+                ${checked ? 'bg-loss border-loss' : 'border-border'}`}>
+								{checked && (
+									<svg
+										className="h-2.5 w-2.5 text-white"
+										viewBox="0 0 10 10"
+										fill="none">
+										<path
+											d="M1.5 5L4 7.5L8.5 2.5"
+											stroke="currentColor"
+											strokeWidth="1.8"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										/>
+									</svg>
+								)}
+							</div>
+							<span className="text-base leading-none">{g.icon}</span>
+							<div className="flex-1 min-w-0">
+								<p
+									className={`text-sm font-semibold ${checked ? 'text-loss' : 'text-foreground'}`}>
+									{g.label}
+								</p>
+								<p className="text-xs text-muted-foreground mt-0.5">
+									{g.description}
+								</p>
+							</div>
+						</button>
+					);
+				})}
+			</div>
+
+			{/* Scope selector */}
+			<div className="flex flex-col gap-1.5">
+				<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+					Where to clear
+				</p>
+				{(['local', 'cloud', 'both'] as ClearScope[]).map((s) => {
+					const labels: Record<ClearScope, { title: string; sub: string }> = {
+						local: {
+							title: 'Local device only',
+							sub: 'Clears IndexedDB on this device. Cloud data is untouched.',
+						},
+						cloud: {
+							title: 'Cloud (Firestore) only',
+							sub: 'Removes documents from Firestore. Local cache is untouched.',
+						},
+						both: {
+							title: 'Local + Cloud',
+							sub: 'Completely removes all selected data everywhere.',
+						},
+					};
+					const disabled = (s === 'cloud' || s === 'both') && !isConnected;
+					return (
+						<button
+							key={s}
+							type="button"
+							disabled={disabled}
+							onClick={() => !disabled && setScope(s)}
+							className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors
+                ${scope === s ? 'border-primary bg-primary/10' : 'border-border'}
+                ${disabled ? 'opacity-40 cursor-not-allowed' : 'hover:border-primary/40'}`}>
+							<div
+								className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 flex items-center justify-center
+                ${scope === s ? 'border-primary' : 'border-border'}`}>
+								{scope === s && (
+									<div className="h-1.5 w-1.5 rounded-full bg-primary" />
+								)}
+							</div>
+							<div>
+								<p
+									className={`text-sm font-semibold ${scope === s ? 'text-primary' : ''}`}>
+									{labels[s].title}
+								</p>
+								<p className="text-xs text-muted-foreground">{labels[s].sub}</p>
+								{disabled && (
+									<p className="text-xs text-warning mt-0.5">
+										Firebase not connected
+									</p>
+								)}
+							</div>
+						</button>
+					);
+				})}
+			</div>
+
+			{/* Success message */}
+			{done && (
+				<div className="flex items-center gap-2 text-xs text-profit bg-profit/10 rounded-lg px-3 py-2">
+					<CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> {done}
+				</div>
+			)}
+
+			{/* Trigger button */}
+			<Button
+				variant="destructive"
+				disabled={selected.size === 0}
+				onClick={() => {
+					setConfirmText('');
+					setShowConfirm(true);
+				}}
+				className="w-full gap-2">
+				<Trash2 className="h-4 w-4" />
+				Clear {selected.size > 0 ? selectedGroups.join(', ') : 'selected data'}
+			</Button>
+
+			{/* Confirmation dialog */}
+			<Dialog
+				open={showConfirm}
+				onOpenChange={(o) => !o && setShowConfirm(false)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Confirm data deletion</DialogTitle>
+					</DialogHeader>
+					<div className="flex flex-col gap-4 p-5 pt-2">
+						{/* Summary */}
+						<div className="rounded-xl border border-loss/30 bg-loss/5 p-3">
+							<p className="text-sm font-semibold text-loss mb-2">
+								You are about to delete:
+							</p>
+							<ul className="text-xs text-muted-foreground space-y-1">
+								{[...selected].map((i) => (
+									<li
+										key={i}
+										className="flex items-center gap-1.5">
+										<span>{CLEAR_GROUPS[i].icon}</span>
+										<span>
+											<span className="font-semibold text-foreground">
+												{CLEAR_GROUPS[i].label}
+											</span>{' '}
+											— {CLEAR_GROUPS[i].description}
+										</span>
+									</li>
+								))}
+							</ul>
+							<p className="text-xs text-muted-foreground mt-2.5 pt-2.5 border-t border-loss/20">
+								From:{' '}
+								<span className="font-semibold text-foreground">{scopeLabel}</span>
+							</p>
+						</div>
+
+						<div className="flex items-start gap-2.5 rounded-xl border border-loss/30 bg-loss/10 p-3 text-sm text-loss">
+							<AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+							<p>
+								This is{' '}
+								<span className="font-bold">permanent and irreversible.</span>{' '}
+								Export a backup first if you might need this data.
+							</p>
+						</div>
+
+						<FormField label="Type DELETE to confirm">
+							<Input
+								value={confirmText}
+								onChange={(e) => setConfirmText(e.target.value)}
+								placeholder="DELETE"
+								className="font-mono"
+								autoFocus
+							/>
+						</FormField>
+
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								className="flex-1"
+								onClick={() => setShowConfirm(false)}
+								disabled={clearing}>
+								Cancel
+							</Button>
+							<Button
+								variant="destructive"
+								className="flex-1"
+								onClick={handleClear}
+								disabled={!canProceed || clearing}>
+								{clearing ? 'Clearing…' : 'Delete permanently'}
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</div>
+	);
+}
+
 // ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
 	const { state, connectFirebase } = useApp();
@@ -900,27 +1227,20 @@ export function SettingsView() {
 			<h2 className="font-display text-xl font-bold">Settings</h2>
 
 			<Tabs defaultValue="import">
-				<TabsList className="w-full">
-					<TabsTrigger
-						value="import"
-						className="flex-1">
-						Import / Export
-					</TabsTrigger>
-					<TabsTrigger
-						value="merge"
-						className="flex-1">
-						Merge Accounts
-					</TabsTrigger>
+				<TabsList className="w-full grid grid-cols-4">
+					<TabsTrigger value="import">Import / Export</TabsTrigger>
+					<TabsTrigger value="merge">Merge</TabsTrigger>
 					<TabsTrigger
 						value="review"
-						className="flex-1 relative">
-						Dup Review
+						className="relative">
+						Dups
 						{pendingReviews > 0 && (
-							<span className="ml-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-warning text-[9px] font-bold text-background">
+							<span className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-warning text-[9px] font-bold text-background">
 								{pendingReviews}
 							</span>
 						)}
 					</TabsTrigger>
+					<TabsTrigger value="clear">Clear Data</TabsTrigger>
 				</TabsList>
 				<TabsContent value="import">
 					<Card>
@@ -940,6 +1260,13 @@ export function SettingsView() {
 					<Card>
 						<CardContent className="pt-4">
 							<TxDuplicateReview />
+						</CardContent>
+					</Card>
+				</TabsContent>
+				<TabsContent value="clear">
+					<Card>
+						<CardContent className="pt-4">
+							<ClearDataSection />
 						</CardContent>
 					</Card>
 				</TabsContent>

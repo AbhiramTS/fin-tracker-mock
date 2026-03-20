@@ -18,6 +18,11 @@ export function registerSyncAdapter(
 	flush();
 }
 
+/** Returns the currently registered sync adapter, or null if none. */
+export function getAdapter(): SyncAdapter | null {
+	return _adapter;
+}
+
 export async function enqueueChange(params: {
 	entity: string;
 	type: ChangeType;

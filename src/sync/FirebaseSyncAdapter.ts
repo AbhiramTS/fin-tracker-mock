@@ -75,4 +75,20 @@ export class FirebaseSyncAdapter extends SyncAdapter {
 		this.unsubs.forEach((u) => u());
 		this.unsubs = [];
 	}
+
+	/** Delete every document in the given Firestore collections. */
+	async clearCollections(entities: string[]): Promise<void> {
+		await this.prepare();
+		for (const entity of entities) {
+			const snap = await getDocs(collection(this.db!, entity));
+			if (snap.empty) continue;
+			// Firestore writeBatch limit is 500 ops — chunk if needed
+			const docs = snap.docs;
+			for (let i = 0; i < docs.length; i += 500) {
+				const batch = writeBatch(this.db!);
+				docs.slice(i, i + 500).forEach((d) => batch.delete(d.ref));
+				await batch.commit();
+			}
+		}
+	}
 }

@@ -7,9 +7,9 @@ import {
 	useRef,
 	type ReactNode,
 } from 'react';
-import { openDB } from '@/db/indexedDB';
+import { openDB, dbClear } from '@/db/indexedDB';
 import { Repos } from '@/repositories';
-import { registerSyncAdapter } from '@/sync/syncQueue';
+import { registerSyncAdapter, getAdapter } from '@/sync/syncQueue';
 import { FirebaseSyncAdapter } from '@/sync/FirebaseSyncAdapter';
 import { computeBalances } from '@/workers/balanceWorker';
 import type {
@@ -93,6 +93,7 @@ interface AppContextValue {
 	state: AppState;
 	save: (entity: EntityName, record: Record<string, unknown>) => Promise<BaseRecord>;
 	remove: (entity: EntityName, id: string) => Promise<void>;
+	clearData: (opts: { local: boolean; cloud: boolean; entities: EntityName[] }) => Promise<void>;
 	connectFirebase: (config: FirebaseConfig) => Promise<void>;
 }
 
@@ -238,6 +239,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		dispatch({ type: 'REMOVE', payload: { entity, id } });
 	}, []);
 
+	// ── Clear data ────────────────────────────────────────────────────────────
+	// Wipes selected entities from local IDB and/or Firestore cloud.
+	const clearData = useCallback(
+		async (opts: { local: boolean; cloud: boolean; entities: EntityName[] }) => {
+			const { local, cloud, entities } = opts;
+
+			if (local) {
+				for (const entity of entities) {
+					await dbClear(entity);
+					dispatch({ type: 'RELOAD_ENTITY', payload: { entity, records: [] } });
+				}
+				// Clear sync queue so stale delete operations don't re-upload to cloud
+				await dbClear('syncQueue');
+				// Re-seed system account heads if they were cleared
+				if (entities.includes('accountHeads') || entities.length === 0) {
+					await seedAccountHeads([]);
+				}
+			}
+
+			if (cloud) {
+				const adapter = getAdapter();
+				if (adapter && adapter instanceof FirebaseSyncAdapter) {
+					await adapter.clearCollections(entities as string[]);
+				}
+			}
+		},
+		[seedAccountHeads]
+	);
+
 	const connectFirebase = useCallback(
 		async (config: FirebaseConfig) => {
 			localStorage.setItem('ft_firebase_config', JSON.stringify(config));
@@ -249,7 +279,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	);
 
 	return (
-		<AppCtx.Provider value={{ state, save, remove, connectFirebase }}>
+		<AppCtx.Provider value={{ state, save, remove, clearData, connectFirebase }}>
 			{children}
 		</AppCtx.Provider>
 	);
