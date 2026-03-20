@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
 	LayoutDashboard,
 	Receipt,
@@ -62,6 +62,27 @@ type TabId =
 	| 'accountheads'
 	| 'settings';
 
+const VALID_TABS = new Set<TabId>([
+	'dashboard',
+	'expenses',
+	'income',
+	'transfers',
+	'recurring',
+	'payments',
+	'loans',
+	'cards',
+	'receivables',
+	'investments',
+	'goals',
+	'forecast',
+	'simulator',
+	'accounts',
+	'reconciliation',
+	'ledger',
+	'accountheads',
+	'settings',
+]);
+
 interface NavItem {
 	id: TabId;
 	label: string;
@@ -117,6 +138,33 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	settings: SettingsView,
 };
 
+// ── Hash router ───────────────────────────────────────────────────────────────
+// Routes: /#/dashboard  /#/expenses  /#/settings  etc.
+// Falls back to "dashboard" for any unrecognised hash.
+
+function getTabFromHash(): TabId {
+	const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase() as TabId;
+	return VALID_TABS.has(hash) ? hash : 'dashboard';
+}
+
+function useHashRouter() {
+	const [tab, setTabState] = useState<TabId>(getTabFromHash);
+
+	// Listen for back/forward navigation
+	useEffect(() => {
+		const onHashChange = () => setTabState(getTabFromHash());
+		window.addEventListener('hashchange', onHashChange);
+		return () => window.removeEventListener('hashchange', onHashChange);
+	}, []);
+
+	const setTab = useCallback((id: TabId) => {
+		// Push new hash — triggers hashchange which updates state
+		window.location.hash = `/${id}`;
+	}, []);
+
+	return { tab, setTab };
+}
+
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function Sidebar({
 	tab,
@@ -135,8 +183,10 @@ function Sidebar({
 		const Icon = item.icon;
 		const active = tab === item.id;
 		return (
-			<button
-				onClick={() => {
+			<a
+				href={`#/${item.id}`}
+				onClick={(e) => {
+					e.preventDefault();
 					setTab(item.id);
 					onClose?.();
 				}}
@@ -148,14 +198,19 @@ function Sidebar({
 				)}>
 				<Icon className="h-4 w-4 shrink-0" />
 				{item.label}
-			</button>
+			</a>
 		);
 	};
 
 	return (
 		<div className="flex h-full flex-col">
 			<div className="flex items-center justify-between p-5 pb-4">
-				<div>
+				<a
+					href="#/dashboard"
+					onClick={(e) => {
+						e.preventDefault();
+						setTab('dashboard');
+					}}>
 					<div className="flex items-center gap-2">
 						<h1 className="font-display text-lg font-bold text-foreground">
 							FinTracker
@@ -167,7 +222,7 @@ function Sidebar({
 					<p className="text-[10px] uppercase tracking-widest text-muted-foreground mt-0.5">
 						Personal Finance
 					</p>
-				</div>
+				</a>
 				{onClose && (
 					<Button
 						variant="ghost"
@@ -181,17 +236,13 @@ function Sidebar({
 			<div className="h-px bg-border mx-4" />
 
 			<nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-				{/* Ungrouped (Dashboard, Forecast, Simulator) */}
 				{ungrouped.map((n) => (
 					<NavBtn
 						key={n.id}
 						item={n}
 					/>
 				))}
-
 				<div className="h-3" />
-
-				{/* Grouped sections */}
 				{groups.filter(Boolean).map((group) => (
 					<div key={group}>
 						<p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
@@ -230,8 +281,17 @@ function Sidebar({
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function AppShell() {
 	const { state } = useApp();
-	const [tab, setTab] = useState<TabId>('dashboard');
+	const { tab, setTab } = useHashRouter();
 	const [drawer, setDrawer] = useState(false);
+
+	// Close drawer on navigation
+	const navigate = useCallback(
+		(id: TabId) => {
+			setTab(id);
+			setDrawer(false);
+		},
+		[setTab]
+	);
 
 	if (state.loading)
 		return (
@@ -275,10 +335,7 @@ function AppShell() {
 					<aside className="fixed inset-y-0 left-0 z-50 w-72 bg-card border-r border-border md:hidden animate-slide-up">
 						<Sidebar
 							tab={tab}
-							setTab={(t) => {
-								setTab(t);
-								setDrawer(false);
-							}}
+							setTab={navigate}
 							onClose={() => setDrawer(false)}
 						/>
 					</aside>
@@ -325,16 +382,20 @@ function AppShell() {
 							const Icon = item.icon;
 							const active = tab === id;
 							return (
-								<button
+								<a
 									key={id}
-									onClick={() => setTab(id)}
+									href={`#/${id}`}
+									onClick={(e) => {
+										e.preventDefault();
+										setTab(id);
+									}}
 									className={cn(
 										'flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition-colors',
 										active ? 'text-primary' : 'text-muted-foreground'
 									)}>
 									<Icon className="h-5 w-5" />
 									{item.label}
-								</button>
+								</a>
 							);
 						})}
 						<button

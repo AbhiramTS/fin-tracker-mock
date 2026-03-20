@@ -2,7 +2,7 @@
 	"name": "FinTracker",
 	"short_name": "FinTracker",
 	"description": "Local-first personal finance — forecasting, goals, reconciliation, Firebase sync",
-	"start_url": "./",
+	"start_url": "./#/dashboard",
 	"scope": "./",
 	"display": "standalone",
 	"background_color": "#07090f",
@@ -50,7 +50,7 @@
 	"shortcuts": [
 		{
 			"name": "Add Expense",
-			"url": "./?tab=expenses",
+			"url": "./#/expenses",
 			"description": "Log a new expense",
 			"icons": [
 				{
@@ -61,7 +61,7 @@
 		},
 		{
 			"name": "Dashboard",
-			"url": "./?tab=dashboard",
+			"url": "./#/dashboard",
 			"description": "View your dashboard",
 			"icons": [
 				{
@@ -72,7 +72,7 @@
 		},
 		{
 			"name": "Payments",
-			"url": "./?tab=payments",
+			"url": "./#/payments",
 			"description": "This month's payments",
 			"icons": [
 				{
