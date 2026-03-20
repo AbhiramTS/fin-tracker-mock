@@ -599,7 +599,7 @@ function DataPortability() {
 	// ── Download sample ─────────────────────────────────────────────────────────
 	const downloadSample = () => {
 		const a = document.createElement('a');
-		a.href = '/sample-import.json';
+		a.href = './sample-import.json';
 		a.download = 'fintracker-sample-import.json';
 		a.click();
 	};
