@@ -10,8 +10,11 @@ import {
 	Upload,
 	ChevronRight,
 	Pencil,
+	Bell,
+	BellRing,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useNotifications } from '@/context/NotificationContext';
 import { useNavigation } from '@/context/NavigationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -30,6 +33,16 @@ import {
 } from '@/components/ui/select';
 import { renderQR } from '@/qr/qrcode';
 import { fmt, fmtDate } from '@/utils/format';
+import {
+	ensurePushSubscription,
+	getBrowserNotificationPermission,
+	getBrowserNotificationsEnabled,
+	isBrowserNotificationSupported,
+	isPushSupported,
+	requestBrowserNotificationPermission,
+	setBrowserNotificationsEnabled,
+	showBrowserNotification,
+} from '@/utils/notifications';
 import type { FirebaseConfig, EntityName, ImportReview } from '@/types';
 
 // ── QR canvas ─────────────────────────────────────────────────────────────────
@@ -796,11 +809,20 @@ function ClearDataSection() {
 // ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
 	const { state, connectFirebase, syncNow } = useApp();
+	const { notify } = useNotifications();
 	const { setTab } = useNavigation();
 	const [connected, setConnected] = useState(() => !!localStorage.getItem('ft_firebase_config'));
 	const [showQR, setShowQR] = useState(false);
 	const [qrData, setQrData] = useState('');
 	const [syncing, setSyncing] = useState(false);
+	const [browserSupported] = useState(() => isBrowserNotificationSupported());
+	const [pushSupported] = useState(() => isPushSupported());
+	const [notifPermission, setNotifPermission] = useState<NotificationPermission>(() =>
+		getBrowserNotificationPermission()
+	);
+	const [browserEnabled, setBrowserEnabled] = useState(() => getBrowserNotificationsEnabled());
+	const [pushEndpoint, setPushEndpoint] = useState<string | null>(null);
+	const [subscribingPush, setSubscribingPush] = useState(false);
 	const pendingReviews = state.importReviews.filter((r) => r.status === 'pending').length;
 	const sync = state.sync;
 
@@ -814,6 +836,7 @@ export function SettingsView() {
 	const disconnect = () => {
 		localStorage.removeItem('ft_firebase_config');
 		setConnected(false);
+		notify({ title: 'Firebase disconnected', tone: 'warning' });
 		window.location.reload();
 	};
 
@@ -823,6 +846,107 @@ export function SettingsView() {
 			await syncNow();
 		} finally {
 			setSyncing(false);
+		}
+	};
+
+	const handleEnableBrowserNotifications = async () => {
+		if (!browserSupported) {
+			notify({
+				title: 'Browser notifications not supported',
+				description: 'This browser does not support notifications.',
+				tone: 'warning',
+			});
+			return;
+		}
+
+		const permission = await requestBrowserNotificationPermission();
+		setNotifPermission(permission);
+		if (permission === 'granted') {
+			setBrowserNotificationsEnabled(true);
+			setBrowserEnabled(true);
+			notify({
+				title: 'Browser notifications enabled',
+				description: 'You can now receive reminders from FinTracker.',
+				tone: 'success',
+			});
+			return;
+		}
+
+		setBrowserNotificationsEnabled(false);
+		setBrowserEnabled(false);
+		notify({
+			title: 'Permission denied',
+			description: 'Allow notifications in browser settings to enable reminders.',
+			tone: 'error',
+		});
+	};
+
+	const handleDisableBrowserNotifications = () => {
+		setBrowserNotificationsEnabled(false);
+		setBrowserEnabled(false);
+		notify({ title: 'Browser notifications disabled', tone: 'default' });
+	};
+
+	const handleTestInApp = () => {
+		notify({
+			title: 'In-app notification works',
+			description: 'This toast confirms local in-app alerts are active.',
+			tone: 'success',
+		});
+	};
+
+	const handleTestBrowser = async () => {
+		if (!browserEnabled || notifPermission !== 'granted') {
+			notify({
+				title: 'Enable browser notifications first',
+				description: 'Grant permission before sending a browser alert.',
+				tone: 'warning',
+			});
+			return;
+		}
+
+		const ok = await showBrowserNotification({
+			title: 'FinTracker test notification',
+			body: 'Notification channel is active.',
+			tag: 'fintracker-test',
+			url: `${import.meta.env.BASE_URL}#/payments`,
+		});
+		if (ok) {
+			notify({ title: 'Browser notification sent', tone: 'success' });
+		} else {
+			notify({
+				title: 'Could not send browser notification',
+				tone: 'error',
+			});
+		}
+	};
+
+	const handleEnablePush = async () => {
+		setSubscribingPush(true);
+		try {
+			const result = await ensurePushSubscription(import.meta.env.VITE_VAPID_PUBLIC_KEY);
+			if (!result.ok) {
+				notify({
+					title: 'Push setup failed',
+					description: result.reason,
+					tone: 'warning',
+				});
+				return;
+			}
+			setPushEndpoint(result.endpoint ?? null);
+			notify({
+				title: 'Push subscription active',
+				description: 'Device is now subscribed for push notifications.',
+				tone: 'success',
+			});
+		} catch (e) {
+			notify({
+				title: 'Push setup failed',
+				description: (e as Error).message,
+				tone: 'error',
+			});
+		} finally {
+			setSubscribingPush(false);
 		}
 	};
 
@@ -1028,6 +1152,99 @@ export function SettingsView() {
 							/>
 						</>
 					)}
+				</CardContent>
+			</Card>
+
+			<Card>
+				<CardHeader className="pb-2">
+					<div className="flex items-center justify-between">
+						<CardTitle className="flex items-center gap-2">
+							<Bell className="h-4 w-4" />
+							Notifications
+						</CardTitle>
+						{browserEnabled && notifPermission === 'granted' && (
+							<Badge variant="profit">Enabled</Badge>
+						)}
+					</div>
+				</CardHeader>
+				<CardContent className="flex flex-col gap-3">
+					<div className="grid grid-cols-2 gap-2">
+						<div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+							<p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+								Browser support
+							</p>
+							<p className="mt-0.5 text-xs font-semibold text-foreground">
+								{browserSupported ? 'Available' : 'Not available'}
+							</p>
+						</div>
+						<div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+							<p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+								Permission
+							</p>
+							<p className="mt-0.5 text-xs font-semibold text-foreground capitalize">
+								{notifPermission}
+							</p>
+						</div>
+					</div>
+
+					<p className="text-xs text-muted-foreground">
+						In-app toasts are enabled by default. Browser notifications can alert you
+						even when this tab is in the background.
+					</p>
+
+					<div className="flex flex-wrap gap-2">
+						<Button
+							variant="outline"
+							onClick={handleTestInApp}>
+							Test in-app toast
+						</Button>
+						{browserEnabled && notifPermission === 'granted' ? (
+							<Button
+								variant="secondary"
+								onClick={handleDisableBrowserNotifications}>
+								Disable browser alerts
+							</Button>
+						) : (
+							<Button
+								variant="default"
+								onClick={handleEnableBrowserNotifications}>
+								Enable browser alerts
+							</Button>
+						)}
+						<Button
+							variant="outline"
+							onClick={handleTestBrowser}>
+							<BellRing className="h-4 w-4" />
+							Test browser alert
+						</Button>
+					</div>
+
+					<div className="rounded-lg border border-border bg-muted/20 px-3 py-2">
+						<p className="text-[10px] uppercase tracking-widest text-muted-foreground">
+							Push subscription
+						</p>
+						<p className="mt-0.5 text-xs text-muted-foreground">
+							{pushSupported
+								? 'Push API available on this device.'
+								: 'Push API is not available on this device/browser.'}
+						</p>
+						<div className="mt-2 flex items-center gap-2">
+							<Button
+								variant="outline"
+								onClick={handleEnablePush}
+								disabled={!pushSupported || subscribingPush}>
+								{subscribingPush ? 'Subscribing…' : 'Enable push subscription'}
+							</Button>
+							{pushEndpoint && (
+								<Badge variant="outline">Subscribed</Badge>
+							)}
+						</div>
+						{pushEndpoint && (
+							<p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">
+								Endpoint: {pushEndpoint}
+							</p>
+						)}
+					</div>
 				</CardContent>
 			</Card>
 

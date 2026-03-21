@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { NavigationProvider, useNavigation, type TabId } from '@/context/NavigationContext';
+import { NotificationProvider, useNotifications } from '@/context/NotificationContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -224,12 +225,14 @@ function Sidebar({
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function AppShell() {
 	const { state } = useApp();
+	const { notify } = useNotifications();
 	const { tab, route, setTab, buildPath } = useNavigation();
 	const [drawer, setDrawer] = useState(false);
 	const [visitedTabs, setVisitedTabs] = useState<TabId[]>([tab]);
 	const contentRef = useRef<HTMLElement | null>(null);
 	const scrollPositionsRef = useRef<Map<string, number>>(new Map());
 	const previousRouteRef = useRef(buildPath(route));
+	const previousSyncPhaseRef = useRef(state.sync.phase);
 
 	useEffect(() => {
 		setVisitedTabs((current) => (current.includes(tab) ? current : [...current, tab]));
@@ -250,6 +253,30 @@ function AppShell() {
 		contentEl.scrollTop = restoreTop;
 		previousRouteRef.current = nextRoute;
 	}, [buildPath, route]);
+
+	useEffect(() => {
+		const prev = previousSyncPhaseRef.current;
+		const current = state.sync.phase;
+		if (prev === current) return;
+
+		if (current === 'error' && state.sync.lastError) {
+			notify({
+				title: 'Sync failed',
+				description: state.sync.lastError,
+				tone: 'error',
+				durationMs: 7000,
+			});
+		}
+		if (current === 'success' && state.sync.lastSyncedCount > 0) {
+			notify({
+				title: 'Sync completed',
+				description: `Uploaded ${state.sync.lastSyncedCount} record${state.sync.lastSyncedCount === 1 ? '' : 's'}.`,
+				tone: 'success',
+			});
+		}
+
+		previousSyncPhaseRef.current = current;
+	}, [notify, state.sync.lastError, state.sync.lastSyncedCount, state.sync.phase]);
 
 	// Close drawer on navigation
 	const navigate = useCallback(
@@ -390,10 +417,12 @@ function AppShell() {
 
 export default function App() {
 	return (
-		<AppProvider>
-			<NavigationProvider>
-				<AppShell />
-			</NavigationProvider>
-		</AppProvider>
+		<NotificationProvider>
+			<AppProvider>
+				<NavigationProvider>
+					<AppShell />
+				</NavigationProvider>
+			</AppProvider>
+		</NotificationProvider>
 	);
 }
