@@ -34,7 +34,7 @@ export function GoalsView() {
 		formTitle: 'Goal',
 	});
 
-	if (FormPage) return FormPage;
+	const showFormPage = Boolean(FormPage);
 
 	const GoalCard = ({ g }: { g: Goal }) => {
 		const pct = Math.min(100, (g.currentAmount / Math.max(g.targetAmount, 1)) * 100);
@@ -122,57 +122,62 @@ export function GoalsView() {
 	};
 
 	return (
-		<EntityView
-			title="Financial Goals"
-			subtitle={`${active.length} active · ${completed.length} completed`}
-			onAdd={openAdd}>
-			{state.goals.length === 0 && (
-				<EmptyState
-					icon="🎯"
-					title="No goals yet"
-					description="Set targets for emergency fund, house down payment, vacation, debt payoff…"
-				/>
-			)}
-			{active.length > 0 && (
-				<div className="flex flex-col gap-3">
-					{active.map((g) => (
-						<GoalCard
-							key={g.id}
-							g={g}
+		<>
+			<div className={showFormPage ? 'hidden' : undefined}>
+				<EntityView
+					title="Financial Goals"
+					subtitle={`${active.length} active · ${completed.length} completed`}
+					onAdd={openAdd}>
+					{state.goals.length === 0 && (
+						<EmptyState
+							icon="🎯"
+							title="No goals yet"
+							description="Set targets for emergency fund, house down payment, vacation, debt payoff…"
 						/>
-					))}
-				</div>
-			)}
-			{paused.length > 0 && (
-				<>
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
-						Paused
-					</p>
-					<div className="flex flex-col gap-3">
-						{paused.map((g) => (
-							<GoalCard
-								key={g.id}
-								g={g}
-							/>
-						))}
-					</div>
-				</>
-			)}
-			{completed.length > 0 && (
-				<>
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
-						Completed
-					</p>
-					<div className="flex flex-col gap-3">
-						{completed.map((g) => (
-							<GoalCard
-								key={g.id}
-								g={g}
-							/>
-						))}
-					</div>
-				</>
-			)}
-		</EntityView>
+					)}
+					{active.length > 0 && (
+						<div className="flex flex-col gap-3">
+							{active.map((g) => (
+								<GoalCard
+									key={g.id}
+									g={g}
+								/>
+							))}
+						</div>
+					)}
+					{paused.length > 0 && (
+						<>
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
+								Paused
+							</p>
+							<div className="flex flex-col gap-3">
+								{paused.map((g) => (
+									<GoalCard
+										key={g.id}
+										g={g}
+									/>
+								))}
+							</div>
+						</>
+					)}
+					{completed.length > 0 && (
+						<>
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
+								Completed
+							</p>
+							<div className="flex flex-col gap-3">
+								{completed.map((g) => (
+									<GoalCard
+										key={g.id}
+										g={g}
+									/>
+								))}
+							</div>
+						</>
+					)}
+				</EntityView>
+			</div>
+			{FormPage}
+		</>
 	);
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
 	LayoutDashboard,
 	Receipt,
@@ -226,6 +226,11 @@ function AppShell() {
 	const { state } = useApp();
 	const { tab, setTab } = useNavigation();
 	const [drawer, setDrawer] = useState(false);
+	const [visitedTabs, setVisitedTabs] = useState<TabId[]>([tab]);
+
+	useEffect(() => {
+		setVisitedTabs((current) => (current.includes(tab) ? current : [...current, tab]));
+	}, [tab]);
 
 	// Close drawer on navigation
 	const navigate = useCallback(
@@ -255,7 +260,6 @@ function AppShell() {
 			</div>
 		);
 
-	const ActiveView = VIEWS[tab];
 	const activeItem = NAV.find((n) => n.id === tab);
 
 	return (
@@ -313,7 +317,16 @@ function AppShell() {
 				{/* Content */}
 				<main className="flex-1 overflow-y-auto pb-20 md:pb-6">
 					<div className="mx-auto max-w-2xl px-4 py-5">
-						<ActiveView />
+						{visitedTabs.map((id) => {
+							const View = VIEWS[id];
+							return (
+								<div
+									key={id}
+									className={tab === id ? undefined : 'hidden'}>
+									<View />
+								</div>
+							);
+						})}
 					</div>
 				</main>
 

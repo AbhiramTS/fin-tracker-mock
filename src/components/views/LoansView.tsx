@@ -311,16 +311,14 @@ export function LoansView() {
 		route.tab === 'loans' && route.subpage === 'ledger'
 			? (state.loans.find((loan) => loan.id === route.id) ?? null)
 			: null;
-
-	if (FormPage) return FormPage;
-	if (route.tab === 'loans' && route.subpage === 'ledger') {
-		return (
+	const ledgerPage =
+		route.tab === 'loans' && route.subpage === 'ledger' ? (
 			<LoanLedgerPage
 				loan={ledgerLoan}
 				onBack={goBack}
 			/>
-		);
-	}
+		) : null;
+	const showSubpage = Boolean(FormPage || ledgerPage);
 
 	const normalLoans = state.loans.filter((l) => l.loanType === 'normal');
 	const ccLoans = state.loans.filter((l) => l.loanType === 'credit_card');
@@ -328,55 +326,65 @@ export function LoansView() {
 	const totalTaxAll = state.loans.reduce((s, l) => s + totalTax(l), 0);
 
 	return (
-		<EntityView
-			title="Loans & EMIs"
-			subtitle={`Outstanding: ${fmt(totalDebt)}${totalTaxAll > 0 ? ` · Est. total tax: ${fmt(totalTaxAll)}` : ''}`}
-			onAdd={openAdd}>
-			{state.loans.length === 0 && (
-				<EmptyState
-					icon="🏠"
-					title="No loans"
-					description="Home loan, personal loan, car loan, credit card EMIs…"
-				/>
-			)}
-
-			{normalLoans.length > 0 && (
-				<div className="flex flex-col gap-3">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Normal Loans
-					</p>
-					{normalLoans.map((l) => (
-						<LoanCard
-							key={l.id}
-							l={l}
-							onRemove={() => doRemove(l.id)}
-							onEdit={() => startEdit(l)}
-							expanded={expanded === l.id}
-							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
-							onViewHistory={() => openSubpage('ledger', { tab: 'loans', id: l.id })}
+		<>
+			<div className={showSubpage ? 'hidden' : undefined}>
+				<EntityView
+					title="Loans & EMIs"
+					subtitle={`Outstanding: ${fmt(totalDebt)}${totalTaxAll > 0 ? ` · Est. total tax: ${fmt(totalTaxAll)}` : ''}`}
+					onAdd={openAdd}>
+					{state.loans.length === 0 && (
+						<EmptyState
+							icon="🏠"
+							title="No loans"
+							description="Home loan, personal loan, car loan, credit card EMIs…"
 						/>
-					))}
-				</div>
-			)}
+					)}
 
-			{ccLoans.length > 0 && (
-				<div className="flex flex-col gap-3">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Credit Card Loans
-					</p>
-					{ccLoans.map((l) => (
-						<LoanCard
-							key={l.id}
-							l={l}
-							onRemove={() => doRemove(l.id)}
-							onEdit={() => startEdit(l)}
-							expanded={expanded === l.id}
-							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
-							onViewHistory={() => openSubpage('ledger', { tab: 'loans', id: l.id })}
-						/>
-					))}
-				</div>
-			)}
-		</EntityView>
+					{normalLoans.length > 0 && (
+						<div className="flex flex-col gap-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Normal Loans
+							</p>
+							{normalLoans.map((l) => (
+								<LoanCard
+									key={l.id}
+									l={l}
+									onRemove={() => doRemove(l.id)}
+									onEdit={() => startEdit(l)}
+									expanded={expanded === l.id}
+									onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
+									onViewHistory={() =>
+										openSubpage('ledger', { tab: 'loans', id: l.id })
+									}
+								/>
+							))}
+						</div>
+					)}
+
+					{ccLoans.length > 0 && (
+						<div className="flex flex-col gap-3">
+							<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+								Credit Card Loans
+							</p>
+							{ccLoans.map((l) => (
+								<LoanCard
+									key={l.id}
+									l={l}
+									onRemove={() => doRemove(l.id)}
+									onEdit={() => startEdit(l)}
+									expanded={expanded === l.id}
+									onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
+									onViewHistory={() =>
+										openSubpage('ledger', { tab: 'loans', id: l.id })
+									}
+								/>
+							))}
+						</div>
+					)}
+				</EntityView>
+			</div>
+			{FormPage}
+			{ledgerPage}
+		</>
 	);
 }
