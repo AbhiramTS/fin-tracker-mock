@@ -13,7 +13,7 @@ import { FormField, FormGrid, FormActions } from '@/components/ui/form-field';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { todayStr } from '@/utils/format';
+import { todayStr, fmtDec } from '@/utils/format';
 import { calculateEMI, currentCreditCardCycle } from '@/utils/amortisation';
 import { useApp } from '@/context/AppContext';
 import type {
@@ -1517,7 +1517,7 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						required
 					/>
 				</FormField>
-				<FormField label={`EMI — Auto: ₹${computedEMI.toLocaleString('en-IN')}`}>
+				<FormField label={`EMI — Auto: ${fmtDec(computedEMI)}`}>
 					<Input
 						type="number"
 						min="0"
@@ -1571,12 +1571,9 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 				{estTaxPerEMI > 0 && (
 					<div className="col-span-2 rounded-lg bg-warning/10 border border-warning/25 p-3 text-xs text-warning">
 						Est. tax/EMI:{' '}
+						<span className="font-mono font-bold">{fmtDec(estTaxPerEMI)}</span> · Total:{' '}
 						<span className="font-mono font-bold">
-							₹{estTaxPerEMI.toLocaleString('en-IN')}
-						</span>{' '}
-						· Total:{' '}
-						<span className="font-mono font-bold">
-							₹{(effectiveEMI + estTaxPerEMI).toLocaleString('en-IN')}
+							{fmtDec(effectiveEMI + estTaxPerEMI)}
 						</span>
 					</div>
 				)}
@@ -2194,7 +2191,7 @@ export function ReconciliationForm({
 				<p className="text-muted-foreground mt-1">
 					Tracked balance:{' '}
 					<span className="font-mono font-bold text-foreground">
-						₹{trackedBalance.toLocaleString('en-IN')}
+						{fmtDec(trackedBalance)}
 					</span>
 				</p>
 			</div>
@@ -2214,8 +2211,8 @@ export function ReconciliationForm({
 					{diff === 0
 						? '✓ Balanced'
 						: diff > 0
-							? `Actual is ₹${Math.abs(diff).toLocaleString('en-IN')} higher`
-							: `Actual is ₹${Math.abs(diff).toLocaleString('en-IN')} lower`}
+							? `Actual is ${fmtDec(Math.abs(diff))} higher`
+							: `Actual is ${fmtDec(Math.abs(diff))} lower`}
 				</div>
 			)}
 			<FormField label="Notes (optional)">

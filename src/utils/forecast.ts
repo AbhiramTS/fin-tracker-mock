@@ -1,4 +1,4 @@
-import { addDays } from './format';
+import { addDays, fmtDec } from './format';
 import { nextEMIDate, generateAmortisation } from './amortisation';
 import type { AppState, ForecastResult, ForecastDay, ForecastEvent } from '@/types';
 
@@ -44,7 +44,7 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 				const outflow = nextRow ? nextRow.totalPayable : (l.emi ?? 0);
 				const taxNote =
 					(l.taxRate ?? 0) > 0 && nextRow?.tax
-						? ` (incl. ₹${nextRow.tax.toLocaleString('en-IN')} tax)`
+						? ` (incl. ${fmtDec(nextRow.tax)} tax)`
 						: '';
 				events.push({
 					date: ds,

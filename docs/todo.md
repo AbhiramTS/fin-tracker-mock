@@ -8,4 +8,5 @@
 - [x] I should be able to edit account heads from the settings page, including changing their type (e.g. from loan to credit card).
 - [x] When I click on an account head in the settings page, I should see a list of all receivables and journal entries related to that head, and be able to click through to edit them.
 - [x] Accounts should just list the savings accounts.
+- [x] Show 2 decimal places in the whole application. Use Indian numbering system, i.e. lakhs and crores. (HIGH PRIORITY)
 - [ ] Track stock investments properly. (LOW PRIORITY)

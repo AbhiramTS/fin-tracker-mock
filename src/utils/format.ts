@@ -3,17 +3,12 @@ import { format, formatDistanceToNow, parseISO, differenceInDays } from 'date-fn
 const INR = new Intl.NumberFormat('en-IN', {
 	style: 'currency',
 	currency: 'INR',
-	maximumFractionDigits: 0,
-});
-const INR_DEC = new Intl.NumberFormat('en-IN', {
-	style: 'currency',
-	currency: 'INR',
 	minimumFractionDigits: 2,
 	maximumFractionDigits: 2,
 });
 
 export const fmt = (n?: number) => INR.format(n ?? 0);
-export const fmtDec = (n?: number) => INR_DEC.format(n ?? 0);
+export const fmtDec = fmt;
 export const fmtDate = (d?: string) => (d ? format(parseISO(d), 'd MMM') : '—');
 export const fmtDateFull = (d?: string) => (d ? format(parseISO(d), 'd MMM yyyy') : '—');
 export const fmtMonth = (d?: string) => (d ? format(parseISO(d), 'MMM yyyy') : '—');
