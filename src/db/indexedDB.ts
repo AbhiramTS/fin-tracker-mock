@@ -92,6 +92,51 @@ export const dbGetAll = async <T>(s: string): Promise<T[]> =>
 export const dbPut = async <T>(s: string, rec: T): Promise<IDBValidKey> =>
 	r2p((await openDB()).transaction(s, 'readwrite').objectStore(s).put(rec));
 
+const asTimestampMs = (value: unknown): number => {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value !== 'string') return 0;
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const getRecordTs = (value: unknown): number => {
+	if (!value || typeof value !== 'object') return 0;
+	const rec = value as Record<string, unknown>;
+	return Math.max(asTimestampMs(rec.updatedAt), asTimestampMs(rec.createdAt));
+};
+
+/**
+ * Upsert a record only when it is newer than the currently stored version.
+ * Returns true when the write is applied and false when skipped as stale.
+ */
+export async function dbPutLatest<T extends Record<string, unknown>>(
+	s: string,
+	rec: T
+): Promise<boolean> {
+	const db = await openDB();
+	const tx = db.transaction(s, 'readwrite');
+	const store = tx.objectStore(s);
+	const keyPath = STORE_DEFS[s]?.keyPath;
+	if (!keyPath) {
+		await r2p(store.put(rec));
+		return true;
+	}
+
+	const key = rec[keyPath];
+	if (key === undefined || key === null) {
+		await r2p(store.put(rec));
+		return true;
+	}
+
+	const existing = await r2p(store.get(key));
+	if (existing && getRecordTs(existing) > getRecordTs(rec)) {
+		return false;
+	}
+
+	await r2p(store.put(rec));
+	return true;
+}
+
 export const dbDelete = async (s: string, k: IDBValidKey): Promise<undefined> =>
 	r2p(
 		(await openDB())

@@ -10,7 +10,7 @@ import {
 	type Unsubscribe,
 } from 'firebase/firestore';
 import { SyncAdapter } from './SyncAdapter';
-import { dbPut, dbDelete, STORE_DEFS } from '@/db/indexedDB';
+import { dbPutLatest, dbDelete, STORE_DEFS } from '@/db/indexedDB';
 import type { ChangeRecord, PushResult, FirebaseConfig } from '@/types';
 
 export class FirebaseSyncAdapter extends SyncAdapter {
@@ -92,9 +92,14 @@ export class FirebaseSyncAdapter extends SyncAdapter {
 			this.unsubs.push(
 				onSnapshot(collection(this.db!, entity), async (snap) => {
 					for (const ch of snap.docChanges()) {
-						ch.type === 'removed'
-							? await dbDelete(entity, ch.doc.id)
-							: await dbPut(entity, ch.doc.data());
+						if (ch.type === 'removed') {
+							await dbDelete(entity, ch.doc.id);
+							continue;
+						}
+						await dbPutLatest(entity, {
+							id: ch.doc.id,
+							...(ch.doc.data() as Record<string, unknown>),
+						});
 					}
 					onReload(entity);
 				})
