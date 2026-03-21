@@ -18,6 +18,7 @@ import {
 	Zap,
 	X,
 	BookOpen,
+	Upload,
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { cn } from '@/lib/utils';
@@ -40,6 +41,8 @@ import { AccountsView } from '@/components/views/AccountsView';
 import { ReconciliationView } from '@/components/views/ReconciliationView';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import { SettingsView, AccountHeadsView } from '@/components/views/SettingsView';
+import { ImportReviewView } from '@/components/views/ImportReviewView';
+import { ImportView } from '@/components/views/ImportView';
 
 const APP_VERSION = __APP_VERSION__;
 
@@ -63,7 +66,9 @@ type TabId =
 	// | 'ledger'
 	| 'journalledger'
 	| 'accountheads'
-	| 'settings';
+	| 'settings'
+	| 'importreview'
+	| 'import';
 
 const VALID_TABS = new Set<TabId>([
 	'dashboard',
@@ -85,6 +90,8 @@ const VALID_TABS = new Set<TabId>([
 	'journalledger',
 	'accountheads',
 	'settings',
+	'importreview',
+	'import',
 ]);
 
 interface NavItem {
@@ -118,6 +125,8 @@ const NAV: NavItem[] = [
 	{ id: 'accountheads', label: 'Account Heads', icon: BookOpen, group: 'Planning' },
 
 	{ id: 'settings', label: 'Settings', icon: Settings },
+	{ id: 'import', label: 'Import Data', icon: Upload },
+	// importreview is accessed programmatically from the import flow; not shown in nav
 ];
 
 const BOTTOM_IDS: TabId[] = ['dashboard', 'payments', 'expenses', 'accounts', 'forecast'];
@@ -142,6 +151,8 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	reconciliation: ReconciliationView,
 	accountheads: AccountHeadsView,
 	settings: SettingsView,
+	importreview: ImportReviewView,
+	import: ImportView,
 };
 
 // ── Hash router ───────────────────────────────────────────────────────────────

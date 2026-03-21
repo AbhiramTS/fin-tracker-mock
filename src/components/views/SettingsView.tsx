@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
 	Download,
-	Upload,
 	AlertTriangle,
 	CheckCircle2,
 	GitMerge,
 	Trash2,
 	Plus,
 	RefreshCw,
+	Upload,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,9 +26,8 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { renderQR } from '@/qr/qrcode';
-import { parseImportFile, makeTxReviewRecords } from '@/utils/importEngine';
 import { fmt, fmtDate } from '@/utils/format';
-import type { FirebaseConfig, EntityName, ImportReview, Account } from '@/types';
+import type { FirebaseConfig, EntityName, ImportReview } from '@/types';
 
 // ── QR canvas ─────────────────────────────────────────────────────────────────
 function QRCanvas({ data, size = 220 }: { data: string; size?: number }) {
@@ -390,155 +389,6 @@ function TxDuplicateReview() {
 	);
 }
 
-// ── Intra-file duplicate resolution ──────────────────────────────────────────
-// Called during import flow when two records in the same file share a name
-interface IntraFileDupChoice {
-	kind: string;
-	name: string;
-	options: Record<string, unknown>[];
-	choice: number | null;
-}
-
-function IntraFileDupDialog({
-	dups,
-	onResolve,
-}: {
-	dups: IntraFileDupChoice[];
-	onResolve: (choices: Record<string, number>) => void;
-}) {
-	const [choices, setChoices] = useState<Record<string, number>>(() =>
-		Object.fromEntries(dups.map((d, i) => [i, 0]))
-	);
-
-	return (
-		<Dialog
-			open={dups.length > 0}
-			onOpenChange={() => {}}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Duplicate names in import file</DialogTitle>
-				</DialogHeader>
-				<div className="flex flex-col gap-4 p-5 pt-2 max-h-[60vh] overflow-y-auto">
-					<p className="text-xs text-muted-foreground">
-						These names appear more than once in your file. Choose which version to
-						import.
-					</p>
-					{dups.map((d, di) => (
-						<div
-							key={di}
-							className="flex flex-col gap-2">
-							<p className="text-sm font-semibold">
-								{d.kind}: "{d.name}"
-							</p>
-							{d.options.map((opt, oi) => (
-								<button
-									key={oi}
-									onClick={() => setChoices((c) => ({ ...c, [di]: oi }))}
-									className={`text-left rounded-lg border p-2.5 text-xs transition-colors ${choices[di] === oi ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/40'}`}>
-									<p className="font-semibold">Option {oi + 1}</p>
-									{Object.entries(opt)
-										.filter(
-											([k]) => !['id', 'createdAt', 'updatedAt'].includes(k)
-										)
-										.map(([k, v]) => (
-											<p
-												key={k}
-												className="text-muted-foreground">
-												{k}: {String(v)}
-											</p>
-										))}
-								</button>
-							))}
-						</div>
-					))}
-					<Button onClick={() => onResolve(choices)}>Use selected versions</Button>
-				</div>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-// ── Existing duplicate resolution ─────────────────────────────────────────────
-interface ExistingDupChoice {
-	kind: string;
-	name: string;
-	incoming: Record<string, unknown>;
-	existing: Record<string, unknown>;
-	decision: 'skip' | 'merge' | null;
-}
-
-function ExistingDupDialog({
-	dups,
-	onResolve,
-}: {
-	dups: ExistingDupChoice[];
-	onResolve: (decisions: ('skip' | 'merge')[]) => void;
-}) {
-	const [decisions, setDecisions] = useState<('skip' | 'merge')[]>(() => dups.map(() => 'merge'));
-
-	return (
-		<Dialog
-			open={dups.length > 0}
-			onOpenChange={() => {}}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Matches existing records</DialogTitle>
-				</DialogHeader>
-				<div className="flex flex-col gap-4 p-5 pt-2 max-h-[60vh] overflow-y-auto">
-					<p className="text-xs text-muted-foreground">
-						These names already exist in your data. Choose what to do.
-					</p>
-					{dups.map((d, i) => (
-						<div
-							key={i}
-							className="rounded-xl border border-border overflow-hidden">
-							<div className="px-3 py-2 border-b border-border bg-muted/30">
-								<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-									{d.kind}
-								</p>
-								<p className="text-sm font-bold">{d.name}</p>
-							</div>
-							<div className="flex">
-								<button
-									onClick={() =>
-										setDecisions((ds) =>
-											ds.map((x, j) => (j === i ? 'merge' : x))
-										)
-									}
-									className={`flex-1 flex items-center gap-2 p-3 text-xs transition-colors border-r border-border ${decisions[i] === 'merge' ? 'bg-profit/10 text-profit' : 'hover:bg-muted/40'}`}>
-									<GitMerge className="h-3.5 w-3.5 shrink-0" />
-									<div className="text-left">
-										<p className="font-semibold">Merge</p>
-										<p className="text-muted-foreground">
-											Update existing with new data, move transactions
-										</p>
-									</div>
-								</button>
-								<button
-									onClick={() =>
-										setDecisions((ds) =>
-											ds.map((x, j) => (j === i ? 'skip' : x))
-										)
-									}
-									className={`flex-1 flex items-center gap-2 p-3 text-xs transition-colors ${decisions[i] === 'skip' ? 'bg-muted text-foreground' : 'hover:bg-muted/40'}`}>
-									<CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-									<div className="text-left">
-										<p className="font-semibold">Skip</p>
-										<p className="text-muted-foreground">
-											Keep existing unchanged
-										</p>
-									</div>
-								</button>
-							</div>
-						</div>
-					))}
-					<Button onClick={() => onResolve(decisions)}>Apply decisions</Button>
-				</div>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
 // ── EXPORT_ENTITIES ───────────────────────────────────────────────────────────
 const EXPORT_ENTITIES: EntityName[] = [
 	'accounts',
@@ -555,31 +405,10 @@ const EXPORT_ENTITIES: EntityName[] = [
 	'paymentOccurrences',
 ];
 
-// ── DataPortability ───────────────────────────────────────────────────────────
-type ImportStep =
-	| 'idle'
-	| 'intra_dup' // resolving duplicates within the file
-	| 'existing_dup' // resolving duplicates against existing records
-	| 'saving'
-	| 'done';
+// ── ExportSection ─────────────────────────────────────────────────────────────
+function ExportSection() {
+	const { state } = useApp();
 
-function DataPortability() {
-	const { state, save } = useApp();
-	const fileRef = useRef<HTMLInputElement>(null);
-
-	const [step, setStep] = useState<ImportStep>('idle');
-	const [importError, setImportError] = useState('');
-	const [importResult, setImportResult] = useState<{
-		ok: number;
-		err: number;
-		reviews: number;
-		skipped: number;
-	} | null>(null);
-	const [intraDups, setIntraDups] = useState<IntraFileDupChoice[]>([]);
-	const [existingDups, setExistingDups] = useState<ExistingDupChoice[]>([]);
-	const [planRef, setPlanRef] = useState<ReturnType<typeof parseImportFile> | null>(null);
-
-	// ── Export ──────────────────────────────────────────────────────────────────
 	const handleExport = () => {
 		const payload: Record<string, unknown[]> = {};
 		for (const entity of EXPORT_ENTITIES) {
@@ -598,195 +427,6 @@ function DataPortability() {
 		URL.revokeObjectURL(url);
 	};
 
-	// ── Download sample ─────────────────────────────────────────────────────────
-	const downloadSample = () => {
-		const a = document.createElement('a');
-		a.href = '/sample-import.json';
-		a.download = 'fintracker-sample-import.json';
-		a.click();
-	};
-
-	// ── File picked ─────────────────────────────────────────────────────────────
-	const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-		const file = e.target.files?.[0];
-		if (!file) return;
-		setImportError('');
-		setImportResult(null);
-		setStep('idle');
-		e.target.value = '';
-
-		try {
-			const text = await file.text();
-			const raw = JSON.parse(text);
-			const plan = parseImportFile(raw, state);
-			setPlanRef(plan);
-
-			if (plan.intraFileDuplicates.length > 0) {
-				setIntraDups(
-					plan.intraFileDuplicates.map((d) => ({
-						kind: d.kind,
-						name: d.name,
-						options: d.items as unknown as Record<string, unknown>[],
-						choice: 0,
-					}))
-				);
-				setStep('intra_dup');
-				return;
-			}
-
-			if (plan.existingDuplicates.length > 0) {
-				setExistingDups(
-					plan.existingDuplicates.map((d) => ({
-						kind: d.kind,
-						name: (d.incoming as Record<string, string>).name,
-						incoming: d.incoming,
-						existing: d.existing,
-						decision: null,
-					}))
-				);
-				setStep('existing_dup');
-				return;
-			}
-
-			await executePlan(plan, {});
-		} catch (err) {
-			setImportError((err as Error).message || 'Could not parse file.');
-		}
-	};
-
-	// ── After intra-file dup resolution ─────────────────────────────────────────
-	const handleIntraResolved = (choices: Record<string, number>) => {
-		if (!planRef) return;
-		// Keep only the chosen version from each duplicate group
-		// (simplification: remove all from plan, add back chosen)
-		// The plan's cleanAccounts already excluded these — we add the winners back
-		for (const [idxStr, choiceIdx] of Object.entries(choices)) {
-			const dup = planRef.intraFileDuplicates[Number(idxStr)];
-			if (!dup) continue;
-			const winner = (dup.items as unknown as Record<string, unknown>[])[choiceIdx];
-			if (dup.kind === 'account') {
-				const now = new Date().toISOString();
-				const id =
-					(winner.id as string | undefined) ??
-					(planRef as unknown as { generateId?: () => string }).generateId?.() ??
-					Math.random().toString(36).slice(2);
-				planRef.cleanAccounts.push({
-					...winner,
-					id,
-					createdAt: now,
-					updatedAt: now,
-				} as Partial<Account>);
-				planRef.resolvedAccounts.set((winner.name as string).toLowerCase(), id);
-			}
-		}
-		setIntraDups([]);
-
-		if (planRef.existingDuplicates.length > 0) {
-			setExistingDups(
-				planRef.existingDuplicates.map((d) => ({
-					kind: d.kind,
-					name: (d.incoming as Record<string, string>).name,
-					incoming: d.incoming,
-					existing: d.existing,
-					decision: null,
-				}))
-			);
-			setStep('existing_dup');
-		} else {
-			executePlan(planRef, {});
-		}
-	};
-
-	// ── After existing dup resolution ────────────────────────────────────────────
-	const handleExistingResolved = useCallback(
-		async (decisions: ('skip' | 'merge')[]) => {
-			if (!planRef) return;
-			setExistingDups([]);
-
-			// mergeMap: existingId → incomingRecord (to update existing with new data + re-point txns)
-			const mergeMap: Record<string, Record<string, unknown>> = {};
-			for (let i = 0; i < planRef.existingDuplicates.length; i++) {
-				const dup = planRef.existingDuplicates[i];
-				if (decisions[i] === 'merge') {
-					const existingId = (dup.existing as Record<string, string>).id;
-					mergeMap[existingId] = dup.incoming;
-					// Ensure resolvedAccounts points to existing id
-					if (dup.kind === 'account') {
-						const name = (dup.incoming as Record<string, string>).name?.toLowerCase();
-						if (name) planRef.resolvedAccounts.set(name, existingId);
-					}
-				}
-			}
-
-			await executePlan(planRef, mergeMap);
-		},
-		[planRef]
-	);
-
-	// ── Execute plan ─────────────────────────────────────────────────────────────
-	const executePlan = useCallback(
-		async (
-			plan: ReturnType<typeof parseImportFile>,
-			mergeMap: Record<string, Record<string, unknown>>
-		) => {
-			setStep('saving');
-			let ok = 0,
-				err = 0;
-
-			// Apply merges first (update existing records)
-			for (const [existingId, incoming] of Object.entries(mergeMap)) {
-				try {
-					await save((incoming._entity as EntityName) ?? 'accounts', {
-						...incoming,
-						id: existingId,
-					} as Record<string, unknown>);
-					ok++;
-				} catch {
-					err++;
-				}
-			}
-
-			// Save clean records
-			const toSave: [EntityName, Record<string, unknown>][] = [
-				...plan.cleanAccounts.map(
-					(r) => ['accounts', r] as [EntityName, Record<string, unknown>]
-				),
-				...plan.cleanLoans.map(
-					(r) => ['loans', r] as [EntityName, Record<string, unknown>]
-				),
-				...plan.cleanJournalEntries.map(
-					(r) => ['journalEntries', r] as [EntityName, Record<string, unknown>]
-				),
-			];
-
-			for (const [entity, record] of toSave) {
-				try {
-					await save(entity, record);
-					ok++;
-				} catch {
-					err++;
-				}
-			}
-
-			// Save transaction duplicate reviews for later resolution
-			const reviews = makeTxReviewRecords(plan.txDuplicates, plan.sessionId);
-			for (const r of reviews) {
-				try {
-					await save('importReviews', r as unknown as Record<string, unknown>);
-				} catch {
-					/* non-critical */
-				}
-			}
-
-			if (plan.errors.length) console.warn('[import] errors:', plan.errors);
-
-			setImportResult({ ok, err, reviews: reviews.length, skipped: plan.errors.length });
-			setStep('done');
-			setPlanRef(null);
-		},
-		[save]
-	);
-
 	return (
 		<div className="flex flex-col gap-3">
 			<Button
@@ -795,85 +435,23 @@ function DataPortability() {
 				className="w-full justify-start gap-2">
 				<Download className="h-4 w-4 text-cyan" /> Export all data as JSON
 			</Button>
-			<Button
-				variant="outline"
-				onClick={downloadSample}
-				className="w-full justify-start gap-2">
-				<Download className="h-4 w-4 text-muted-foreground" /> Download sample import JSON
-			</Button>
-
-			<input
-				ref={fileRef}
-				type="file"
-				accept=".json,application/json"
-				onChange={handleFile}
-				className="hidden"
-			/>
-			<Button
-				variant="outline"
-				onClick={() => fileRef.current?.click()}
-				disabled={step === 'saving'}
-				className="w-full justify-start gap-2">
-				<Upload className="h-4 w-4 text-warning" />
-				{step === 'saving' ? 'Importing…' : 'Import from JSON'}
-			</Button>
-			<p className="text-xs text-muted-foreground -mt-1">
-				Supported: accounts, incomes, expenses, loans. Credit cards are imported as account
-				type "credit_card" with card details. IDs are generated automatically. Account names
-				are used as identifiers.
+			<p className="text-xs text-muted-foreground">
+				Exports accounts, journal entries, loans, goals, and all other records as a
+				versioned JSON file you can re-import or back up.
 			</p>
-
-			{importError && (
-				<div className="flex items-center gap-2 text-xs text-destructive">
-					<AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {importError}
-				</div>
-			)}
-
-			{importResult && (
-				<div
-					className={`flex items-start gap-2 text-xs rounded-lg px-3 py-2 ${importResult.err > 0 ? 'bg-warning/10 text-warning' : 'bg-profit/10 text-profit'}`}>
-					<CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-					<div>
-						<p>
-							Imported {importResult.ok} records
-							{importResult.err > 0
-								? `, ${importResult.err} failed`
-								: ' successfully'}
-							.
-						</p>
-						{importResult.skipped > 0 && (
-							<p className="text-warning mt-0.5">
-								{importResult.skipped} record
-								{importResult.skipped !== 1 ? 's were' : ' was'}
-								skipped due to missing/invalid references.
-							</p>
-						)}
-						{importResult.reviews > 0 && (
-							<p className="text-warning mt-0.5">
-								{importResult.reviews} duplicate transaction
-								{importResult.reviews !== 1 ? 's' : ''} need review — see "Duplicate
-								Review" tab.
-							</p>
-						)}
-					</div>
-				</div>
-			)}
-
-			{/* Intra-file dup dialog */}
-			{step === 'intra_dup' && (
-				<IntraFileDupDialog
-					dups={intraDups}
-					onResolve={handleIntraResolved}
-				/>
-			)}
-
-			{/* Existing dup dialog */}
-			{step === 'existing_dup' && (
-				<ExistingDupDialog
-					dups={existingDups}
-					onResolve={handleExistingResolved}
-				/>
-			)}
+			<div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 mt-1">
+				<p className="text-xs text-muted-foreground">Want to import data?</p>
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={() => {
+						window.location.hash = '/import';
+					}}
+					className="gap-1.5">
+					<Upload className="h-3.5 w-3.5" />
+					Go to Import
+				</Button>
+			</div>
 		</div>
 	);
 }
@@ -1281,7 +859,7 @@ export function SettingsView() {
 
 			<Tabs defaultValue="import">
 				<TabsList className="w-full grid grid-cols-4">
-					<TabsTrigger value="import">Import / Export</TabsTrigger>
+					<TabsTrigger value="import">Export</TabsTrigger>
 					<TabsTrigger value="merge">Merge</TabsTrigger>
 					<TabsTrigger
 						value="review"
@@ -1298,7 +876,7 @@ export function SettingsView() {
 				<TabsContent value="import">
 					<Card>
 						<CardContent className="pt-4">
-							<DataPortability />
+							<ExportSection />
 						</CardContent>
 					</Card>
 				</TabsContent>

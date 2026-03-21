@@ -1,5 +1,5 @@
 const DB_NAME = 'fintracker_v4';
-const DB_VERSION = 4; // v4: journalEntries replaces expenses/incomes/transfers
+const DB_VERSION = 5; // v5: importSessions store for resumable import review
 
 interface StoreDef {
 	keyPath: string;
@@ -23,6 +23,7 @@ export const STORE_DEFS: Record<string, StoreDef> = {
 	goals: { keyPath: 'id', indexes: ['type', 'status'] },
 	paymentOccurrences: { keyPath: 'id', indexes: ['dueDate', 'sourceId', 'status', 'kind'] },
 	importReviews: { keyPath: 'id', indexes: ['sessionId', 'status', 'entity'] },
+	importSessions: { keyPath: 'id', indexes: ['status', 'updatedAt'] },
 	syncQueue: { keyPath: 'queueId', indexes: ['entity'] },
 };
 
@@ -88,6 +89,9 @@ const r2p = <T>(r: IDBRequest<T>) =>
 
 export const dbGetAll = async <T>(s: string): Promise<T[]> =>
 	r2p((await openDB()).transaction(s).objectStore(s).getAll() as IDBRequest<T[]>);
+
+export const dbGet = async <T>(s: string, k: IDBValidKey): Promise<T | undefined> =>
+	r2p((await openDB()).transaction(s).objectStore(s).get(k) as IDBRequest<T | undefined>);
 
 export const dbPut = async <T>(s: string, rec: T): Promise<IDBValidKey> =>
 	r2p((await openDB()).transaction(s, 'readwrite').objectStore(s).put(rec));
