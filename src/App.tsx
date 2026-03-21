@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import {
 	LayoutDashboard,
 	Receipt,
@@ -224,13 +224,32 @@ function Sidebar({
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function AppShell() {
 	const { state } = useApp();
-	const { tab, setTab } = useNavigation();
+	const { tab, route, setTab, buildPath } = useNavigation();
 	const [drawer, setDrawer] = useState(false);
 	const [visitedTabs, setVisitedTabs] = useState<TabId[]>([tab]);
+	const contentRef = useRef<HTMLElement | null>(null);
+	const scrollPositionsRef = useRef<Map<string, number>>(new Map());
+	const previousRouteRef = useRef(buildPath(route));
 
 	useEffect(() => {
 		setVisitedTabs((current) => (current.includes(tab) ? current : [...current, tab]));
 	}, [tab]);
+
+	useLayoutEffect(() => {
+		const contentEl = contentRef.current;
+		if (!contentEl) return;
+
+		const nextRoute = buildPath(route);
+		const previousRoute = previousRouteRef.current;
+
+		if (previousRoute !== nextRoute) {
+			scrollPositionsRef.current.set(previousRoute, contentEl.scrollTop);
+		}
+
+		const restoreTop = scrollPositionsRef.current.get(nextRoute) ?? 0;
+		contentEl.scrollTop = restoreTop;
+		previousRouteRef.current = nextRoute;
+	}, [buildPath, route]);
 
 	// Close drawer on navigation
 	const navigate = useCallback(
@@ -315,7 +334,9 @@ function AppShell() {
 				</header>
 
 				{/* Content */}
-				<main className="flex-1 overflow-y-auto pb-20 md:pb-6">
+				<main
+					ref={contentRef}
+					className="flex-1 overflow-y-auto pb-20 md:pb-6">
 					<div className="mx-auto max-w-2xl px-4 py-5">
 						{visitedTabs.map((id) => {
 							const View = VIEWS[id];
