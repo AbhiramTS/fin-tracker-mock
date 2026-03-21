@@ -10,6 +10,7 @@ import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { parseImportFile } from '@/utils/importEngine';
 import {
 	storePendingImport,
@@ -171,6 +172,7 @@ function ExistingDupDialog({
 
 // ── Import step ───────────────────────────────────────────────────────────────
 type ImportStep = 'idle' | 'intra_dup' | 'existing_dup';
+type ImportInputMode = 'file' | 'paste';
 
 // ── Main view ─────────────────────────────────────────────────────────────────
 export function ImportView() {
@@ -178,11 +180,13 @@ export function ImportView() {
 	const fileRef = useRef<HTMLInputElement>(null);
 
 	const [step, setStep] = useState<ImportStep>('idle');
+	const [inputMode, setInputMode] = useState<ImportInputMode>('file');
 	const [importError, setImportError] = useState('');
 	const [intraDups, setIntraDups] = useState<IntraFileDupChoice[]>([]);
 	const [existingDups, setExistingDups] = useState<ExistingDupChoice[]>([]);
 	const [planRef, setPlanRef] = useState<ReturnType<typeof parseImportFile> | null>(null);
 	const [dragOver, setDragOver] = useState(false);
+	const [pastedJson, setPastedJson] = useState('');
 	const [pendingSessions, setPendingSessions] = useState<ImportSessionSummary[]>([]);
 	const [loadingSessions, setLoadingSessions] = useState(true);
 
@@ -210,45 +214,71 @@ export function ImportView() {
 		})();
 	};
 
+	const parseRawImport = (
+		raw: unknown,
+		options?: {
+			fileName?: string;
+		}
+	) => {
+		setImportError('');
+		setStep('idle');
+		const plan = parseImportFile(raw, state);
+		setPlanRef(plan);
+
+		if (plan.intraFileDuplicates.length > 0) {
+			setIntraDups(
+				plan.intraFileDuplicates.map((d) => ({
+					kind: d.kind,
+					name: d.name,
+					options: d.items as unknown as Record<string, unknown>[],
+					choice: 0,
+				}))
+			);
+			setStep('intra_dup');
+			return;
+		}
+
+		if (plan.existingDuplicates.length > 0) {
+			setExistingDups(
+				plan.existingDuplicates.map((d) => ({
+					kind: d.kind,
+					name: (d.incoming as Record<string, string>).name,
+					incoming: d.incoming,
+					existing: d.existing,
+					decision: null,
+				}))
+			);
+			setStep('existing_dup');
+			return;
+		}
+
+		storeAndReview(plan, {}, options?.fileName);
+	};
+
 	const parseFile = async (file: File) => {
 		setImportError('');
 		setStep('idle');
 		try {
 			const text = await file.text();
 			const raw = JSON.parse(text);
-			const plan = parseImportFile(raw, state);
-			setPlanRef(plan);
-
-			if (plan.intraFileDuplicates.length > 0) {
-				setIntraDups(
-					plan.intraFileDuplicates.map((d) => ({
-						kind: d.kind,
-						name: d.name,
-						options: d.items as unknown as Record<string, unknown>[],
-						choice: 0,
-					}))
-				);
-				setStep('intra_dup');
-				return;
-			}
-
-			if (plan.existingDuplicates.length > 0) {
-				setExistingDups(
-					plan.existingDuplicates.map((d) => ({
-						kind: d.kind,
-						name: (d.incoming as Record<string, string>).name,
-						incoming: d.incoming,
-						existing: d.existing,
-						decision: null,
-					}))
-				);
-				setStep('existing_dup');
-				return;
-			}
-
-			storeAndReview(plan, {}, file.name);
+			parseRawImport(raw, { fileName: file.name });
 		} catch (err) {
 			setImportError((err as Error).message || 'Could not parse file.');
+		}
+	};
+
+	const handlePastedJsonImport = () => {
+		setImportError('');
+		setStep('idle');
+		try {
+			if (!pastedJson.trim()) {
+				setImportError('Paste JSON to continue.');
+				return;
+			}
+			const raw = JSON.parse(pastedJson);
+			parseRawImport(raw, { fileName: 'Pasted JSON' });
+		} catch (err) {
+			setImportError((err as Error).message || 'Could not parse pasted JSON.');
 		}
 	};
 
@@ -350,8 +380,8 @@ export function ImportView() {
 			<div>
 				<h2 className="font-display text-xl font-bold">Import Data</h2>
 				<p className="text-sm text-muted-foreground mt-0.5">
-					Upload a FinTracker JSON file to import accounts, loans, and journal entries.
-					You can review and edit everything before it saves.
+					Upload or paste FinTracker JSON data to import accounts, loans, and journal
+					entries. You can review and edit everything before it saves.
 				</p>
 			</div>
 
@@ -399,35 +429,85 @@ export function ImportView() {
 			) : null}
 
 			{/* Drop zone */}
-			<div
-				onDragOver={(e) => {
-					e.preventDefault();
-					setDragOver(true);
-				}}
-				onDragLeave={() => setDragOver(false)}
-				onDrop={handleDrop}
-				className={`flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-10 transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:border-primary/50 hover:bg-muted/30'}`}>
-				<div className="rounded-full bg-muted/60 p-4">
-					<FileJson className="h-8 w-8 text-muted-foreground" />
-				</div>
-				<div className="text-center">
-					<p className="text-sm font-semibold">Drop a JSON file here</p>
-					<p className="text-xs text-muted-foreground mt-0.5">or click to browse</p>
-				</div>
-				<input
-					ref={fileRef}
-					type="file"
-					accept=".json,application/json"
-					onChange={handleFile}
-					className="hidden"
-				/>
-				<Button
-					onClick={() => fileRef.current?.click()}
-					className="gap-2">
-					<Upload className="h-4 w-4" />
-					Choose File
-				</Button>
-			</div>
+			<Card>
+				<CardContent className="pt-4 flex flex-col gap-3">
+					<p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+						Import Mode
+					</p>
+					<div className="grid grid-cols-2 gap-2">
+						<Button
+							variant={inputMode === 'file' ? 'default' : 'outline'}
+							onClick={() => {
+								setInputMode('file');
+								setImportError('');
+							}}
+							className="w-full">
+							Upload File
+						</Button>
+						<Button
+							variant={inputMode === 'paste' ? 'default' : 'outline'}
+							onClick={() => {
+								setInputMode('paste');
+								setImportError('');
+							}}
+							className="w-full">
+							Paste JSON
+						</Button>
+					</div>
+
+					{inputMode === 'file' ? (
+						<div
+							onDragOver={(e) => {
+								e.preventDefault();
+								setDragOver(true);
+							}}
+							onDragLeave={() => setDragOver(false)}
+							onDrop={handleDrop}
+							className={`flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed p-8 transition-colors ${dragOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/20 hover:border-primary/50 hover:bg-muted/30'}`}>
+							<div className="rounded-full bg-muted/60 p-4">
+								<FileJson className="h-8 w-8 text-muted-foreground" />
+							</div>
+							<div className="text-center">
+								<p className="text-sm font-semibold">Drop a JSON file here</p>
+								<p className="text-xs text-muted-foreground mt-0.5">
+									or click to browse
+								</p>
+							</div>
+							<input
+								ref={fileRef}
+								type="file"
+								accept=".json,application/json"
+								onChange={handleFile}
+								className="hidden"
+							/>
+							<Button
+								onClick={() => fileRef.current?.click()}
+								className="gap-2">
+								<Upload className="h-4 w-4" />
+								Choose File
+							</Button>
+						</div>
+					) : (
+						<div className="flex flex-col gap-3">
+							<Textarea
+								value={pastedJson}
+								onChange={(e) => setPastedJson(e.target.value)}
+								placeholder="Paste FinTracker import JSON here"
+								className="min-h-[220px] font-mono text-xs"
+							/>
+							<div className="flex items-center justify-end">
+								<Button
+									onClick={handlePastedJsonImport}
+									disabled={!pastedJson.trim()}
+									className="gap-2">
+									<Upload className="h-4 w-4" />
+									Import Pasted JSON
+								</Button>
+							</div>
+						</div>
+					)}
+				</CardContent>
+			</Card>
 
 			{importError && (
 				<div className="flex items-center gap-2 text-sm text-destructive rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3">
