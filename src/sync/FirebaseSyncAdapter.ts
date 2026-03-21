@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { SyncAdapter } from './SyncAdapter';
 import { dbPutLatest, dbDelete, STORE_DEFS } from '@/db/indexedDB';
+import { mergeCloudRecords } from './syncQueue';
 import type { ChangeRecord, PushResult, FirebaseConfig } from '@/types';
 
 export class FirebaseSyncAdapter extends SyncAdapter {
@@ -81,9 +82,13 @@ export class FirebaseSyncAdapter extends SyncAdapter {
 
 	async pullEntity(entity: string): Promise<Record<string, unknown>[]> {
 		await this.prepare();
-		return (await getDocs(collection(this.db!, entity))).docs.map(
-			(d) => d.data() as Record<string, unknown>
-		);
+		const cloudRecords = (await getDocs(collection(this.db!, entity))).docs.map((d) => ({
+			id: d.id,
+			...(d.data() as Record<string, unknown>),
+		}));
+		// Use newest-wins merge so local updates aren't lost
+		await mergeCloudRecords(entity, cloudRecords);
+		return cloudRecords;
 	}
 
 	async subscribeRealtime(onReload: (entity: string) => void): Promise<void> {

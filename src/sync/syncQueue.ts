@@ -1,4 +1,4 @@
-import { dbGetAll, dbPut } from '@/db/indexedDB';
+import { dbGetAll, dbPut, dbPutLatest } from '@/db/indexedDB';
 import { generateId } from '@/utils/id';
 import type { ChangeRecord, ChangeType, PushResult } from '@/types';
 import type { SyncAdapter } from './SyncAdapter';
@@ -77,4 +77,20 @@ export async function flush(): Promise<void> {
 		_flushing = false;
 		_onFlush?.({ synced: syncedCount, failed: 0, error: errorMsg });
 	}
+}
+
+/**
+ * Merge pulled cloud records into local DB, keeping whichever is newer by timestamp.
+ * Use this in any pull-based sync path (manual sync, initial load, etc).
+ */
+export async function mergeCloudRecords(
+	entity: string,
+	cloudRecords: Record<string, unknown>[]
+): Promise<number> {
+	let mergedCount = 0;
+	for (const rec of cloudRecords) {
+		const applied = await dbPutLatest(entity, rec);
+		if (applied) mergedCount++;
+	}
+	return mergedCount;
 }

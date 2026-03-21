@@ -1,4 +1,5 @@
 import type { ChangeRecord, PushResult } from '@/types';
+import { mergeCloudRecords } from './syncQueue';
 
 export abstract class SyncAdapter {
 	abstract pushChanges(changes: ChangeRecord[]): Promise<PushResult>;
@@ -34,6 +35,9 @@ export class RestSyncAdapter extends SyncAdapter {
 			headers: this.h(),
 		});
 		if (!r.ok) throw new Error(`Pull failed: ${r.status}`);
-		return r.json() as Promise<Record<string, unknown>[]>;
+		const cloudRecords = (await r.json()) as Record<string, unknown>[];
+		// Use newest-wins merge so local updates aren't lost
+		await mergeCloudRecords(entity, cloudRecords);
+		return cloudRecords;
 	}
 }
