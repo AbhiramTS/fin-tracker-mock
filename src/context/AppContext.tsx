@@ -358,43 +358,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		[]
 	);
 
-	const migrateLegacyReceivableAccounts = useCallback(
-		async (accounts: Account[], receivables: AppState['receivables']) => {
-			const existingReceivableIds = new Set(receivables.map((r) => r.id));
-			const existingHeadIds = new Set(
-				receivables.map((r) => r.receivableHeadId).filter(Boolean) as string[]
-			);
-			const fundingAccountId =
-				accounts.find((a) => ['bank', 'cash'].includes(a.type))?.id ??
-				accounts.find((a) => a.type !== 'receivable')?.id ??
-				'';
-
-			for (const account of accounts.filter((a) => a.type === 'receivable')) {
-				if (existingReceivableIds.has(account.id) || existingHeadIds.has(account.id))
-					continue;
-
-				const savedReceivable = await Repos.receivables.save({
-					id: account.id,
-					personName: account.name,
-					amountLent: Math.max(0, account.openingBalance ?? 0),
-					amountRepaid: 0,
-					dateLent: (account.createdAt ?? new Date().toISOString()).slice(0, 10),
-					accountId: fundingAccountId,
-					receivableHeadId: account.id,
-					isSettled: (account.openingBalance ?? 0) <= 0,
-					notes: account.notes,
-					createdAt: account.createdAt,
-					updatedAt: account.updatedAt,
-				} as Parameters<typeof Repos.receivables.save>[0]);
-				dispatch({
-					type: 'UPSERT',
-					payload: { entity: 'receivables', record: savedReceivable },
-				});
-			}
-		},
-		[]
-	);
-
 	// ── Initial load ──────────────────────────────────────────────────────────
 	useEffect(() => {
 		(async () => {
@@ -411,10 +374,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					(payload.accounts ?? []) as Account[],
 					(payload.accountHeads ?? []) as AccountHead[],
 					legacyCards
-				);
-				await migrateLegacyReceivableAccounts(
-					(payload.accounts ?? []) as Account[],
-					(payload.receivables ?? []) as AppState['receivables']
 				);
 
 				const saved = localStorage.getItem('ft_firebase_config');
@@ -441,7 +400,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				dispatch({ type: 'SET_ERROR', payload: (err as Error).message });
 			}
 		})();
-	}, [migrateLegacyCreditCards, migrateLegacyReceivableAccounts, reloadEntity, seedAccountHeads]);
+	}, [migrateLegacyCreditCards, reloadEntity, seedAccountHeads]);
 
 	// ── Save ──────────────────────────────────────────────────────────────────
 	// When saving an Account or Loan → also upsert its AccountHead mirror.
@@ -462,7 +421,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 				if (rootType === 'liability') {
 					if (hint === 'credit_card') {
-						const savedAccount = await Repos.accounts.save({
+						const savedAccount = (await Repos.accounts.save({
 							id: draft.id,
 							name,
 							type: 'credit_card',
@@ -478,7 +437,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 							},
 							createdAt: draft.createdAt,
 							updatedAt: draft.updatedAt,
-						} as Parameters<typeof Repos.accounts.save>[0]);
+						} as Parameters<typeof Repos.accounts.save>[0])) as Account;
 						dispatch({
 							type: 'UPSERT',
 							payload: { entity: 'accounts', record: savedAccount },
@@ -506,7 +465,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 						stateRef.current.accounts[0]?.id ??
 						'';
 
-					const savedLoan = await Repos.loans.save({
+					const savedLoan = (await Repos.loans.save({
 						id: draft.id,
 						name,
 						loanType: hint === 'credit_card_loan' ? 'credit_card' : 'normal',
@@ -519,7 +478,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 						accountId: linkedFundingAccountId,
 						createdAt: draft.createdAt,
 						updatedAt: draft.updatedAt,
-					} as Parameters<typeof Repos.loans.save>[0]);
+					} as Parameters<typeof Repos.loans.save>[0])) as Loan;
 					dispatch({ type: 'UPSERT', payload: { entity: 'loans', record: savedLoan } });
 					const head = loanToHead(savedLoan);
 					await Repos.accountHeads.save(
@@ -535,12 +494,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					return head;
 				}
 
-				const allowedAssetTypes: AccountType[] = [
-					'bank',
-					'cash',
-					'investment',
-					'receivable',
-				];
+				const allowedAssetTypes: AccountType[] = ['bank', 'cash', 'investment'];
 				if (hint === 'receivable') {
 					const savedHead = await Repos.accountHeads.save({
 						id: draft.id,
@@ -593,14 +547,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				const accountType = allowedAssetTypes.includes(hint as AccountType)
 					? (hint as AccountType)
 					: 'bank';
-				const savedAccount = await Repos.accounts.save({
+				const savedAccount = (await Repos.accounts.save({
 					id: draft.id,
 					name,
 					type: accountType,
 					openingBalance: 0,
 					createdAt: draft.createdAt,
 					updatedAt: draft.updatedAt,
-				} as Parameters<typeof Repos.accounts.save>[0]);
+				} as Parameters<typeof Repos.accounts.save>[0])) as Account;
 				dispatch({ type: 'UPSERT', payload: { entity: 'accounts', record: savedAccount } });
 				const head = accountToHead(savedAccount);
 				await Repos.accountHeads.save(
