@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Plus, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useNavigation } from '@/context/NavigationContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,16 +9,16 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { ReceivableForm, RepaymentForm } from '@/components/forms';
-import { ReceivableLedgerDialog } from './AccountLedger';
+import { ReceivableLedgerPage } from './AccountLedger';
 import { getReceivableJournalStats } from '@/utils/receivables';
 import type { Receivable } from '@/types';
 
 export function ReceivablesView() {
 	const { state, save } = useApp();
+	const { route, openSubpage, goBack } = useNavigation();
 	const [repayFor, setRepayFor] = useState<string | null>(null);
-	const [ledgerReceivable, setLedgerReceivable] = useState<Receivable | null>(null);
 
 	const receivablesWithStats = state.receivables.map((receivable) => ({
 		receivable,
@@ -27,12 +28,45 @@ export function ReceivablesView() {
 	const settled = receivablesWithStats.filter((r) => r.stats.isSettled);
 	const totalOut = active.reduce((s, r) => s + r.stats.outstanding, 0);
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Receivable>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Receivable>({
+		tab: 'receivables',
+		records: state.receivables,
 		entity: 'receivables',
 		FormComp: ReceivableForm,
 		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
+		pageTitle: 'Money Lent',
 		formTitle: 'Receivable',
+		onAfterSave: async (saved) => {
+			const receivable = saved as Receivable;
+			const isNew = !state.receivables.some((existing) => existing.id === receivable.id);
+			if (!isNew) return;
+			if (!receivable.amountLent || !receivable.accountId) return;
+
+			await save('journalEntries', {
+				description: `Lent to ${receivable.personName}`,
+				amount: receivable.amountLent,
+				date: receivable.dateLent,
+				type: 'lending_disbursal',
+				debitAccountHeadId: receivable.receivableHeadId ?? 'head_asset',
+				creditAccountHeadId: receivable.accountId,
+				notes: receivable.description ?? receivable.notes,
+			});
+		},
 	});
+	const ledgerReceivable =
+		route.tab === 'receivables' && route.subpage === 'ledger'
+			? (state.receivables.find((receivable) => receivable.id === route.id) ?? null)
+			: null;
+
+	if (FormPage) return FormPage;
+	if (route.tab === 'receivables' && route.subpage === 'ledger') {
+		return (
+			<ReceivableLedgerPage
+				receivable={ledgerReceivable}
+				onBack={goBack}
+			/>
+		);
+	}
 
 	const handleRepayment = async (data: Record<string, unknown>) => {
 		const receivable = state.receivables.find((r) => r.id === repayFor);
@@ -59,25 +93,7 @@ export function ReceivablesView() {
 		<EntityView
 			title="Money Lent"
 			subtitle={`${active.length} active · ${fmt(totalOut)} outstanding`}
-			entity="receivables"
-			FormComp={ReceivableForm}
-			formProps={{ accounts: state.accounts, accountHeads: state.accountHeads }}
-			onAfterSave={async (saved) => {
-				const receivable = saved as Receivable;
-				const isNew = !state.receivables.some((r) => r.id === receivable.id);
-				if (!isNew) return;
-				if (!receivable.amountLent || !receivable.accountId) return;
-
-				await save('journalEntries', {
-					description: `Lent to ${receivable.personName}`,
-					amount: receivable.amountLent,
-					date: receivable.dateLent,
-					type: 'lending_disbursal',
-					debitAccountHeadId: receivable.receivableHeadId ?? 'head_asset',
-					creditAccountHeadId: receivable.accountId,
-					notes: receivable.description ?? receivable.notes,
-				});
-			}}>
+			onAdd={openAdd}>
 			{state.receivables.length === 0 && (
 				<EmptyState
 					icon="🤝"
@@ -104,7 +120,10 @@ export function ReceivablesView() {
 							<Card
 								key={r.id}
 								className={`transition-colors${r.receivableHeadId ? ' cursor-pointer hover:border-primary/40' : ''}`}
-								onClick={() => r.receivableHeadId && setLedgerReceivable(r)}>
+								onClick={() =>
+									r.receivableHeadId &&
+									openSubpage('ledger', { tab: 'receivables', id: r.id })
+								}>
 								<CardContent className="p-4">
 									<div className="flex items-start justify-between mb-2">
 										<div>
@@ -206,7 +225,10 @@ export function ReceivablesView() {
 						<Card
 							key={r.id}
 							className={`opacity-60 transition-colors${r.receivableHeadId ? ' cursor-pointer hover:border-primary/40 hover:opacity-100' : ''}`}
-							onClick={() => r.receivableHeadId && setLedgerReceivable(r)}>
+							onClick={() =>
+								r.receivableHeadId &&
+								openSubpage('ledger', { tab: 'receivables', id: r.id })
+							}>
 							<CardContent className="flex items-center justify-between p-4">
 								<div>
 									<p className="font-semibold line-through">{r.personName}</p>
@@ -226,13 +248,6 @@ export function ReceivablesView() {
 					))}
 				</div>
 			)}
-
-			{EditDialog}
-
-			<ReceivableLedgerDialog
-				receivable={ledgerReceivable}
-				onClose={() => setLedgerReceivable(null)}
-			/>
 
 			<Dialog
 				open={!!repayFor}

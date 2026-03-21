@@ -3,8 +3,7 @@ import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
-import { RowActions, useEditDelete } from './EntityView';
-import { EntityView } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { ExpenseForm } from '@/components/forms';
 import { MonthlyBarsChart } from '@/components/charts';
 import type { JournalEntry } from '@/types';
@@ -24,7 +23,9 @@ export function ExpensesView() {
 
 	const expenses = state.journalEntries.filter((e) => e.type === 'expense');
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<JournalEntry>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<JournalEntry>({
+		tab: 'expenses',
+		records: expenses,
 		entity: 'journalEntries',
 		FormComp: ExpenseForm,
 		formProps: {
@@ -32,8 +33,11 @@ export function ExpensesView() {
 			accountHeads: state.accountHeads,
 			defaultType: 'expense',
 		},
+		pageTitle: 'Expenses',
 		formTitle: 'Expense',
 	});
+
+	if (FormPage) return FormPage;
 
 	// Derive category from the debit account head name
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? 'Other';
@@ -60,13 +64,7 @@ export function ExpensesView() {
 		<EntityView
 			title="Expenses"
 			subtitle={`${filtered.length} records · ${fmt(total)}`}
-			entity="journalEntries"
-			FormComp={ExpenseForm}
-			formProps={{
-				accounts: state.accounts,
-				accountHeads: state.accountHeads,
-				defaultType: 'expense',
-			}}>
+			onAdd={openAdd}>
 			{expenses.length > 0 && (
 				<>
 					<Card>
@@ -166,7 +164,6 @@ export function ExpensesView() {
 					})}
 				</div>
 			)}
-			{EditDialog}
 		</EntityView>
 	);
 }

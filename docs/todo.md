@@ -6,4 +6,5 @@
 - [x] Calculate lending outstanding balance based on the related journal entries, instead of having a separate field for it.
 - [ ] Track stock investments properly. (LOW PRIORITY)
 - [x] Add an import view, where I can view and edit imported journal entries before they get saved to the database.
-- [ ] Instead of opening in a popup, the add/edit forms as well as the ledger should open in a new page, with a back button to return to the previous page. (This is especially important for the ledger, which will be difficult to use in a small popup.)
+- [x] Instead of opening in a popup, the add/edit forms as well as the ledger should open in a new page, with a back button to return to the previous page. (This is especially important for the ledger, which will be difficult to use in a small popup.)
+- [ ] I should be able to delete a ledger entry (**CRITICAL**)

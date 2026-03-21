@@ -22,7 +22,8 @@ import {
 } from '@/components/ui/select';
 import { EmptyState } from '@/components/ui/empty-state';
 import { JournalEntryForm } from '@/components/forms';
-import { useEditDelete } from './EntityView';
+import { useNavigation } from '@/context/NavigationContext';
+import { useEntityFormPage } from './EntityView';
 import type { JournalEntry, JournalEntryType } from '@/types';
 
 // ── Type meta ─────────────────────────────────────────────────────────────────
@@ -102,7 +103,10 @@ function getDisplaySide(entry: JournalEntry, accountHeadId?: string): 'debit' | 
 // ─────────────────────────────────────────────────────────────────────────────
 export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId?: string } = {}) {
 	const { state } = useApp();
-	const { startEdit, EditDialog } = useEditDelete<JournalEntry>({
+	const { tab } = useNavigation();
+	const { startEdit, FormPage } = useEntityFormPage<JournalEntry>({
+		tab,
+		records: state.journalEntries,
 		entity: 'journalEntries',
 		FormComp: JournalEntryForm,
 		formProps: {
@@ -111,8 +115,12 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 			loans: state.loans,
 			allowTypeChange: true,
 		},
+		pageTitle: 'Journal Entry',
 		formTitle: 'Journal Entry',
+		editSubpage: 'edit-entry',
 	});
+
+	if (FormPage) return FormPage;
 
 	// ── Filters ────────────────────────────────────────────────────────────────
 	const [search, setSearch] = useState('');
@@ -724,7 +732,6 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 					})}
 				</div>
 			)}
-			{EditDialog}
 		</div>
 	);
 }

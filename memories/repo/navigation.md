@@ -1,0 +1,3 @@
+- Hash navigation now supports tab-scoped subpages via NavigationContext: `#/tab/subpage?id=...&back=/previous/path`.
+- Shared CRUD pages use `useEntityFormPage` in `src/components/views/EntityView.tsx` and full-page shells use `SubpageLayout`.
+- Ledger pages are route-backed page components in `src/components/views/AccountLedger.tsx`, not dialogs.

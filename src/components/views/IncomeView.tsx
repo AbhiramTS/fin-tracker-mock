@@ -1,14 +1,12 @@
-import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/ui/empty-state';
-import { RowActions, useEditDelete } from './EntityView';
+import { RowActions, useEntityFormPage } from './EntityView';
 import { IncomeForm, RecurringIncomeForm } from '@/components/forms';
 import type { JournalEntry, RecurringIncome } from '@/types';
 
@@ -22,9 +20,7 @@ const FREQ_MULT: Record<string, number> = {
 };
 
 export function IncomeView() {
-	const { state, save } = useApp();
-	const [addRecurring, setAddRecurring] = useState(false);
-	const [addOneoff, setAddOneoff] = useState(false);
+	const { state } = useApp();
 
 	const incomes = state.journalEntries.filter((e) => e.type === 'income');
 	const monthlyRecurring = state.recurringIncomes
@@ -34,10 +30,13 @@ export function IncomeView() {
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? '?';
 
 	const {
+		openAdd: openOneoffAdd,
 		startEdit: startEditInc,
 		doRemove: removeInc,
-		EditDialog: EditIncDialog,
-	} = useEditDelete<JournalEntry>({
+		FormPage: EditIncPage,
+	} = useEntityFormPage<JournalEntry>({
+		tab: 'income',
+		records: incomes,
 		entity: 'journalEntries',
 		FormComp: IncomeForm,
 		formProps: {
@@ -45,18 +44,30 @@ export function IncomeView() {
 			accountHeads: state.accountHeads,
 			defaultType: 'income',
 		},
+		pageTitle: 'Income',
 		formTitle: 'Income',
+		addSubpage: 'new-oneoff',
+		editSubpage: 'edit-oneoff',
 	});
 	const {
+		openAdd: openRecurringAdd,
 		startEdit: startEditRI,
 		doRemove: removeRI,
-		EditDialog: EditRIDialog,
-	} = useEditDelete<RecurringIncome>({
+		FormPage: EditRecurringPage,
+	} = useEntityFormPage<RecurringIncome>({
+		tab: 'income',
+		records: state.recurringIncomes,
 		entity: 'recurringIncomes',
 		FormComp: RecurringIncomeForm,
 		formProps: { accounts: state.accounts, accountHeads: state.accountHeads },
+		pageTitle: 'Recurring Income',
 		formTitle: 'Recurring Income',
+		addSubpage: 'new-recurring',
+		editSubpage: 'edit-recurring',
 	});
+
+	if (EditRecurringPage) return EditRecurringPage;
+	if (EditIncPage) return EditIncPage;
 
 	return (
 		<div className="flex flex-col gap-4">
@@ -85,7 +96,7 @@ export function IncomeView() {
 						<div className="flex justify-end">
 							<Button
 								size="sm"
-								onClick={() => setAddRecurring(true)}>
+								onClick={openRecurringAdd}>
 								<Plus className="h-4 w-4" /> Add
 							</Button>
 						</div>
@@ -132,7 +143,7 @@ export function IncomeView() {
 						<div className="flex justify-end">
 							<Button
 								size="sm"
-								onClick={() => setAddOneoff(true)}>
+								onClick={openOneoffAdd}>
 								<Plus className="h-4 w-4" /> Add
 							</Button>
 						</div>
@@ -172,46 +183,6 @@ export function IncomeView() {
 					</div>
 				</TabsContent>
 			</Tabs>
-
-			{EditIncDialog}
-			{EditRIDialog}
-
-			<Dialog
-				open={addRecurring}
-				onOpenChange={setAddRecurring}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Add Recurring Income</DialogTitle>
-					</DialogHeader>
-					<RecurringIncomeForm
-						accounts={state.accounts}
-						accountHeads={state.accountHeads}
-						onSave={async (d) => {
-							await save('recurringIncomes', d);
-							setAddRecurring(false);
-						}}
-						onCancel={() => setAddRecurring(false)}
-					/>
-				</DialogContent>
-			</Dialog>
-			<Dialog
-				open={addOneoff}
-				onOpenChange={setAddOneoff}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Add Income</DialogTitle>
-					</DialogHeader>
-					<IncomeForm
-						accounts={state.accounts}
-						accountHeads={state.accountHeads}
-						onSave={async (d) => {
-							await save('journalEntries', d);
-							setAddOneoff(false);
-						}}
-						onCancel={() => setAddOneoff(false)}
-					/>
-				</DialogContent>
-			</Dialog>
 		</div>
 	);
 }

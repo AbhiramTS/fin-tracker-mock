@@ -1,13 +1,13 @@
-import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { InvestmentLedgerDialog } from './AccountLedger';
+import { useNavigation } from '@/context/NavigationContext';
+import { InvestmentLedgerPage } from './AccountLedger';
 import { fmt, fmtPct } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PortfolioDonut } from '@/components/charts';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { InvestmentForm } from '@/components/forms';
 import type { Investment } from '@/types';
 
@@ -25,23 +25,39 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function InvestmentsView() {
 	const { state } = useApp();
-	const [ledgerInv, setLedgerInv] = useState<Investment | null>(null);
+	const { route, openSubpage, goBack } = useNavigation();
 	const total = state.investments.reduce((s, i) => s + (i.value ?? 0), 0);
 	const totalCost = state.investments.reduce((s, i) => s + (i.costBasis ?? i.value ?? 0), 0);
 	const totalPnL = total - totalCost;
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Investment>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Investment>({
+		tab: 'investments',
+		records: state.investments,
 		entity: 'investments',
 		FormComp: InvestmentForm,
+		pageTitle: 'Investments',
 		formTitle: 'Investment',
 	});
+	const ledgerInv =
+		route.tab === 'investments' && route.subpage === 'ledger'
+			? (state.investments.find((investment) => investment.id === route.id) ?? null)
+			: null;
+
+	if (FormPage) return FormPage;
+	if (route.tab === 'investments' && route.subpage === 'ledger') {
+		return (
+			<InvestmentLedgerPage
+				investment={ledgerInv}
+				onBack={goBack}
+			/>
+		);
+	}
 
 	return (
 		<EntityView
 			title="Investments"
 			subtitle={`Portfolio: ${fmt(total)}`}
-			entity="investments"
-			FormComp={InvestmentForm}>
+			onAdd={openAdd}>
 			{total > 0 && (
 				<Card>
 					<CardContent className="p-4">
@@ -117,7 +133,9 @@ export function InvestmentsView() {
 						<Card
 							key={inv.id}
 							className="cursor-pointer hover:border-primary/40 transition-colors"
-							onClick={() => setLedgerInv(inv)}>
+							onClick={() =>
+								openSubpage('ledger', { tab: 'investments', id: inv.id })
+							}>
 							<CardContent className="flex items-center justify-between p-4">
 								<div>
 									<p className="font-semibold">{inv.name}</p>
@@ -150,11 +168,6 @@ export function InvestmentsView() {
 					);
 				})
 			)}
-			{EditDialog}
-			<InvestmentLedgerDialog
-				investment={ledgerInv}
-				onClose={() => setLedgerInv(null)}
-			/>
 		</EntityView>
 	);
 }

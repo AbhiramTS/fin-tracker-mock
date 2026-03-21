@@ -3,7 +3,7 @@ import { fmt, fmtDate } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowRight } from 'lucide-react';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { TransferForm } from '@/components/forms';
 import type { JournalEntry } from '@/types';
 
@@ -12,7 +12,9 @@ export function TransfersView() {
 	const transfers = state.journalEntries.filter((e) => e.type === 'transfer');
 	const headName = (id: string) => state.accountHeads.find((h) => h.id === id)?.name ?? '?';
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<JournalEntry>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<JournalEntry>({
+		tab: 'transfers',
+		records: transfers,
 		entity: 'journalEntries',
 		FormComp: TransferForm,
 		formProps: {
@@ -20,8 +22,11 @@ export function TransfersView() {
 			accountHeads: state.accountHeads,
 			defaultType: 'transfer',
 		},
+		pageTitle: 'Transfers',
 		formTitle: 'Transfer',
 	});
+
+	if (FormPage) return FormPage;
 
 	const sorted = [...transfers].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -29,13 +34,7 @@ export function TransfersView() {
 		<EntityView
 			title="Transfers"
 			subtitle={`${transfers.length} transfers`}
-			entity="journalEntries"
-			FormComp={TransferForm}
-			formProps={{
-				accounts: state.accounts,
-				accountHeads: state.accountHeads,
-				defaultType: 'transfer',
-			}}>
+			onAdd={openAdd}>
 			{sorted.length === 0 ? (
 				<EmptyState
 					icon="🔄"
@@ -71,7 +70,6 @@ export function TransfersView() {
 					</Card>
 				))
 			)}
-			{EditDialog}
 		</EntityView>
 	);
 }

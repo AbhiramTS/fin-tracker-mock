@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useNavigation } from '@/context/NavigationContext';
 import { fmt, fmtDate } from '@/utils/format';
 import {
 	generateAmortisation,
@@ -14,9 +15,9 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { LoanForm } from '@/components/forms';
-import { LoanLedgerDialog } from './AccountLedger';
+import { LoanLedgerPage } from './AccountLedger';
 import type { Loan } from '@/types';
 
 // ── Amortisation table with tax column ───────────────────────────────────────
@@ -278,15 +279,48 @@ function LoanCard({
 // ── Main view ─────────────────────────────────────────────────────────────────
 export function LoansView() {
 	const { state, save } = useApp();
+	const { route, openSubpage, goBack } = useNavigation();
 	const [expanded, setExpanded] = useState<string | null>(null);
-	const [ledgerLoan, setLedgerLoan] = useState<Loan | null>(null);
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Loan>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Loan>({
+		tab: 'loans',
+		records: state.loans,
 		entity: 'loans',
 		FormComp: LoanForm,
 		formProps: { accounts: state.accounts },
+		pageTitle: 'Loans & EMIs',
 		formTitle: 'Loan',
+		onAfterSave: async (saved) => {
+			const loan = saved as Loan;
+			const isNew = !state.loans.some((existingLoan) => existingLoan.id === loan.id);
+			if (!isNew) return;
+			if (!loan.principalAmount || !loan.accountId) return;
+
+			await save('journalEntries', {
+				description: `Loan disbursal — ${loan.name}`,
+				amount: loan.principalAmount,
+				date: loan.startDate,
+				type: 'loan_disbursal',
+				debitAccountHeadId: loan.accountId,
+				creditAccountHeadId: loan.id,
+				notes: 'Auto-posted on loan creation',
+			});
+		},
 	});
+	const ledgerLoan =
+		route.tab === 'loans' && route.subpage === 'ledger'
+			? (state.loans.find((loan) => loan.id === route.id) ?? null)
+			: null;
+
+	if (FormPage) return FormPage;
+	if (route.tab === 'loans' && route.subpage === 'ledger') {
+		return (
+			<LoanLedgerPage
+				loan={ledgerLoan}
+				onBack={goBack}
+			/>
+		);
+	}
 
 	const normalLoans = state.loans.filter((l) => l.loanType === 'normal');
 	const ccLoans = state.loans.filter((l) => l.loanType === 'credit_card');
@@ -297,25 +331,7 @@ export function LoansView() {
 		<EntityView
 			title="Loans & EMIs"
 			subtitle={`Outstanding: ${fmt(totalDebt)}${totalTaxAll > 0 ? ` · Est. total tax: ${fmt(totalTaxAll)}` : ''}`}
-			entity="loans"
-			FormComp={LoanForm}
-			formProps={{ accounts: state.accounts }}
-			onAfterSave={async (saved) => {
-				const loan = saved as Loan;
-				const isNew = !state.loans.some((l) => l.id === loan.id);
-				if (!isNew) return;
-				if (!loan.principalAmount || !loan.accountId) return;
-
-				await save('journalEntries', {
-					description: `Loan disbursal — ${loan.name}`,
-					amount: loan.principalAmount,
-					date: loan.startDate,
-					type: 'loan_disbursal',
-					debitAccountHeadId: loan.accountId,
-					creditAccountHeadId: loan.id,
-					notes: 'Auto-posted on loan creation',
-				});
-			}}>
+			onAdd={openAdd}>
 			{state.loans.length === 0 && (
 				<EmptyState
 					icon="🏠"
@@ -337,7 +353,7 @@ export function LoansView() {
 							onEdit={() => startEdit(l)}
 							expanded={expanded === l.id}
 							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
-							onViewHistory={() => setLedgerLoan(l)}
+							onViewHistory={() => openSubpage('ledger', { tab: 'loans', id: l.id })}
 						/>
 					))}
 				</div>
@@ -356,17 +372,11 @@ export function LoansView() {
 							onEdit={() => startEdit(l)}
 							expanded={expanded === l.id}
 							onToggle={() => setExpanded(expanded === l.id ? null : l.id)}
-							onViewHistory={() => setLedgerLoan(l)}
+							onViewHistory={() => openSubpage('ledger', { tab: 'loans', id: l.id })}
 						/>
 					))}
 				</div>
 			)}
-
-			{EditDialog}
-			<LoanLedgerDialog
-				loan={ledgerLoan}
-				onClose={() => setLedgerLoan(null)}
-			/>
 		</EntityView>
 	);
 }

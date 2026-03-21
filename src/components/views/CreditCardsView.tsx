@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useApp } from '@/context/AppContext';
+import { useNavigation } from '@/context/NavigationContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
 import { currentCreditCardCycle } from '@/utils/amortisation';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,13 +10,14 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { CreditCardForm } from '@/components/forms';
-import { CreditCardLedgerDialog } from './AccountLedger';
+import { CreditCardLedgerPage } from './AccountLedger';
 import type { Account } from '@/types';
 
 export function CreditCardsView() {
 	const { state } = useApp();
+	const { route, openSubpage, goBack } = useNavigation();
 	const creditCardAccounts = state.accounts.filter((a) => a.type === 'credit_card');
 
 	const detailsForAccount = (account: Account) => {
@@ -35,20 +37,35 @@ export function CreditCardsView() {
 	};
 
 	const totalDebt = creditCardAccounts.reduce((s, a) => s + detailsForAccount(a).outstanding, 0);
-	const [ledgerCard, setLedgerCard] = useState<Account | null>(null);
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Account>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Account>({
+		tab: 'cards',
+		records: creditCardAccounts,
 		entity: 'accounts',
 		FormComp: CreditCardForm,
+		pageTitle: 'Credit Cards',
 		formTitle: 'Credit Card',
 	});
+	const ledgerCard =
+		route.tab === 'cards' && route.subpage === 'ledger'
+			? (creditCardAccounts.find((account) => account.id === route.id) ?? null)
+			: null;
+
+	if (FormPage) return FormPage;
+	if (route.tab === 'cards' && route.subpage === 'ledger') {
+		return (
+			<CreditCardLedgerPage
+				card={ledgerCard}
+				onBack={goBack}
+			/>
+		);
+	}
 
 	return (
 		<EntityView
 			title="Credit Cards"
 			subtitle={`Total outstanding: ${fmt(totalDebt)}`}
-			entity="accounts"
-			FormComp={CreditCardForm}>
+			onAdd={openAdd}>
 			{creditCardAccounts.length === 0 ? (
 				<EmptyState
 					icon="💳"
@@ -72,7 +89,7 @@ export function CreditCardsView() {
 						<Card
 							key={a.id}
 							className="cursor-pointer hover:border-primary/40 transition-colors"
-							onClick={() => setLedgerCard(a)}>
+							onClick={() => openSubpage('ledger', { tab: 'cards', id: a.id })}>
 							<CardContent className="p-4">
 								<div className="flex items-start justify-between mb-3">
 									<div>
@@ -184,11 +201,6 @@ export function CreditCardsView() {
 					);
 				})
 			)}
-			{EditDialog}
-			<CreditCardLedgerDialog
-				card={ledgerCard}
-				onClose={() => setLedgerCard(null)}
-			/>
 		</EntityView>
 	);
 }

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { GoalForm, GOAL_ICONS } from '@/components/forms';
 import type { Goal } from '@/types';
 
@@ -25,11 +25,16 @@ export function GoalsView() {
 	const completed = state.goals.filter((g) => g.status === 'completed');
 	const paused = state.goals.filter((g) => g.status === 'paused');
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Goal>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Goal>({
+		tab: 'goals',
+		records: state.goals,
 		entity: 'goals',
 		FormComp: GoalForm,
+		pageTitle: 'Financial Goals',
 		formTitle: 'Goal',
 	});
+
+	if (FormPage) return FormPage;
 
 	const GoalCard = ({ g }: { g: Goal }) => {
 		const pct = Math.min(100, (g.currentAmount / Math.max(g.targetAmount, 1)) * 100);
@@ -120,8 +125,7 @@ export function GoalsView() {
 		<EntityView
 			title="Financial Goals"
 			subtitle={`${active.length} active · ${completed.length} completed`}
-			entity="goals"
-			FormComp={GoalForm}>
+			onAdd={openAdd}>
 			{state.goals.length === 0 && (
 				<EmptyState
 					icon="🎯"
@@ -169,7 +173,6 @@ export function GoalsView() {
 					</div>
 				</>
 			)}
-			{EditDialog}
 		</EntityView>
 	);
 }

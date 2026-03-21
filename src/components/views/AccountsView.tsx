@@ -1,29 +1,48 @@
 import { useState } from 'react';
 import { RefreshCw, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useNavigation } from '@/context/NavigationContext';
 import { fmt } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { AccountForm, ReconciliationForm } from '@/components/forms';
-import { AccountLedgerDialog } from './AccountLedger';
+import { AccountLedgerPage } from './AccountLedger';
 import type { Account } from '@/types';
 
 export function AccountsView() {
 	const { state, save } = useApp();
+	const { route, openSubpage, goBack } = useNavigation();
 	const total = Object.values(state.computedBalances).reduce((s, b) => s + b, 0);
 
 	const [reconId, setReconId] = useState<string | null>(null);
-	const [ledgerAccount, setLedgerAccount] = useState<Account | null>(null);
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<Account>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<Account>({
+		tab: 'accounts',
+		records: state.accounts,
 		entity: 'accounts',
 		FormComp: AccountForm,
+		formProps: { accountHeads: state.accountHeads },
+		pageTitle: 'Accounts',
 		formTitle: 'Account',
 	});
+	const ledgerAccount =
+		route.tab === 'accounts' && route.subpage === 'ledger'
+			? (state.accounts.find((account) => account.id === route.id) ?? null)
+			: null;
+
+	if (FormPage) return FormPage;
+	if (route.tab === 'accounts' && route.subpage === 'ledger') {
+		return (
+			<AccountLedgerPage
+				account={ledgerAccount}
+				onBack={goBack}
+			/>
+		);
+	}
 
 	const recon = state.accounts.find((a) => a.id === reconId);
 
@@ -31,9 +50,7 @@ export function AccountsView() {
 		<EntityView
 			title="Accounts"
 			subtitle={`Total: ${fmt(total)}`}
-			entity="accounts"
-			FormComp={AccountForm}
-			formProps={{ accountHeads: state.accountHeads }}>
+			onAdd={openAdd}>
 			{state.accounts.length === 0 ? (
 				<EmptyState
 					icon="🏦"
@@ -45,7 +62,7 @@ export function AccountsView() {
 					<Card
 						key={a.id}
 						className="cursor-pointer hover:border-primary/40 transition-colors"
-						onClick={() => setLedgerAccount(a)}>
+						onClick={() => openSubpage('ledger', { tab: 'accounts', id: a.id })}>
 						<CardContent className="flex items-center justify-between p-4">
 							<div className="flex items-center gap-3 min-w-0">
 								<div
@@ -85,12 +102,6 @@ export function AccountsView() {
 					</Card>
 				))
 			)}
-
-			{EditDialog}
-			<AccountLedgerDialog
-				account={ledgerAccount}
-				onClose={() => setLedgerAccount(null)}
-			/>
 
 			<Dialog
 				open={!!reconId}

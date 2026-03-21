@@ -1,234 +1,144 @@
-// AccountLedger.tsx — per-account ledger dialog using JournalLedgerView
-// Opened by AccountsView when user taps an account card.
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+// AccountLedger.tsx — per-account ledger pages using JournalLedgerView
 import { Badge } from '@/components/ui/badge';
+import { SubpageLayout } from '@/components/ui/subpage-layout';
 import { fmt } from '@/utils/format';
 import { getReceivableJournalStats } from '@/utils/receivables';
 import { useApp } from '@/context/AppContext';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import type { Account, Loan, Receivable, Investment } from '@/types';
 
-// ── Account ledger dialog ─────────────────────────────────────────────────────
-export function AccountLedgerDialog({
+function LedgerBody({ children }: { children: React.ReactNode }) {
+	return <div className="flex flex-col gap-4">{children}</div>;
+}
+
+// ── Account ledger page ──────────────────────────────────────────────────────
+export function AccountLedgerPage({
 	account,
-	onClose,
+	onBack,
 }: {
 	account: Account | null;
-	onClose: () => void;
+	onBack: () => void;
 }) {
 	const { state } = useApp();
 	if (!account) return null;
 	const balance = state.computedBalances[account.id] ?? account.openingBalance ?? 0;
 
 	return (
-		<Dialog
-			open={!!account}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle className="flex items-center gap-2">
-						<span
-							className="inline-block h-3 w-3 rounded-full shrink-0"
-							style={{ background: account.color ?? 'hsl(191 100% 47%)' }}
-						/>
-						{account.name}
-						<Badge
-							variant="muted"
-							className="ml-1 text-[10px]">
-							{account.type.replace('_', ' ')}
-						</Badge>
-					</DialogTitle>
-					<p className="text-sm text-muted-foreground mt-0.5">
-						Balance:{' '}
-						<span
-							className={`font-mono font-bold ${balance < 0 ? 'text-loss' : 'text-cyan'}`}>
-							{fmt(balance)}
-						</span>
-						{account.openingBalance !== 0 && (
-							<span className="ml-2 text-xs">
-								Opening: {fmt(account.openingBalance)}
-							</span>
-						)}
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					<JournalLedgerView filterAccountHeadId={account.id} />
+		<SubpageLayout
+			title={account.name}
+			subtitle={`Balance: ${fmt(balance)}${account.openingBalance !== 0 ? ` · Opening: ${fmt(account.openingBalance)}` : ''}`}
+			onBack={onBack}>
+			<LedgerBody>
+				<div className="flex items-center gap-2 text-xs text-muted-foreground">
+					<span
+						className="inline-block h-3 w-3 rounded-full shrink-0"
+						style={{ background: account.color ?? 'hsl(191 100% 47%)' }}
+					/>
+					<Badge variant="muted">{account.type.replace('_', ' ')}</Badge>
 				</div>
-			</DialogContent>
-		</Dialog>
+				<JournalLedgerView filterAccountHeadId={account.id} />
+			</LedgerBody>
+		</SubpageLayout>
 	);
 }
 
-// ── Loan ledger dialog ────────────────────────────────────────────────────────
-export function LoanLedgerDialog({ loan, onClose }: { loan: Loan | null; onClose: () => void }) {
+// ── Loan ledger page ──────────────────────────────────────────────────────────
+export function LoanLedgerPage({ loan, onBack }: { loan: Loan | null; onBack: () => void }) {
 	if (!loan) return null;
 	return (
-		<Dialog
-			open={!!loan}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle>{loan.name}</DialogTitle>
-					<p className="text-sm text-muted-foreground">
-						Loan ledger — journal entries referencing this loan account
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					<JournalLedgerView filterAccountHeadId={loan.id} />
-				</div>
-			</DialogContent>
-		</Dialog>
+		<SubpageLayout
+			title={loan.name}
+			subtitle="Loan ledger and journal history for this account"
+			onBack={onBack}>
+			<JournalLedgerView filterAccountHeadId={loan.id} />
+		</SubpageLayout>
 	);
 }
 
-// ── Credit card ledger dialog ─────────────────────────────────────────────────
-export function CreditCardLedgerDialog({
+// ── Credit card ledger page ───────────────────────────────────────────────────
+export function CreditCardLedgerPage({
 	card,
-	onClose,
+	onBack,
 }: {
 	card: Account | null;
-	onClose: () => void;
+	onBack: () => void;
 }) {
 	if (!card) return null;
 	const details = card.creditCard;
 	const limit = details?.limit ?? 0;
 	const outstanding = details?.outstanding ?? Math.max(0, -(card.openingBalance ?? 0));
 	return (
-		<Dialog
-			open={!!card}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle>{card.name}</DialogTitle>
-					<p className="text-sm text-muted-foreground">
-						Credit limit:{' '}
-						<span className="font-mono font-bold text-foreground">{fmt(limit)}</span>
-						{' · '}Outstanding:{' '}
-						<span className="font-mono font-bold text-loss">{fmt(outstanding)}</span>
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					<JournalLedgerView filterAccountHeadId={card.id} />
-				</div>
-			</DialogContent>
-		</Dialog>
+		<SubpageLayout
+			title={card.name}
+			subtitle={`Credit limit: ${fmt(limit)} · Outstanding: ${fmt(outstanding)}`}
+			onBack={onBack}>
+			<JournalLedgerView filterAccountHeadId={card.id} />
+		</SubpageLayout>
 	);
 }
 
-// ── Receivable ledger dialog ──────────────────────────────────────────────────
-export function ReceivableLedgerDialog({
+// ── Receivable ledger page ────────────────────────────────────────────────────
+export function ReceivableLedgerPage({
 	receivable,
-	onClose,
+	onBack,
 }: {
 	receivable: Receivable | null;
-	onClose: () => void;
+	onBack: () => void;
 }) {
 	const { state } = useApp();
 	if (!receivable || !receivable.receivableHeadId) return null;
 	const stats = getReceivableJournalStats(receivable, state.journalEntries);
 	return (
-		<Dialog
-			open={!!receivable}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle>{receivable.personName}</DialogTitle>
-					<p className="text-sm text-muted-foreground mt-0.5">
-						Opening:{' '}
-						<span className="font-mono font-bold text-foreground">
-							{fmt(stats.openingBalance)}
-						</span>
-						{' · '}
-						Lent:{' '}
-						<span className="font-mono font-bold text-foreground">
-							{fmt(stats.totalDisbursed)}
-						</span>
-						{' · '}Repaid:{' '}
-						<span className="font-mono font-bold text-profit">
-							{fmt(stats.totalRepaid)}
-						</span>
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					<JournalLedgerView filterAccountHeadId={receivable.receivableHeadId} />
-				</div>
-			</DialogContent>
-		</Dialog>
+		<SubpageLayout
+			title={receivable.personName}
+			subtitle={`Opening: ${fmt(stats.openingBalance)} · Lent: ${fmt(stats.totalDisbursed)} · Repaid: ${fmt(stats.totalRepaid)}`}
+			onBack={onBack}>
+			<JournalLedgerView filterAccountHeadId={receivable.receivableHeadId} />
+		</SubpageLayout>
 	);
 }
 
-// ── Investment ledger dialog ──────────────────────────────────────────────────
-export function InvestmentLedgerDialog({
+// ── Investment ledger page ────────────────────────────────────────────────────
+export function InvestmentLedgerPage({
 	investment,
-	onClose,
+	onBack,
 }: {
 	investment: Investment | null;
-	onClose: () => void;
+	onBack: () => void;
 }) {
 	if (!investment) return null;
 	return (
-		<Dialog
-			open={!!investment}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle className="flex items-center gap-2">
-						{investment.name}
-						<Badge
-							variant="muted"
-							className="ml-1 text-[10px]">
-							{investment.type.replace(/_/g, ' ')}
-						</Badge>
-					</DialogTitle>
-					<p className="text-sm text-muted-foreground mt-0.5">
-						Value:{' '}
-						<span className="font-mono font-bold text-profit">
-							{fmt(investment.value)}
-						</span>
-						{investment.costBasis != null && (
-							<>
-								{' · '}Cost:{' '}
-								<span className="font-mono font-bold">
-									{fmt(investment.costBasis)}
-								</span>
-							</>
-						)}
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					<JournalLedgerView filterAccountHeadId={investment.id} />
-				</div>
-			</DialogContent>
-		</Dialog>
+		<SubpageLayout
+			title={investment.name}
+			subtitle={`Value: ${fmt(investment.value)}${investment.costBasis != null ? ` · Cost: ${fmt(investment.costBasis)}` : ''}`}
+			onBack={onBack}>
+			<div className="flex items-center gap-2 text-xs text-muted-foreground">
+				<Badge variant="muted">{investment.type.replace(/_/g, ' ')}</Badge>
+			</div>
+			<JournalLedgerView filterAccountHeadId={investment.id} />
+		</SubpageLayout>
 	);
 }
 
-// ── Generic account head ledger dialog ────────────────────────────────────────
+// ── Generic account head ledger page ─────────────────────────────────────────
 // Used from AccountHeadsView to show all entries under any head
-export function AccountHeadLedgerDialog({
+export function AccountHeadLedgerPage({
 	headId,
 	headName,
-	onClose,
+	onBack,
 }: {
 	headId: string | null;
 	headName: string;
-	onClose: () => void;
+	onBack: () => void;
 }) {
+	if (!headId) return null;
+
 	return (
-		<Dialog
-			open={!!headId}
-			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
-				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
-					<DialogTitle>{headName}</DialogTitle>
-					<p className="text-sm text-muted-foreground">
-						All journal entries for this account head
-					</p>
-				</DialogHeader>
-				<div className="flex-1 overflow-y-auto p-5">
-					{headId && <JournalLedgerView filterAccountHeadId={headId} />}
-				</div>
-			</DialogContent>
-		</Dialog>
+		<SubpageLayout
+			title={headName}
+			subtitle="All journal entries for this account head"
+			onBack={onBack}>
+			<JournalLedgerView filterAccountHeadId={headId} />
+		</SubpageLayout>
 	);
 }

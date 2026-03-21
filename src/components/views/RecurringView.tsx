@@ -3,7 +3,7 @@ import { fmt, fmtDate, daysFromNow } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmptyState } from '@/components/ui/empty-state';
-import { EntityView, RowActions, useEditDelete } from './EntityView';
+import { EntityView, RowActions, useEntityFormPage } from './EntityView';
 import { RecurringPaymentForm } from '@/components/forms';
 import type { RecurringPayment } from '@/types';
 
@@ -12,20 +12,23 @@ export function RecurringView() {
 	const active = state.recurringPayments.filter((r) => r.isActive);
 	const monthly = active.reduce((s, r) => s + (r.amount ?? 0), 0);
 
-	const { startEdit, doRemove, EditDialog } = useEditDelete<RecurringPayment>({
+	const { openAdd, startEdit, doRemove, FormPage } = useEntityFormPage<RecurringPayment>({
+		tab: 'recurring',
+		records: state.recurringPayments,
 		entity: 'recurringPayments',
 		FormComp: RecurringPaymentForm,
 		formProps: { accounts: state.accounts },
+		pageTitle: 'Recurring Payments',
 		formTitle: 'Recurring Payment',
 	});
+
+	if (FormPage) return FormPage;
 
 	return (
 		<EntityView
 			title="Recurring Payments"
 			subtitle={`${fmt(monthly)}/mo · ${fmt(monthly * 12)}/yr`}
-			entity="recurringPayments"
-			FormComp={RecurringPaymentForm}
-			formProps={{ accounts: state.accounts }}>
+			onAdd={openAdd}>
 			{state.recurringPayments.length === 0 ? (
 				<EmptyState
 					icon="🔁"
@@ -71,7 +74,6 @@ export function RecurringView() {
 					);
 				})
 			)}
-			{EditDialog}
 		</EntityView>
 	);
 }

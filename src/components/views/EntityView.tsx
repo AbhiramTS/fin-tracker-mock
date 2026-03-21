@@ -1,8 +1,9 @@
-import { useState, type ComponentType, type ReactNode } from 'react';
+import { type ComponentType, type ReactNode } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { SubpageLayout } from '@/components/ui/subpage-layout';
 import { useApp } from '@/context/AppContext';
+import { useNavigation, type TabId } from '@/context/NavigationContext';
 import type { EntityName, BaseRecord } from '@/types';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -11,37 +12,20 @@ type AnyFormComp = ComponentType<any>;
 interface EntityViewProps<T extends BaseRecord> {
 	title: string;
 	subtitle?: string;
-	entity: EntityName;
-	FormComp: AnyFormComp;
-	formProps?: Record<string, unknown>;
-	formTitle?: string;
 	children: ReactNode;
 	headerRight?: ReactNode;
-	onAfterSave?: (saved: BaseRecord) => void;
+	onAdd?: () => void;
+	addLabel?: string;
 }
 
 export function EntityView<T extends BaseRecord>({
 	title,
 	subtitle,
-	entity,
-	FormComp,
-	formProps = {},
-	formTitle,
 	children,
 	headerRight,
-	onAfterSave,
+	onAdd,
+	addLabel = 'Add',
 }: EntityViewProps<T>) {
-	const { save } = useApp();
-	const [addOpen, setAddOpen] = useState(false);
-	const [editRecord, setEditRecord] = useState<T | null>(null);
-
-	const handleSave = async (data: Partial<T>) => {
-		const saved = await save(entity, data as Record<string, unknown>);
-		onAfterSave?.(saved);
-		setAddOpen(false);
-		setEditRecord(null);
-	};
-
 	return (
 		<div className="flex flex-col gap-4">
 			<div className="flex items-start justify-between">
@@ -53,101 +37,87 @@ export function EntityView<T extends BaseRecord>({
 					{headerRight}
 					<Button
 						size="sm"
-						onClick={() => setAddOpen(true)}>
-						<Plus className="h-4 w-4" /> Add
+						onClick={onAdd}>
+						<Plus className="h-4 w-4" /> {addLabel}
 					</Button>
 				</div>
 			</div>
 
 			{children}
-
-			{/* Add dialog */}
-			<Dialog
-				open={addOpen}
-				onOpenChange={setAddOpen}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>{formTitle ?? `Add ${title}`}</DialogTitle>
-					</DialogHeader>
-					<FormComp
-						{...formProps}
-						onSave={handleSave}
-						onCancel={() => setAddOpen(false)}
-					/>
-				</DialogContent>
-			</Dialog>
-
-			{/* Edit dialog */}
-			<Dialog
-				open={!!editRecord}
-				onOpenChange={(o) => !o && setEditRecord(null)}>
-				<DialogContent>
-					<DialogHeader>
-						<DialogTitle>Edit {formTitle ?? title}</DialogTitle>
-					</DialogHeader>
-					{editRecord && (
-						<FormComp
-							{...formProps}
-							initialData={editRecord}
-							onSave={handleSave}
-							onCancel={() => setEditRecord(null)}
-						/>
-					)}
-				</DialogContent>
-			</Dialog>
 		</div>
 	);
 }
 
-// ── useEditDelete ─────────────────────────────────────────────────────────────
-// Hook for views that need inline Edit + Delete buttons on each row.
-// Returns handlers and the edit dialog state — the actual dialog is
-// rendered by EntityView above, but views that live outside EntityView
-// (like IncomeView with Tabs) use this to get a self-contained edit dialog.
-
-interface UseEditDeleteOptions<T extends BaseRecord> {
+interface UseEntityFormPageOptions<T extends BaseRecord> {
+	tab: TabId;
+	records: T[];
 	entity: EntityName;
 	FormComp: AnyFormComp;
 	formProps?: Record<string, unknown>;
+	pageTitle: string;
 	formTitle?: string;
+	onAfterSave?: (saved: BaseRecord) => void;
+	addSubpage?: string;
+	editSubpage?: string;
 }
 
-export function useEditDelete<T extends BaseRecord>({
+export function useEntityFormPage<T extends BaseRecord>({
+	tab,
+	records,
 	entity,
 	FormComp,
 	formProps = {},
+	pageTitle,
 	formTitle,
-}: UseEditDeleteOptions<T>) {
+	onAfterSave,
+	addSubpage = 'new',
+	editSubpage = 'edit',
+}: UseEntityFormPageOptions<T>) {
 	const { save, remove } = useApp();
-	const [editRecord, setEditRecord] = useState<T | null>(null);
+	const { route, openSubpage, goBack } = useNavigation();
+	const isAddPage = route.tab === tab && route.subpage === addSubpage;
+	const isEditPage = route.tab === tab && route.subpage === editSubpage;
+	const editRecord = isEditPage
+		? (records.find((record) => record.id === route.id) ?? null)
+		: null;
 
 	const handleSave = async (data: Partial<T>) => {
-		await save(entity, data as Record<string, unknown>);
-		setEditRecord(null);
+		const saved = await save(entity, data as Record<string, unknown>);
+		onAfterSave?.(saved);
+		goBack();
 	};
 
-	const EditDialog = editRecord ? (
-		<Dialog
-			open={!!editRecord}
-			onOpenChange={(o) => !o && setEditRecord(null)}>
-			<DialogContent>
-				<DialogHeader>
-					<DialogTitle>Edit {formTitle ?? entity}</DialogTitle>
-				</DialogHeader>
+	const FormPage = isAddPage ? (
+		<SubpageLayout
+			title={`Add ${formTitle ?? pageTitle}`}
+			onBack={goBack}>
+			<FormComp
+				{...formProps}
+				onSave={handleSave}
+				onCancel={goBack}
+			/>
+		</SubpageLayout>
+	) : isEditPage ? (
+		<SubpageLayout
+			title={`Edit ${formTitle ?? pageTitle}`}
+			subtitle={!editRecord ? 'This record is no longer available.' : undefined}
+			onBack={goBack}>
+			{editRecord ? (
 				<FormComp
 					{...formProps}
 					initialData={editRecord}
 					onSave={handleSave}
-					onCancel={() => setEditRecord(null)}
+					onCancel={goBack}
 				/>
-			</DialogContent>
-		</Dialog>
+			) : null}
+		</SubpageLayout>
 	) : null;
 
 	return {
-		startEdit: (record: T) => setEditRecord(record),
+		openAdd: () => openSubpage(addSubpage, { tab }),
+		startEdit: (record: T) => openSubpage(editSubpage, { tab, id: record.id }),
 		doRemove: (id: string) => remove(entity, id),
-		EditDialog,
+		FormPage,
 	};
 }
 

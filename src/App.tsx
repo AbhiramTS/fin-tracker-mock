@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
 	LayoutDashboard,
 	Receipt,
@@ -21,6 +21,7 @@ import {
 	Upload,
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
+import { NavigationProvider, useNavigation, type TabId } from '@/context/NavigationContext';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -45,54 +46,6 @@ import { ImportReviewView } from '@/components/views/ImportReviewView';
 import { ImportView } from '@/components/views/ImportView';
 
 const APP_VERSION = __APP_VERSION__;
-
-// ── Nav config ────────────────────────────────────────────────────────────────
-type TabId =
-	| 'dashboard'
-	| 'expenses'
-	| 'income'
-	| 'transfers'
-	| 'recurring'
-	| 'payments'
-	| 'loans'
-	| 'cards'
-	| 'receivables'
-	| 'investments'
-	| 'goals'
-	| 'forecast'
-	| 'simulator'
-	| 'accounts'
-	| 'reconciliation'
-	// | 'ledger'
-	| 'journalledger'
-	| 'accountheads'
-	| 'settings'
-	| 'importreview'
-	| 'import';
-
-const VALID_TABS = new Set<TabId>([
-	'dashboard',
-	'expenses',
-	'income',
-	'transfers',
-	'recurring',
-	'payments',
-	'loans',
-	'cards',
-	'receivables',
-	'investments',
-	'goals',
-	'forecast',
-	'simulator',
-	'accounts',
-	'reconciliation',
-	// 'ledger',
-	'journalledger',
-	'accountheads',
-	'settings',
-	'importreview',
-	'import',
-]);
 
 interface NavItem {
 	id: TabId;
@@ -154,33 +107,6 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	importreview: ImportReviewView,
 	import: ImportView,
 };
-
-// ── Hash router ───────────────────────────────────────────────────────────────
-// Routes: /#/dashboard  /#/expenses  /#/settings  etc.
-// Falls back to "dashboard" for any unrecognised hash.
-
-function getTabFromHash(): TabId {
-	const hash = window.location.hash.replace(/^#\/?/, '').toLowerCase() as TabId;
-	return VALID_TABS.has(hash) ? hash : 'dashboard';
-}
-
-function useHashRouter() {
-	const [tab, setTabState] = useState<TabId>(getTabFromHash);
-
-	// Listen for back/forward navigation
-	useEffect(() => {
-		const onHashChange = () => setTabState(getTabFromHash());
-		window.addEventListener('hashchange', onHashChange);
-		return () => window.removeEventListener('hashchange', onHashChange);
-	}, []);
-
-	const setTab = useCallback((id: TabId) => {
-		// Push new hash — triggers hashchange which updates state
-		window.location.hash = `/${id}`;
-	}, []);
-
-	return { tab, setTab };
-}
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 function Sidebar({
@@ -298,7 +224,7 @@ function Sidebar({
 // ── Shell ─────────────────────────────────────────────────────────────────────
 function AppShell() {
 	const { state } = useApp();
-	const { tab, setTab } = useHashRouter();
+	const { tab, setTab } = useNavigation();
 	const [drawer, setDrawer] = useState(false);
 
 	// Close drawer on navigation
@@ -431,7 +357,9 @@ function AppShell() {
 export default function App() {
 	return (
 		<AppProvider>
-			<AppShell />
+			<NavigationProvider>
+				<AppShell />
+			</NavigationProvider>
 		</AppProvider>
 	);
 }
