@@ -87,13 +87,19 @@ function PayDialog({
 		setTopUpAmount('');
 	}, [occ?.id, occ?.amount, occ?.accountId, accounts, isIncome, isCreditCardBill]);
 
-	if (!occ) return null;
-
 	const amount = parseFloat(paidAmount) || 0;
 	const account = accounts.find((a) => a.id === creditAccountId);
 	const balance = computedBalances[creditAccountId] ?? account?.openingBalance ?? 0;
 	const shortfall = !isIncome && amount > 0 && balance < amount;
 	const shortfallAmt = shortfall ? amount - balance : 0;
+
+	useEffect(() => {
+		if (shortfall) setTopUpAmount(String(shortfallAmt));
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [shortfall, creditAccountId, paidAmount]);
+
+	if (!occ) return null;
+
 	const topUpAmt = parseFloat(topUpAmount) || shortfallAmt;
 	const balanceAfter = isIncome
 		? balance + amount
@@ -108,11 +114,6 @@ function PayDialog({
 		: isCreditCardBill
 			? accounts.filter((a) => ['bank', 'cash'].includes(a.type))
 			: accounts.filter((a) => !['investment', 'loan'].includes(a.type));
-
-	useEffect(() => {
-		if (shortfall) setTopUpAmount(String(shortfallAmt));
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [shortfall, creditAccountId, paidAmount]);
 
 	const handleConfirm = async () => {
 		if (!creditAccountId || amount <= 0) return;
@@ -615,9 +616,7 @@ export function PaymentsView() {
 				: isCreditCardBill
 					? (occ.sourceId ?? occ.debitAccountHeadId)
 					: (occ.debitAccountHeadId ?? 'head_expense');
-			const creditId = isIncome
-				? (occ.debitAccountHeadId ?? 'head_income')
-				: creditAccountId;
+			const creditId = isIncome ? (occ.debitAccountHeadId ?? 'head_income') : creditAccountId;
 
 			const entry = await save('journalEntries', {
 				description: occ.label,
