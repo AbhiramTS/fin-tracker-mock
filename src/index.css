@@ -121,4 +121,8 @@
 	.h-safe {
 		height: env(safe-area-inset-bottom, 0px);
 	}
+	/* Positions a fixed bar above the mobile bottom nav (≈56 px nav + safe-area inset) */
+	.bottom-nav-safe {
+		bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+	}
 }
