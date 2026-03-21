@@ -126,21 +126,27 @@ function CreateHeadDialog({
 }) {
 	const { save, state } = useApp();
 	const [name, setName] = useState('');
+	const [entityHint, setEntityHint] = useState('');
 	const parent = state.accountHeads.find((h) => h.id === parentId);
+	const parentType = parent?.type;
 
 	const handleCreate = async () => {
 		if (!name.trim()) return;
 		const now = new Date().toISOString();
+		const defaultEntityHint =
+			parentType === 'asset' ? 'bank' : parentType === 'liability' ? 'loan' : '';
 		const saved = await save('accountHeads', {
 			name: name.trim(),
 			type: parent?.type ?? 'expense',
 			parentId,
 			isSystem: false,
 			isAccount: false,
+			entityHint: entityHint || defaultEntityHint,
 			createdAt: now,
 			updatedAt: now,
 		});
 		setName('');
+		setEntityHint('');
 		onCreated(saved as unknown as AccountHead);
 	};
 
@@ -162,11 +168,49 @@ function CreateHeadDialog({
 							onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
 						/>
 					</FormField>
+					{parentType === 'asset' && (
+						<FormField label="Create As">
+							<Select
+								value={entityHint || 'bank'}
+								onValueChange={setEntityHint}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="bank">Bank Account</SelectItem>
+									<SelectItem value="cash">Cash Account</SelectItem>
+									<SelectItem value="investment">Investment Account</SelectItem>
+									<SelectItem value="receivable">Lender / Receivable</SelectItem>
+								</SelectContent>
+							</Select>
+						</FormField>
+					)}
+					{parentType === 'liability' && (
+						<FormField label="Create As">
+							<Select
+								value={entityHint || 'loan'}
+								onValueChange={setEntityHint}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="loan">Loan</SelectItem>
+									<SelectItem value="credit_card">Credit Card</SelectItem>
+									<SelectItem value="credit_card_loan">
+										Credit Card Loan
+									</SelectItem>
+								</SelectContent>
+							</Select>
+						</FormField>
+					)}
 					<div className="flex gap-2">
 						<Button
 							variant="outline"
 							className="flex-1"
-							onClick={onCancel}>
+							onClick={() => {
+								setEntityHint('');
+								onCancel();
+							}}>
 							Cancel
 						</Button>
 						<Button
@@ -270,6 +314,400 @@ export function HeadSelect({
 				}}
 				onCancel={() => setShowCreate(false)}
 			/>
+		</>
+	);
+}
+
+interface CreditCardHeadSelectProps {
+	accounts: Account[];
+	accountHeads: AccountHead[];
+	value: string;
+	onChange: (id: string) => void;
+	placeholder?: string;
+}
+
+function CreditCardHeadSelect({
+	accounts,
+	accountHeads,
+	value,
+	onChange,
+	placeholder,
+}: CreditCardHeadSelectProps) {
+	const { save } = useApp();
+	const [showCreate, setShowCreate] = useState(false);
+	const [name, setName] = useState('');
+
+	const creditCards = accounts.filter((a) => a.type === 'credit_card');
+	const hasSelected = creditCards.some((a) => a.id === value);
+	const legacyHead = !hasSelected ? accountHeads.find((h) => h.id === value) : null;
+
+	const handleSelect = (v: string) => {
+		if (v === '__create_cc__') {
+			setShowCreate(true);
+			return;
+		}
+		onChange(v);
+	};
+
+	const createCreditCard = async () => {
+		if (!name.trim()) return;
+		const now = new Date().toISOString();
+		const saved = await save('accounts', {
+			name: name.trim(),
+			type: 'credit_card',
+			openingBalance: 0,
+			creditCard: {
+				limit: 0,
+				outstanding: 0,
+				statementDay: 1,
+				billingCycleDays: 30,
+				gracePeriodDays: 20,
+				dueDate: todayStr(),
+				statementDate: todayStr(),
+			},
+			createdAt: now,
+			updatedAt: now,
+		});
+		setName('');
+		setShowCreate(false);
+		onChange(saved.id);
+	};
+
+	return (
+		<>
+			<Select
+				value={value}
+				onValueChange={handleSelect}>
+				<SelectTrigger>
+					<SelectValue placeholder={placeholder ?? 'Select credit card'} />
+				</SelectTrigger>
+				<SelectContent>
+					{creditCards.map((card) => (
+						<SelectItem
+							key={card.id}
+							value={card.id}>
+							{card.name}
+						</SelectItem>
+					))}
+					{legacyHead && <SelectItem value={legacyHead.id}>{legacyHead.name}</SelectItem>}
+					<SelectItem value="__create_cc__">
+						<span className="text-primary flex items-center gap-1">
+							<Plus className="h-3 w-3" /> New credit card...
+						</span>
+					</SelectItem>
+				</SelectContent>
+			</Select>
+
+			<Dialog
+				open={showCreate}
+				onOpenChange={(o) => {
+					if (!o) {
+						setShowCreate(false);
+						setName('');
+					}
+				}}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>New Credit Card</DialogTitle>
+					</DialogHeader>
+					<div className="flex flex-col gap-4 p-5 pt-2">
+						<FormField label="Card Name">
+							<Input
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="e.g. HDFC Regalia"
+								autoFocus
+								onKeyDown={(e) => e.key === 'Enter' && createCreditCard()}
+							/>
+						</FormField>
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								className="flex-1"
+								onClick={() => {
+									setShowCreate(false);
+									setName('');
+								}}>
+								Cancel
+							</Button>
+							<Button
+								className="flex-1"
+								onClick={createCreditCard}
+								disabled={!name.trim()}>
+								Create
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
+		</>
+	);
+}
+
+interface LoanHeadSelectProps {
+	accounts: Account[];
+	accountHeads: AccountHead[];
+	loans: Loan[];
+	value: string;
+	onChange: (id: string) => void;
+	placeholder?: string;
+}
+
+function LoanHeadSelect({
+	accounts,
+	accountHeads,
+	loans,
+	value,
+	onChange,
+	placeholder,
+}: LoanHeadSelectProps) {
+	const { save } = useApp();
+	const [showCreate, setShowCreate] = useState(false);
+	const [name, setName] = useState('');
+	const [loanType, setLoanType] = useState<LoanType>('normal');
+
+	const loansById = new Map(loans.map((l) => [l.id, l]));
+	const hasSelected = loansById.has(value);
+	const legacyHead = !hasSelected ? accountHeads.find((h) => h.id === value) : null;
+	const defaultFundingAccountId =
+		accounts.find((a) => ['bank', 'cash'].includes(a.type))?.id ?? accounts[0]?.id ?? '';
+
+	const handleSelect = (v: string) => {
+		if (v === '__create_loan__') {
+			setShowCreate(true);
+			return;
+		}
+		onChange(v);
+	};
+
+	const createLoan = async () => {
+		if (!name.trim() || !defaultFundingAccountId) return;
+		const now = new Date().toISOString();
+		const saved = await save('loans', {
+			name: name.trim(),
+			loanType,
+			principalAmount: 0,
+			interestRate: 0,
+			tenureMonths: 1,
+			startDate: todayStr(),
+			emi: 0,
+			paidMonths: 0,
+			accountId: defaultFundingAccountId,
+			createdAt: now,
+			updatedAt: now,
+		});
+		setName('');
+		setLoanType('normal');
+		setShowCreate(false);
+		onChange(saved.id);
+	};
+
+	return (
+		<>
+			<Select
+				value={value}
+				onValueChange={handleSelect}>
+				<SelectTrigger>
+					<SelectValue placeholder={placeholder ?? 'Select loan'} />
+				</SelectTrigger>
+				<SelectContent>
+					{loans.map((loan) => (
+						<SelectItem
+							key={loan.id}
+							value={loan.id}>
+							{loan.name}
+						</SelectItem>
+					))}
+					{legacyHead && <SelectItem value={legacyHead.id}>{legacyHead.name}</SelectItem>}
+					<SelectItem value="__create_loan__">
+						<span className="text-primary flex items-center gap-1">
+							<Plus className="h-3 w-3" /> New loan...
+						</span>
+					</SelectItem>
+				</SelectContent>
+			</Select>
+
+			<Dialog
+				open={showCreate}
+				onOpenChange={(o) => {
+					if (!o) {
+						setShowCreate(false);
+						setName('');
+						setLoanType('normal');
+					}
+				}}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>New Loan</DialogTitle>
+					</DialogHeader>
+					<div className="flex flex-col gap-4 p-5 pt-2">
+						<FormField label="Loan Name">
+							<Input
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="e.g. Home Loan"
+								autoFocus
+							/>
+						</FormField>
+						<FormField label="Type">
+							<Select
+								value={loanType}
+								onValueChange={(v) => setLoanType(v as LoanType)}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="normal">Normal Loan</SelectItem>
+									<SelectItem value="credit_card">CC Loan</SelectItem>
+								</SelectContent>
+							</Select>
+						</FormField>
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								className="flex-1"
+								onClick={() => {
+									setShowCreate(false);
+									setName('');
+									setLoanType('normal');
+								}}>
+								Cancel
+							</Button>
+							<Button
+								className="flex-1"
+								onClick={createLoan}
+								disabled={!name.trim() || !defaultFundingAccountId}>
+								Create
+							</Button>
+						</div>
+						{!defaultFundingAccountId && (
+							<p className="text-xs text-loss">
+								Create at least one account first to link this loan.
+							</p>
+						)}
+					</div>
+				</DialogContent>
+			</Dialog>
+		</>
+	);
+}
+
+interface ReceivableAccountHeadSelectProps {
+	accounts: Account[];
+	accountHeads: AccountHead[];
+	value: string;
+	onChange: (id: string) => void;
+	placeholder?: string;
+}
+
+function ReceivableAccountHeadSelect({
+	accounts,
+	accountHeads,
+	value,
+	onChange,
+	placeholder,
+}: ReceivableAccountHeadSelectProps) {
+	const { save, state } = useApp();
+	const [showCreate, setShowCreate] = useState(false);
+	const [name, setName] = useState('');
+
+	const receivables = state.receivables.filter((r) => !!r.receivableHeadId);
+	const hasSelected = receivables.some((r) => r.receivableHeadId === value);
+	const legacyHead = !hasSelected ? accountHeads.find((h) => h.id === value) : null;
+
+	const handleSelect = (v: string) => {
+		if (v === '__create_receivable__') {
+			setShowCreate(true);
+			return;
+		}
+		onChange(v);
+	};
+
+	const createReceivable = async () => {
+		if (!name.trim()) return;
+		const now = new Date().toISOString();
+		const saved = await save('accountHeads', {
+			name: name.trim(),
+			type: 'asset',
+			parentId: 'head_asset',
+			isSystem: false,
+			isAccount: false,
+			entityHint: 'receivable',
+			createdAt: now,
+			updatedAt: now,
+		});
+		setName('');
+		setShowCreate(false);
+		onChange(saved.id);
+	};
+
+	return (
+		<>
+			<Select
+				value={value}
+				onValueChange={handleSelect}>
+				<SelectTrigger>
+					<SelectValue placeholder={placeholder ?? 'Select lender/receivable'} />
+				</SelectTrigger>
+				<SelectContent>
+					{receivables.map((receivable) => (
+						<SelectItem
+							key={receivable.id}
+							value={receivable.receivableHeadId!}>
+							{receivable.personName}
+						</SelectItem>
+					))}
+					{legacyHead && <SelectItem value={legacyHead.id}>{legacyHead.name}</SelectItem>}
+					<SelectItem value="__create_receivable__">
+						<span className="text-primary flex items-center gap-1">
+							<Plus className="h-3 w-3" /> New lender/receivable...
+						</span>
+					</SelectItem>
+				</SelectContent>
+			</Select>
+
+			<Dialog
+				open={showCreate}
+				onOpenChange={(o) => {
+					if (!o) {
+						setShowCreate(false);
+						setName('');
+					}
+				}}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>New Lender / Receivable</DialogTitle>
+					</DialogHeader>
+					<div className="flex flex-col gap-4 p-5 pt-2">
+						<FormField label="Name">
+							<Input
+								value={name}
+								onChange={(e) => setName(e.target.value)}
+								placeholder="e.g. Rahul"
+								autoFocus
+								onKeyDown={(e) => e.key === 'Enter' && createReceivable()}
+							/>
+						</FormField>
+						<div className="flex gap-2">
+							<Button
+								variant="outline"
+								className="flex-1"
+								onClick={() => {
+									setShowCreate(false);
+									setName('');
+								}}>
+								Cancel
+							</Button>
+							<Button
+								className="flex-1"
+								onClick={createReceivable}
+								disabled={!name.trim()}>
+								Create
+							</Button>
+						</div>
+					</div>
+				</DialogContent>
+			</Dialog>
 		</>
 	);
 }
@@ -383,6 +821,7 @@ interface JEFormProps {
 	onCancel: () => void;
 	accounts: Account[];
 	accountHeads: AccountHead[];
+	loans?: Loan[];
 	defaultType?: JournalEntryType;
 	allowTypeChange?: boolean;
 	// If set, locks the debit or credit side (e.g. from PaymentsView)
@@ -396,6 +835,7 @@ export function JournalEntryForm({
 	onCancel,
 	accounts,
 	accountHeads,
+	loans = [],
 	defaultType = 'expense',
 	allowTypeChange = false,
 	lockedDebitId,
@@ -506,6 +946,92 @@ export function JournalEntryForm({
 
 	const cfg = TYPE_CONFIG[type];
 
+	const renderDebitSelect = () => {
+		if (type === 'credit_card_payment') {
+			return (
+				<CreditCardHeadSelect
+					accounts={accounts}
+					accountHeads={accountHeads}
+					value={f.debitAccountHeadId ?? ''}
+					onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+					placeholder="Select credit card"
+				/>
+			);
+		}
+
+		if (type === 'emi' || type === 'loan_payoff') {
+			return (
+				<LoanHeadSelect
+					accounts={accounts}
+					accountHeads={accountHeads}
+					loans={loans}
+					value={f.debitAccountHeadId ?? ''}
+					onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+					placeholder="Select loan"
+				/>
+			);
+		}
+
+		if (type === 'lending_disbursal') {
+			return (
+				<ReceivableAccountHeadSelect
+					accounts={accounts}
+					accountHeads={accountHeads}
+					value={f.debitAccountHeadId ?? ''}
+					onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+					placeholder="Select lender/receivable"
+				/>
+			);
+		}
+
+		return (
+			<HeadSelect
+				heads={accountHeads}
+				value={f.debitAccountHeadId ?? ''}
+				onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
+				rootType={cfg.debitRoot}
+				placeholder="Select debit head"
+			/>
+		);
+	};
+
+	const renderCreditSelect = () => {
+		if (type === 'loan_disbursal') {
+			return (
+				<LoanHeadSelect
+					accounts={accounts}
+					accountHeads={accountHeads}
+					loans={loans}
+					value={f.creditAccountHeadId ?? ''}
+					onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
+					placeholder="Select loan"
+				/>
+			);
+		}
+
+		if (type === 'lending_repayment') {
+			return (
+				<ReceivableAccountHeadSelect
+					accounts={accounts}
+					accountHeads={accountHeads}
+					value={f.creditAccountHeadId ?? ''}
+					onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
+					placeholder="Select lender/receivable"
+				/>
+			);
+		}
+
+		return (
+			<HeadSelect
+				heads={accountHeads}
+				value={f.creditAccountHeadId ?? ''}
+				onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
+				rootType={cfg.creditRoot}
+				placeholder="Select credit head"
+			/>
+		);
+	};
+
 	return (
 		<form
 			onSubmit={submit}
@@ -589,13 +1115,7 @@ export function JournalEntryForm({
 								lockedDebitId}
 						</div>
 					) : (
-						<HeadSelect
-							heads={accountHeads}
-							value={f.debitAccountHeadId ?? ''}
-							onChange={(v) => setF({ ...f, debitAccountHeadId: v })}
-							rootType={cfg.debitRoot}
-							placeholder="Select debit head"
-						/>
+						renderDebitSelect()
 					)}
 				</FormField>
 
@@ -610,13 +1130,7 @@ export function JournalEntryForm({
 								lockedCreditId}
 						</div>
 					) : (
-						<HeadSelect
-							heads={accountHeads}
-							value={f.creditAccountHeadId ?? ''}
-							onChange={(v) => setF({ ...f, creditAccountHeadId: v })}
-							rootType={cfg.creditRoot}
-							placeholder="Select credit head"
-						/>
+						renderCreditSelect()
 					)}
 				</FormField>
 

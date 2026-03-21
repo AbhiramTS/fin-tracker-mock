@@ -29,6 +29,8 @@ import type {
 	SyncState,
 	Account,
 	Loan,
+	AccountType,
+	RootAccountHeadType,
 } from '@/types';
 import { ROOT_HEADS, rootHeadForAccountType } from '@/types';
 
@@ -183,6 +185,20 @@ function loanToHead(l: Loan): AccountHead {
 		createdAt: (l as unknown as Record<string, string>).createdAt ?? now,
 		updatedAt: now,
 	};
+}
+
+function resolveRootTypeForHead(
+	draft: Partial<AccountHead>,
+	heads: AccountHead[]
+): RootAccountHeadType | null {
+	if (draft.parentId === null) return draft.type ?? null;
+	if (!draft.parentId) return draft.type ?? null;
+
+	let cursor = heads.find((h) => h.id === draft.parentId) ?? null;
+	while (cursor && cursor.parentId !== null) {
+		cursor = heads.find((h) => h.id === cursor?.parentId) ?? null;
+	}
+	return cursor?.type ?? draft.type ?? null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +358,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		[]
 	);
 
+	const migrateLegacyReceivableAccounts = useCallback(
+		async (accounts: Account[], receivables: AppState['receivables']) => {
+			const existingReceivableIds = new Set(receivables.map((r) => r.id));
+			const existingHeadIds = new Set(
+				receivables.map((r) => r.receivableHeadId).filter(Boolean) as string[]
+			);
+			const fundingAccountId =
+				accounts.find((a) => ['bank', 'cash'].includes(a.type))?.id ??
+				accounts.find((a) => a.type !== 'receivable')?.id ??
+				'';
+
+			for (const account of accounts.filter((a) => a.type === 'receivable')) {
+				if (existingReceivableIds.has(account.id) || existingHeadIds.has(account.id))
+					continue;
+
+				const savedReceivable = await Repos.receivables.save({
+					id: account.id,
+					personName: account.name,
+					amountLent: Math.max(0, account.openingBalance ?? 0),
+					amountRepaid: 0,
+					dateLent: (account.createdAt ?? new Date().toISOString()).slice(0, 10),
+					accountId: fundingAccountId,
+					receivableHeadId: account.id,
+					isSettled: (account.openingBalance ?? 0) <= 0,
+					notes: account.notes,
+					createdAt: account.createdAt,
+					updatedAt: account.updatedAt,
+				} as Parameters<typeof Repos.receivables.save>[0]);
+				dispatch({
+					type: 'UPSERT',
+					payload: { entity: 'receivables', record: savedReceivable },
+				});
+			}
+		},
+		[]
+	);
+
 	// ── Initial load ──────────────────────────────────────────────────────────
 	useEffect(() => {
 		(async () => {
@@ -358,6 +411,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					(payload.accounts ?? []) as Account[],
 					(payload.accountHeads ?? []) as AccountHead[],
 					legacyCards
+				);
+				await migrateLegacyReceivableAccounts(
+					(payload.accounts ?? []) as Account[],
+					(payload.receivables ?? []) as AppState['receivables']
 				);
 
 				const saved = localStorage.getItem('ft_firebase_config');
@@ -384,11 +441,180 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				dispatch({ type: 'SET_ERROR', payload: (err as Error).message });
 			}
 		})();
-	}, [migrateLegacyCreditCards, reloadEntity, seedAccountHeads]);
+	}, [migrateLegacyCreditCards, migrateLegacyReceivableAccounts, reloadEntity, seedAccountHeads]);
 
 	// ── Save ──────────────────────────────────────────────────────────────────
 	// When saving an Account or Loan → also upsert its AccountHead mirror.
 	const save = useCallback(async (entity: EntityName, record: Record<string, unknown>) => {
+		if (entity === 'accountHeads') {
+			const draft = record as Partial<AccountHead> & { entityHint?: string };
+			const rootType = resolveRootTypeForHead(draft, stateRef.current.accountHeads);
+			const shouldCreateEntity =
+				!draft.isSystem &&
+				!draft.isAccount &&
+				(rootType === 'asset' || rootType === 'liability');
+
+			if (shouldCreateEntity) {
+				const name = String(draft.name ?? '').trim();
+				if (!name) throw new Error('Account head name is required');
+				const now = new Date().toISOString();
+				const hint = String(draft.entityHint ?? '').toLowerCase();
+
+				if (rootType === 'liability') {
+					if (hint === 'credit_card') {
+						const savedAccount = await Repos.accounts.save({
+							id: draft.id,
+							name,
+							type: 'credit_card',
+							openingBalance: 0,
+							creditCard: {
+								limit: 0,
+								outstanding: 0,
+								statementDay: 1,
+								billingCycleDays: 30,
+								gracePeriodDays: 20,
+								dueDate: now.slice(0, 10),
+								statementDate: now.slice(0, 10),
+							},
+							createdAt: draft.createdAt,
+							updatedAt: draft.updatedAt,
+						} as Parameters<typeof Repos.accounts.save>[0]);
+						dispatch({
+							type: 'UPSERT',
+							payload: { entity: 'accounts', record: savedAccount },
+						});
+						const head = accountToHead(savedAccount);
+						await Repos.accountHeads.save(
+							head as Parameters<typeof Repos.accountHeads.save>[0]
+						);
+						dispatch({
+							type: 'UPSERT',
+							payload: { entity: 'accountHeads', record: head },
+						});
+
+						getPendingCount()
+							.then((n) =>
+								dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } })
+							)
+							.catch(() => {});
+						return head;
+					}
+
+					const linkedFundingAccountId =
+						stateRef.current.accounts.find((a) => ['bank', 'cash'].includes(a.type))
+							?.id ??
+						stateRef.current.accounts[0]?.id ??
+						'';
+
+					const savedLoan = await Repos.loans.save({
+						id: draft.id,
+						name,
+						loanType: hint === 'credit_card_loan' ? 'credit_card' : 'normal',
+						principalAmount: 0,
+						interestRate: 0,
+						tenureMonths: 1,
+						startDate: now.slice(0, 10),
+						emi: 0,
+						paidMonths: 0,
+						accountId: linkedFundingAccountId,
+						createdAt: draft.createdAt,
+						updatedAt: draft.updatedAt,
+					} as Parameters<typeof Repos.loans.save>[0]);
+					dispatch({ type: 'UPSERT', payload: { entity: 'loans', record: savedLoan } });
+					const head = loanToHead(savedLoan);
+					await Repos.accountHeads.save(
+						head as Parameters<typeof Repos.accountHeads.save>[0]
+					);
+					dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+
+					getPendingCount()
+						.then((n) =>
+							dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } })
+						)
+						.catch(() => {});
+					return head;
+				}
+
+				const allowedAssetTypes: AccountType[] = [
+					'bank',
+					'cash',
+					'investment',
+					'receivable',
+				];
+				if (hint === 'receivable') {
+					const savedHead = await Repos.accountHeads.save({
+						id: draft.id,
+						name,
+						type: draft.type ?? 'asset',
+						parentId: draft.parentId ?? 'head_asset',
+						isSystem: false,
+						isAccount: false,
+						notes: draft.notes,
+						createdAt: draft.createdAt,
+						updatedAt: draft.updatedAt,
+					} as Parameters<typeof Repos.accountHeads.save>[0]);
+					dispatch({
+						type: 'UPSERT',
+						payload: { entity: 'accountHeads', record: savedHead },
+					});
+
+					const linkedFundingAccountId =
+						stateRef.current.accounts.find((a) => ['bank', 'cash'].includes(a.type))
+							?.id ??
+						stateRef.current.accounts[0]?.id ??
+						'';
+
+					const savedReceivable = await Repos.receivables.save({
+						id: draft.id,
+						personName: name,
+						amountLent: 0,
+						amountRepaid: 0,
+						dateLent: now.slice(0, 10),
+						accountId: linkedFundingAccountId,
+						receivableHeadId: savedHead.id,
+						isSettled: false,
+						notes: draft.notes,
+						createdAt: draft.createdAt,
+						updatedAt: draft.updatedAt,
+					} as Parameters<typeof Repos.receivables.save>[0]);
+					dispatch({
+						type: 'UPSERT',
+						payload: { entity: 'receivables', record: savedReceivable },
+					});
+
+					getPendingCount()
+						.then((n) =>
+							dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } })
+						)
+						.catch(() => {});
+					return savedHead;
+				}
+
+				const accountType = allowedAssetTypes.includes(hint as AccountType)
+					? (hint as AccountType)
+					: 'bank';
+				const savedAccount = await Repos.accounts.save({
+					id: draft.id,
+					name,
+					type: accountType,
+					openingBalance: 0,
+					createdAt: draft.createdAt,
+					updatedAt: draft.updatedAt,
+				} as Parameters<typeof Repos.accounts.save>[0]);
+				dispatch({ type: 'UPSERT', payload: { entity: 'accounts', record: savedAccount } });
+				const head = accountToHead(savedAccount);
+				await Repos.accountHeads.save(
+					head as Parameters<typeof Repos.accountHeads.save>[0]
+				);
+				dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+
+				getPendingCount()
+					.then((n) => dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } }))
+					.catch(() => {});
+				return head;
+			}
+		}
+
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const saved = await Repos[entity].save(record as any);
 		dispatch({ type: 'UPSERT', payload: { entity, record: saved } });

@@ -1530,6 +1530,7 @@ export function AccountHeadsView() {
 	const [newName, setNewName] = useState('');
 	const [newType, setNewType] = useState('expense');
 	const [newParent, setNewParent] = useState('head_expense');
+	const [newEntityHint, setNewEntityHint] = useState('');
 	const [adding, setAdding] = useState(false);
 
 	const roots = state.accountHeads.filter((h) => h.parentId === null);
@@ -1539,22 +1540,30 @@ export function AccountHeadsView() {
 		if (!newName.trim()) return;
 		const now = new Date().toISOString();
 		const parent = state.accountHeads.find((h) => h.id === newParent);
+		const parentType = parent?.type ?? newType;
+		const defaultEntityHint =
+			parentType === 'asset' ? 'bank' : parentType === 'liability' ? 'loan' : '';
 		await save('accountHeads', {
 			name: newName.trim(),
 			type: parent?.type ?? newType,
 			parentId: newParent || null,
 			isSystem: false,
+			entityHint: newEntityHint || defaultEntityHint,
 			createdAt: now,
 			updatedAt: now,
 		});
 		setNewName('');
+		setNewEntityHint('');
 		setAdding(false);
 	};
+
+	const selectedParentType = state.accountHeads.find((h) => h.id === newParent)?.type ?? newType;
 
 	const canDelete = (h: import('@/types').AccountHead) =>
 		!h.isSystem &&
 		!h.isAccount &&
 		children(h.id).length === 0 &&
+		!state.receivables.some((r) => r.receivableHeadId === h.id) &&
 		!state.journalEntries.some(
 			(e) => e.debitAccountHeadId === h.id || e.creditAccountHeadId === h.id
 		);
@@ -1623,7 +1632,10 @@ export function AccountHeadsView() {
 					<FormField label="Under (parent)">
 						<Select
 							value={newParent}
-							onValueChange={setNewParent}>
+							onValueChange={(v) => {
+								setNewParent(v);
+								setNewEntityHint('');
+							}}>
 							<SelectTrigger>
 								<SelectValue />
 							</SelectTrigger>
@@ -1638,11 +1650,49 @@ export function AccountHeadsView() {
 							</SelectContent>
 						</Select>
 					</FormField>
+					{selectedParentType === 'asset' && (
+						<FormField label="Create As">
+							<Select
+								value={newEntityHint || 'bank'}
+								onValueChange={setNewEntityHint}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="bank">Bank Account</SelectItem>
+									<SelectItem value="cash">Cash Account</SelectItem>
+									<SelectItem value="investment">Investment Account</SelectItem>
+									<SelectItem value="receivable">Lender / Receivable</SelectItem>
+								</SelectContent>
+							</Select>
+						</FormField>
+					)}
+					{selectedParentType === 'liability' && (
+						<FormField label="Create As">
+							<Select
+								value={newEntityHint || 'loan'}
+								onValueChange={setNewEntityHint}>
+								<SelectTrigger>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="loan">Loan</SelectItem>
+									<SelectItem value="credit_card">Credit Card</SelectItem>
+									<SelectItem value="credit_card_loan">
+										Credit Card Loan
+									</SelectItem>
+								</SelectContent>
+							</Select>
+						</FormField>
+					)}
 					<div className="flex gap-2">
 						<Button
 							variant="outline"
 							className="flex-1"
-							onClick={() => setAdding(false)}>
+							onClick={() => {
+								setAdding(false);
+								setNewEntityHint('');
+							}}>
 							Cancel
 						</Button>
 						<Button

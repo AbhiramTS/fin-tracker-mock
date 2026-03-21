@@ -108,6 +108,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		formProps: {
 			accounts: state.accounts,
 			accountHeads: state.accountHeads,
+			loans: state.loans,
 			allowTypeChange: true,
 		},
 		formTitle: 'Journal Entry',
@@ -322,7 +323,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 											'income',
 											'transfer',
 											'emi',
-												'credit_card_payment',
+											'credit_card_payment',
 											'loan_disbursal',
 											'loan_payoff',
 											'lending_disbursal',
