@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { ReceivableForm, RepaymentForm } from '@/components/forms';
 import { ReceivableLedgerDialog } from './AccountLedger';
+import { getReceivableJournalStats } from '@/utils/receivables';
 import type { Receivable } from '@/types';
 
 export function ReceivablesView() {
@@ -18,9 +19,13 @@ export function ReceivablesView() {
 	const [repayFor, setRepayFor] = useState<string | null>(null);
 	const [ledgerReceivable, setLedgerReceivable] = useState<Receivable | null>(null);
 
-	const active = state.receivables.filter((r) => !r.isSettled);
-	const settled = state.receivables.filter((r) => r.isSettled);
-	const totalOut = active.reduce((s, r) => s + (r.amountLent - r.amountRepaid), 0);
+	const receivablesWithStats = state.receivables.map((receivable) => ({
+		receivable,
+		stats: getReceivableJournalStats(receivable, state.journalEntries),
+	}));
+	const active = receivablesWithStats.filter((r) => !r.stats.isSettled);
+	const settled = receivablesWithStats.filter((r) => r.stats.isSettled);
+	const totalOut = active.reduce((s, r) => s + r.stats.outstanding, 0);
 
 	const { startEdit, doRemove, EditDialog } = useEditDelete<Receivable>({
 		entity: 'receivables',
@@ -36,9 +41,6 @@ export function ReceivablesView() {
 		const amount = (data.amount as number) ?? 0;
 		const receiveAccountId = (data.accountId as string) ?? receivable.accountId;
 		const repaymentDate = (data.date as string) ?? new Date().toISOString().slice(0, 10);
-		const newRepaid = (receivable.amountRepaid ?? 0) + amount;
-		const isSettled = newRepaid >= receivable.amountLent;
-		await save('receivables', { ...receivable, amountRepaid: newRepaid, isSettled });
 		if (amount > 0 && receiveAccountId) {
 			await save('journalEntries', {
 				description: `Repayment from ${receivable.personName}`,
@@ -86,11 +88,11 @@ export function ReceivablesView() {
 
 			{active.length > 0 && (
 				<div className="flex flex-col gap-3">
-					{active.map((r) => {
-						const outstanding = r.amountLent - r.amountRepaid;
+					{active.map(({ receivable: r, stats }) => {
+						const outstanding = stats.outstanding;
 						const pct = Math.min(
 							100,
-							(r.amountRepaid / Math.max(r.amountLent, 1)) * 100
+							(stats.totalRepaid / Math.max(stats.totalDisbursed, 1)) * 100
 						);
 						const days = r.expectedRepaymentDate
 							? daysFromNow(r.expectedRepaymentDate)
@@ -133,10 +135,16 @@ export function ReceivablesView() {
 									</div>
 									<div className="flex justify-between text-xs text-muted-foreground mb-1">
 										<span>
-											Lent: {fmt(r.amountLent)} on {fmtDate(r.dateLent)}
+											Lent: {fmt(stats.totalDisbursed)} on{' '}
+											{fmtDate(r.dateLent)}
 										</span>
-										<span>Repaid: {fmt(r.amountRepaid)}</span>
+										<span>Repaid: {fmt(stats.totalRepaid)}</span>
 									</div>
+									{stats.openingBalance > 0 && (
+										<p className="text-[11px] text-muted-foreground mb-1">
+											Includes opening balance: {fmt(stats.openingBalance)}
+										</p>
+									)}
 									<Progress
 										value={pct}
 										className="h-1.5"
@@ -194,7 +202,7 @@ export function ReceivablesView() {
 					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mt-2">
 						Settled
 					</p>
-					{settled.map((r) => (
+					{settled.map(({ receivable: r, stats }) => (
 						<Card
 							key={r.id}
 							className={`opacity-60 transition-colors${r.receivableHeadId ? ' cursor-pointer hover:border-primary/40 hover:opacity-100' : ''}`}
@@ -203,7 +211,7 @@ export function ReceivablesView() {
 								<div>
 									<p className="font-semibold line-through">{r.personName}</p>
 									<p className="text-xs text-muted-foreground">
-										{fmt(r.amountLent)} · {fmtDate(r.dateLent)}
+										{fmt(stats.totalDisbursed)} · {fmtDate(r.dateLent)}
 									</p>
 								</div>
 								<div className="flex items-center gap-2">

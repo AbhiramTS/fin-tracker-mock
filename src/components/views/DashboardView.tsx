@@ -3,6 +3,7 @@ import { format } from 'date-fns';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { buildForecast } from '@/utils/forecast';
+import { getReceivableJournalStats } from '@/utils/receivables';
 import { fmt, fmtDate, fmtCompact, todayStr } from '@/utils/format';
 import { getOccurrencesForMonth, urgencyClass, urgencyLabel } from '@/utils/recurring';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,9 +31,10 @@ export function DashboardView() {
 			0
 		) + unifiedCardDebt;
 	const netWorth = totalBalance + totalInv - totalDebt;
-	const outstandingReceivables = state.receivables
-		.filter((r) => !r.isSettled)
-		.reduce((s, r) => s + (r.amountLent - r.amountRepaid), 0);
+	const outstandingReceivables = state.receivables.reduce((sum, receivable) => {
+		const { outstanding } = getReceivableJournalStats(receivable, state.journalEntries);
+		return sum + outstanding;
+	}, 0);
 	const stress = Math.min(
 		100,
 		Math.round((totalDebt / Math.max(totalBalance + totalInv, 1)) * 100)

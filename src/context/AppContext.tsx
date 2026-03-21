@@ -537,12 +537,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 					const savedReceivable = await Repos.receivables.save({
 						id: draft.id,
 						personName: name,
+						openingBalance: 0,
 						amountLent: 0,
-						amountRepaid: 0,
 						dateLent: now.slice(0, 10),
 						accountId: linkedFundingAccountId,
 						receivableHeadId: savedHead.id,
-						isSettled: false,
 						notes: draft.notes,
 						createdAt: draft.createdAt,
 						updatedAt: draft.updatedAt,

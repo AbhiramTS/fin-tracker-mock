@@ -1854,17 +1854,16 @@ export function ReceivableForm({
 }: WithAccounts<Receivable>) {
 	const [f, setF] = useState<Partial<Receivable>>({
 		personName: '',
-		amountLent: undefined,
-		amountRepaid: 0,
+		openingBalance: 0,
+		amountLent: 0,
 		dateLent: todayStr(),
 		accountId: accounts[0]?.id ?? '',
 		receivableHeadId: 'head_asset',
-		isSettled: false,
 		...initialData,
 	});
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.personName && f.amountLent) onSave(f);
+		if (f.personName && ((f.amountLent ?? 0) > 0 || (f.openingBalance ?? 0) > 0)) onSave(f);
 	};
 	return (
 		<form
@@ -1880,15 +1879,27 @@ export function ReceivableForm({
 						required
 					/>
 				</FormField>
-				<FormField label="Amount Lent (₹)">
+				<FormField label="Opening Balance (₹)">
+					<Input
+						type="number"
+						min="0"
+						value={f.openingBalance ?? ''}
+						onChange={(e) =>
+							setF({
+								...f,
+								openingBalance: parseFloat(e.target.value) || 0,
+							})
+						}
+					/>
+				</FormField>
+				<FormField label="Amount Lent Now (₹)">
 					<Input
 						type="number"
 						min="0"
 						value={f.amountLent ?? ''}
 						onChange={(e) =>
-							setF({ ...f, amountLent: parseFloat(e.target.value) || undefined })
+							setF({ ...f, amountLent: parseFloat(e.target.value) || 0 })
 						}
-						required
 					/>
 				</FormField>
 				<FormField label="Date Lent">

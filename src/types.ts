@@ -211,13 +211,12 @@ export interface AmortisationRow {
 export interface Receivable extends BaseRecord {
 	personName: string;
 	description?: string;
+	openingBalance?: number;
 	amountLent: number;
-	amountRepaid: number;
 	dateLent: string;
 	expectedRepaymentDate?: string;
 	accountId: string;
 	receivableHeadId?: string;
-	isSettled: boolean;
 	notes?: string;
 }
 

@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { fmt } from '@/utils/format';
+import { getReceivableJournalStats } from '@/utils/receivables';
 import { useApp } from '@/context/AppContext';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import type { Account, Loan, Receivable, Investment } from '@/types';
@@ -122,7 +123,9 @@ export function ReceivableLedgerDialog({
 	receivable: Receivable | null;
 	onClose: () => void;
 }) {
+	const { state } = useApp();
 	if (!receivable || !receivable.receivableHeadId) return null;
+	const stats = getReceivableJournalStats(receivable, state.journalEntries);
 	return (
 		<Dialog
 			open={!!receivable}
@@ -131,13 +134,18 @@ export function ReceivableLedgerDialog({
 				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
 					<DialogTitle>{receivable.personName}</DialogTitle>
 					<p className="text-sm text-muted-foreground mt-0.5">
+						Opening:{' '}
+						<span className="font-mono font-bold text-foreground">
+							{fmt(stats.openingBalance)}
+						</span>
+						{' · '}
 						Lent:{' '}
 						<span className="font-mono font-bold text-foreground">
-							{fmt(receivable.amountLent)}
+							{fmt(stats.totalDisbursed)}
 						</span>
 						{' · '}Repaid:{' '}
 						<span className="font-mono font-bold text-profit">
-							{fmt(receivable.amountRepaid)}
+							{fmt(stats.totalRepaid)}
 						</span>
 					</p>
 				</DialogHeader>
