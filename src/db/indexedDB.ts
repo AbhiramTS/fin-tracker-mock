@@ -132,7 +132,7 @@ export async function dbPutLatest<T extends Record<string, unknown>>(
 		return true;
 	}
 
-	const existing = await r2p(store.get(key));
+	const existing = await r2p(store.get(key as IDBValidKey));
 	if (existing && getRecordTs(existing) > getRecordTs(rec)) {
 		return false;
 	}
