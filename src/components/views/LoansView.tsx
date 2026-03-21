@@ -232,7 +232,7 @@ function LoanCard({
 				/>
 
 				{/* Summary grid */}
-				<div className={`grid gap-2 mt-3 ${hasTax ? 'grid-cols-4' : 'grid-cols-3'}`}>
+				<div className={`grid gap-2 mt-3 ${hasTax ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3'}`}>
 					{[
 						['Principal', fmt(l.principalAmount)],
 						['Rate', `${l.interestRate}% p.a.`],

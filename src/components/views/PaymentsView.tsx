@@ -385,7 +385,7 @@ function MonthSummary({ occs }: { occs: PaymentOccurrence[] }) {
 	const overdue = unpaid.filter((o) => o.dueDate < todayStr());
 
 	return (
-		<div className="grid grid-cols-4 gap-0 rounded-xl overflow-hidden border border-border">
+		<div className="grid grid-cols-2 sm:grid-cols-4 gap-px rounded-xl overflow-hidden border border-border bg-border">
 			{[
 				{
 					label: 'Total Out',
@@ -409,10 +409,10 @@ function MonthSummary({ occs }: { occs: PaymentOccurrence[] }) {
 						: fmt(incomes.reduce((s, o) => s + (o.paidAmount ?? o.amount), 0)),
 					cls: overdue.length ? 'text-loss' : 'text-profit',
 				},
-			].map(({ label, value, cls }, i) => (
+			].map(({ label, value, cls }) => (
 				<div
 					key={label}
-					className={`flex flex-col items-center py-3 bg-muted/20 ${i < 3 ? 'border-r border-border' : ''}`}>
+					className="flex flex-col items-center py-3 bg-muted/20">
 					<p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
 						{label}
 					</p>

@@ -875,7 +875,7 @@ export function SettingsView() {
 							</span>
 						)}
 					</TabsTrigger>
-					<TabsTrigger value="clear">Clear Data</TabsTrigger>
+					<TabsTrigger value="clear">Clear</TabsTrigger>
 				</TabsList>
 				<TabsContent value="import">
 					<Card>
