@@ -31,7 +31,7 @@ import {
 	SelectValue,
 } from '@/components/ui/select';
 import { FormField } from '@/components/ui/form-field';
-import type { PaymentOccurrence, Account, AccountHead } from '@/types';
+import type { PaymentOccurrence, Account, AccountHead, Loan } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Pay Dialog
@@ -41,6 +41,7 @@ interface PayDialogProps {
 	occ: PaymentOccurrence | null;
 	accounts: Account[];
 	accountHeads: AccountHead[];
+	loans: Loan[];
 	computedBalances: Record<string, number>;
 	onConfirm: (opts: {
 		paidDate: string;
@@ -55,6 +56,7 @@ function PayDialog({
 	occ,
 	accounts,
 	accountHeads,
+	loans,
 	computedBalances,
 	onConfirm,
 	onCancel,
@@ -108,6 +110,8 @@ function PayDialog({
 			: balance - amount;
 
 	const debitHead = accountHeads.find((h) => h.id === occ.debitAccountHeadId);
+	const loan = occ.kind === 'loan_emi' ? loans.find((item) => item.id === occ.sourceId) : null;
+	const loanProgress = loan ? Math.min((loan.paidMonths ?? 0) + 1, loan.tenureMonths) : null;
 
 	const payableAccounts = isIncome
 		? accounts.filter((a) => !['investment'].includes(a.type))
@@ -145,6 +149,18 @@ function PayDialog({
 							Due {fmtDate(occ.dueDate)}
 							{occ.category && ` · ${occ.category}`}
 						</p>
+						{loan && (
+							<div className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-muted-foreground sm:grid-cols-2">
+								<p>
+									<span className="font-medium text-foreground">Loan start:</span>{' '}
+									{fmtDate(loan.startDate)}
+								</p>
+								<p>
+									<span className="font-medium text-foreground">Progress:</span>{' '}
+									EMI {loanProgress} of {loan.tenureMonths}
+								</p>
+							</div>
+						)}
 					</div>
 
 					{/* Debit head — read-only, pre-set from recurring payment */}
@@ -428,12 +444,14 @@ function MonthSummary({ occs }: { occs: PaymentOccurrence[] }) {
 function OccurrenceCard({
 	occ,
 	accounts,
+	loan,
 	onMarkPaid,
 	onMarkSkipped,
 	onMarkUnpaid,
 }: {
 	occ: PaymentOccurrence;
 	accounts: Account[];
+	loan?: Loan;
 	onMarkPaid: (o: PaymentOccurrence) => void;
 	onMarkSkipped: (o: PaymentOccurrence) => void;
 	onMarkUnpaid: (o: PaymentOccurrence) => void;
@@ -447,6 +465,15 @@ function OccurrenceCard({
 				? `Paid ${fmtDate(occ.paidDate ?? occ.dueDate)}`
 				: 'Skipped';
 	const paidAcct = occ.status === 'paid' ? accounts.find((a) => a.id === occ.accountId) : null;
+	const paymentAccount = occ.accountId ? accounts.find((a) => a.id === occ.accountId) : null;
+	const loanMeta =
+		loan && occ.kind === 'loan_emi'
+			? [
+					`Loan start ${fmtDate(loan.startDate)}`,
+					`EMI ${Math.min((loan.paidMonths ?? 0) + (occ.status === 'paid' ? 0 : 1), loan.tenureMonths)} of ${loan.tenureMonths}`,
+					paymentAccount ? `From ${paymentAccount.name}` : null,
+				].filter(Boolean)
+			: [];
 
 	return (
 		<div className={`rounded-xl border p-3.5 transition-all ${bg} ${border}`}>
@@ -494,6 +521,17 @@ function OccurrenceCard({
 												actual: {fmt(occ.paidAmount)}
 											</span>
 										)}
+								</div>
+							)}
+							{loanMeta.length > 0 && (
+								<div className="mt-2 flex flex-wrap gap-1.5">
+									{loanMeta.map((item) => (
+										<span
+											key={item}
+											className="rounded-md border border-border/70 bg-muted/35 px-2 py-1 text-[10px] font-medium text-muted-foreground">
+											{item}
+										</span>
+									))}
 								</div>
 							)}
 						</div>
@@ -560,6 +598,10 @@ export function PaymentsView() {
 	const storedIds = useMemo(
 		() => new Set((state.paymentOccurrences ?? []).map((o) => o.id)),
 		[state.paymentOccurrences]
+	);
+	const loanById = useMemo(
+		() => new Map((state.loans ?? []).map((loan) => [loan.id, loan])),
+		[state.loans]
 	);
 
 	useEffect(() => {
@@ -762,6 +804,7 @@ export function PaymentsView() {
 	const cardProps = (occ: PaymentOccurrence) => ({
 		occ,
 		accounts: state.accounts,
+		loan: occ.kind === 'loan_emi' ? loanById.get(occ.sourceId) : undefined,
 		onMarkPaid: () => setPayingOcc(occ),
 		onMarkSkipped: () => markSkipped(occ),
 		onMarkUnpaid: () => markUnpaid(occ),
@@ -866,6 +909,7 @@ export function PaymentsView() {
 				occ={payingOcc}
 				accounts={state.accounts}
 				accountHeads={state.accountHeads}
+				loans={state.loans}
 				computedBalances={state.computedBalances}
 				onConfirm={(opts) => confirmPaid(payingOcc!, opts)}
 				onCancel={() => setPayingOcc(null)}
