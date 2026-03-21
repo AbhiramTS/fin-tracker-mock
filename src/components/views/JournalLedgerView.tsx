@@ -5,6 +5,7 @@ import {
 	ArrowDownLeft,
 	ArrowLeftRight,
 	SlidersHorizontal,
+	GripVertical,
 	Pencil,
 	Trash2,
 	X,
@@ -103,7 +104,7 @@ function getDisplaySide(entry: JournalEntry, accountHeadId?: string): 'debit' | 
 
 // ─────────────────────────────────────────────────────────────────────────────
 export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId?: string } = {}) {
-	const { state } = useApp();
+	const { state, save } = useApp();
 	const { tab } = useNavigation();
 	const { startEdit, doRemove, FormPage } = useEntityFormPage<JournalEntry>({
 		tab,
@@ -133,6 +134,9 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const [amtMax, setAmtMax] = useState('');
 	const [showFilters, setShowFilters] = useState(false);
 	const [expanded, setExpanded] = useState<string | null>(null);
+	const [draggedId, setDraggedId] = useState<string | null>(null);
+	const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+	const [isReordering, setIsReordering] = useState(false);
 
 	const handleDelete = async (entry: JournalEntry) => {
 		const confirmed = window.confirm(
@@ -148,11 +152,25 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const isGlobalJournal = !activeHead;
 	const activeAccount = state.accounts.find((a) => a.id === activeHead);
 	const openingSeed = activeAccount?.openingBalance ?? 0;
+	const hasNonHeadFilters =
+		typeFilter !== 'all' ||
+		Boolean(dateFrom) ||
+		Boolean(dateTo) ||
+		Boolean(amtMin) ||
+		Boolean(amtMax) ||
+		Boolean(search.trim());
+	const canReorderRows = !hasNonHeadFilters;
 
 	// ── Filter entries ─────────────────────────────────────────────────────────
 	const filtered = useMemo(() => {
 		// Start with all entries, sort oldest → newest
-		let rows = [...state.journalEntries].sort((a, b) => a.date.localeCompare(b.date));
+		let rows = [...state.journalEntries].sort((a, b) => {
+			if (a.date !== b.date) return a.date.localeCompare(b.date);
+			const ao = a.sortOrder ?? Number.POSITIVE_INFINITY;
+			const bo = b.sortOrder ?? Number.POSITIVE_INFINITY;
+			if (ao !== bo) return ao - bo;
+			return a.createdAt.localeCompare(b.createdAt);
+		});
 
 		// Account head filter (from prop or from dropdown)
 		if (activeHead) {
@@ -258,6 +276,68 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		setAmtMin('');
 		setAmtMax('');
 		setSearch('');
+	};
+
+	const beginDrag = (id: string) => {
+		if (!canReorderRows || isReordering) return;
+		setDraggedId(id);
+	};
+
+	const endDrag = () => {
+		setDraggedId(null);
+		setDropTargetId(null);
+	};
+
+	const nextSortOrder = (
+		targetDate: string,
+		targetId: string,
+		dragId: string,
+		entries: JournalEntry[]
+	) => {
+		const dayEntries = entries
+			.filter((e) => e.date === targetDate && e.id !== dragId)
+			.sort((a, b) => {
+				const ao = a.sortOrder ?? Number.POSITIVE_INFINITY;
+				const bo = b.sortOrder ?? Number.POSITIVE_INFINITY;
+				if (ao !== bo) return ao - bo;
+				return a.createdAt.localeCompare(b.createdAt);
+			});
+
+		const idx = dayEntries.findIndex((e) => e.id === targetId);
+		if (idx < 0) {
+			const max = dayEntries.reduce((m, e) => Math.max(m, e.sortOrder ?? 0), 0);
+			return max + 1024;
+		}
+
+		const prev = idx > 0 ? dayEntries[idx - 1] : null;
+		const curr = dayEntries[idx];
+		const prevOrder = prev?.sortOrder ?? (curr.sortOrder ?? 1024) - 1024;
+		const currOrder = curr.sortOrder ?? prevOrder + 1024;
+		const candidate = (prevOrder + currOrder) / 2;
+		if (Number.isFinite(candidate)) return candidate;
+		return currOrder - 1;
+	};
+
+	const dropOnRow = async (targetId: string) => {
+		if (!canReorderRows || isReordering || !draggedId || draggedId === targetId) return;
+
+		const dragged = state.journalEntries.find((e) => e.id === draggedId);
+		const target = state.journalEntries.find((e) => e.id === targetId);
+		if (!dragged || !target) return;
+
+		setIsReordering(true);
+		try {
+			const order = nextSortOrder(target.date, target.id, dragged.id, state.journalEntries);
+			await save('journalEntries', {
+				...dragged,
+				date: target.date,
+				sortOrder: order,
+			});
+		} finally {
+			setIsReordering(false);
+			setDraggedId(null);
+			setDropTargetId(null);
+		}
 	};
 
 	// All non-system account heads for the head filter dropdown
@@ -451,6 +531,13 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 						</div>
 					)}
 
+					{!canReorderRows && (
+						<p className="text-[11px] text-muted-foreground px-1">
+							Row reordering is disabled while search/type/date/amount filters are
+							active.
+						</p>
+					)}
+
 					{/* Ledger table */}
 					{filtered.length === 0 ? (
 						<EmptyState
@@ -549,7 +636,34 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 														: '—';
 
 											return (
-												<div key={row.id}>
+												<div
+													key={row.id}
+													draggable={canReorderRows && !isReordering}
+													onDragStart={() => beginDrag(row.id)}
+													onDragEnd={endDrag}
+													onDragOver={(e) => {
+														if (
+															!canReorderRows ||
+															!draggedId ||
+															draggedId === row.id
+														)
+															return;
+														e.preventDefault();
+														setDropTargetId(row.id);
+													}}
+													onDragLeave={() => {
+														if (dropTargetId === row.id)
+															setDropTargetId(null);
+													}}
+													onDrop={(e) => {
+														e.preventDefault();
+														void dropOnRow(row.id);
+													}}
+													className={
+														dropTargetId === row.id
+															? 'ring-1 ring-primary/60 ring-inset'
+															: undefined
+													}>
 													{isGlobalJournal ? (
 														<button
 															onClick={() =>
@@ -558,6 +672,9 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 															className="w-full text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
 															<div className="px-3 py-2 border-b border-border/20">
 																<div className="flex items-start gap-2.5 min-w-0">
+																	<span className="mt-1 shrink-0 text-muted-foreground/60 cursor-grab active:cursor-grabbing">
+																		<GripVertical className="h-3.5 w-3.5" />
+																	</span>
 																	<div
 																		className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
 																		<Icon className="h-3 w-3" />
@@ -634,6 +751,9 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 															}
 															className="w-full grid grid-cols-[1fr_auto_auto_auto_auto] px-3 py-2.5 text-left hover:bg-muted/30 transition-colors border-b border-border/30 last:border-0">
 															<div className="flex items-start gap-2.5 min-w-0 pr-2">
+																<span className="mt-1 shrink-0 text-muted-foreground/60 cursor-grab active:cursor-grabbing">
+																	<GripVertical className="h-3.5 w-3.5" />
+																</span>
 																<div
 																	className={`mt-0.5 shrink-0 flex h-6 w-6 items-center justify-center rounded-full bg-muted/60 ${meta.color}`}>
 																	<Icon className="h-3 w-3" />

@@ -110,6 +110,7 @@ export type JournalEntryType =
 
 export interface JournalEntry extends BaseRecord {
 	date: string; // yyyy-MM-dd
+	sortOrder?: number; // persistent manual order within the same date
 	description: string;
 	amount: number; // always positive
 	type: JournalEntryType;
