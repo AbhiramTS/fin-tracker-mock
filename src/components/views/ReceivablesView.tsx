@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
@@ -10,11 +10,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { EmptyState } from '@/components/ui/empty-state';
 import { EntityView, RowActions, useEditDelete } from './EntityView';
 import { ReceivableForm, RepaymentForm } from '@/components/forms';
+import { ReceivableLedgerDialog } from './AccountLedger';
 import type { Receivable } from '@/types';
 
 export function ReceivablesView() {
 	const { state, save } = useApp();
 	const [repayFor, setRepayFor] = useState<string | null>(null);
+	const [ledgerReceivable, setLedgerReceivable] = useState<Receivable | null>(null);
 
 	const active = state.receivables.filter((r) => !r.isSettled);
 	const settled = state.receivables.filter((r) => r.isSettled);
@@ -97,7 +99,10 @@ export function ReceivablesView() {
 							(rr) => rr.receivableId === r.id
 						);
 						return (
-							<Card key={r.id}>
+							<Card
+								key={r.id}
+								className={`transition-colors${r.receivableHeadId ? ' cursor-pointer hover:border-primary/40' : ''}`}
+								onClick={() => r.receivableHeadId && setLedgerReceivable(r)}>
 								<CardContent className="p-4">
 									<div className="flex items-start justify-between mb-2">
 										<div>
@@ -120,7 +125,10 @@ export function ReceivablesView() {
 											<RowActions
 												onEdit={() => startEdit(r)}
 												onDelete={() => doRemove(r.id)}
-											/>
+											/>{' '}
+											{r.receivableHeadId && (
+												<ChevronRight className="h-3.5 w-3.5 text-muted-foreground self-center" />
+											)}{' '}
 										</div>
 									</div>
 									<div className="flex justify-between text-xs text-muted-foreground mb-1">
@@ -168,7 +176,10 @@ export function ReceivablesView() {
 										size="sm"
 										variant="profit"
 										className="mt-3 w-full"
-										onClick={() => setRepayFor(r.id)}>
+										onClick={(e) => {
+											e.stopPropagation();
+											setRepayFor(r.id);
+										}}>
 										<Plus className="h-3.5 w-3.5" /> Record Repayment
 									</Button>
 								</CardContent>
@@ -186,7 +197,8 @@ export function ReceivablesView() {
 					{settled.map((r) => (
 						<Card
 							key={r.id}
-							className="opacity-60">
+							className={`opacity-60 transition-colors${r.receivableHeadId ? ' cursor-pointer hover:border-primary/40 hover:opacity-100' : ''}`}
+							onClick={() => r.receivableHeadId && setLedgerReceivable(r)}>
 							<CardContent className="flex items-center justify-between p-4">
 								<div>
 									<p className="font-semibold line-through">{r.personName}</p>
@@ -208,6 +220,11 @@ export function ReceivablesView() {
 			)}
 
 			{EditDialog}
+
+			<ReceivableLedgerDialog
+				receivable={ledgerReceivable}
+				onClose={() => setLedgerReceivable(null)}
+			/>
 
 			<Dialog
 				open={!!repayFor}

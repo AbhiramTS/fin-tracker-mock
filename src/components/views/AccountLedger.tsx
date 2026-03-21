@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { fmt } from '@/utils/format';
 import { useApp } from '@/context/AppContext';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
-import type { Account, Loan } from '@/types';
+import type { Account, Loan, Receivable, Investment } from '@/types';
 
 // ── Account ledger dialog ─────────────────────────────────────────────────────
 export function AccountLedgerDialog({
@@ -108,6 +108,87 @@ export function CreditCardLedgerDialog({
 				</DialogHeader>
 				<div className="flex-1 overflow-y-auto p-5">
 					<JournalLedgerView filterAccountHeadId={card.id} />
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ── Receivable ledger dialog ──────────────────────────────────────────────────
+export function ReceivableLedgerDialog({
+	receivable,
+	onClose,
+}: {
+	receivable: Receivable | null;
+	onClose: () => void;
+}) {
+	if (!receivable || !receivable.receivableHeadId) return null;
+	return (
+		<Dialog
+			open={!!receivable}
+			onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
+				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
+					<DialogTitle>{receivable.personName}</DialogTitle>
+					<p className="text-sm text-muted-foreground mt-0.5">
+						Lent:{' '}
+						<span className="font-mono font-bold text-foreground">
+							{fmt(receivable.amountLent)}
+						</span>
+						{' · '}Repaid:{' '}
+						<span className="font-mono font-bold text-profit">
+							{fmt(receivable.amountRepaid)}
+						</span>
+					</p>
+				</DialogHeader>
+				<div className="flex-1 overflow-y-auto p-5">
+					<JournalLedgerView filterAccountHeadId={receivable.receivableHeadId} />
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+// ── Investment ledger dialog ──────────────────────────────────────────────────
+export function InvestmentLedgerDialog({
+	investment,
+	onClose,
+}: {
+	investment: Investment | null;
+	onClose: () => void;
+}) {
+	if (!investment) return null;
+	return (
+		<Dialog
+			open={!!investment}
+			onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-w-2xl h-[90dvh] flex flex-col p-0">
+				<DialogHeader className="px-5 pt-5 pb-3 border-b border-border">
+					<DialogTitle className="flex items-center gap-2">
+						{investment.name}
+						<Badge
+							variant="muted"
+							className="ml-1 text-[10px]">
+							{investment.type.replace(/_/g, ' ')}
+						</Badge>
+					</DialogTitle>
+					<p className="text-sm text-muted-foreground mt-0.5">
+						Value:{' '}
+						<span className="font-mono font-bold text-profit">
+							{fmt(investment.value)}
+						</span>
+						{investment.costBasis != null && (
+							<>
+								{' · '}Cost:{' '}
+								<span className="font-mono font-bold">
+									{fmt(investment.costBasis)}
+								</span>
+							</>
+						)}
+					</p>
+				</DialogHeader>
+				<div className="flex-1 overflow-y-auto p-5">
+					<JournalLedgerView filterAccountHeadId={investment.id} />
 				</div>
 			</DialogContent>
 		</Dialog>

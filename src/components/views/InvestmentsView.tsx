@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { InvestmentLedgerDialog } from './AccountLedger';
 import { fmt, fmtPct } from '@/utils/format';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,6 +25,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function InvestmentsView() {
 	const { state } = useApp();
+	const [ledgerInv, setLedgerInv] = useState<Investment | null>(null);
 	const total = state.investments.reduce((s, i) => s + (i.value ?? 0), 0);
 	const totalCost = state.investments.reduce((s, i) => s + (i.costBasis ?? i.value ?? 0), 0);
 	const totalPnL = total - totalCost;
@@ -110,7 +114,10 @@ export function InvestmentsView() {
 					const pnl = (inv.value ?? 0) - (inv.costBasis ?? inv.value ?? 0);
 					const pnlPct = inv.costBasis ? (pnl / inv.costBasis) * 100 : 0;
 					return (
-						<Card key={inv.id}>
+						<Card
+							key={inv.id}
+							className="cursor-pointer hover:border-primary/40 transition-colors"
+							onClick={() => setLedgerInv(inv)}>
 							<CardContent className="flex items-center justify-between p-4">
 								<div>
 									<p className="font-semibold">{inv.name}</p>
@@ -136,6 +143,7 @@ export function InvestmentsView() {
 										onEdit={() => startEdit(inv)}
 										onDelete={() => doRemove(inv.id)}
 									/>
+									<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
 								</div>
 							</CardContent>
 						</Card>
@@ -143,6 +151,10 @@ export function InvestmentsView() {
 				})
 			)}
 			{EditDialog}
+			<InvestmentLedgerDialog
+				investment={ledgerInv}
+				onClose={() => setLedgerInv(null)}
+			/>
 		</EntityView>
 	);
 }

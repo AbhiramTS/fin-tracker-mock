@@ -29,6 +29,7 @@ import type {
 	SyncState,
 	Account,
 	Loan,
+	Investment,
 	AccountType,
 	RootAccountHeadType,
 } from '@/types';
@@ -183,6 +184,21 @@ function loanToHead(l: Loan): AccountHead {
 		isSystem: false,
 		isAccount: true,
 		createdAt: (l as unknown as Record<string, string>).createdAt ?? now,
+		updatedAt: now,
+	};
+}
+
+function investmentToHead(inv: Investment): AccountHead {
+	const now = new Date().toISOString();
+	return {
+		id: inv.id,
+		name: inv.name,
+		type: 'asset',
+		parentId: 'head_asset',
+		isSystem: false,
+		isAccount: true,
+		notes: inv.notes,
+		createdAt: (inv as unknown as Record<string, string>).createdAt ?? now,
 		updatedAt: now,
 	};
 }
@@ -582,6 +598,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 			const head = loanToHead(saved as unknown as Loan);
 			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
 			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
+		} else if (entity === 'investments') {
+			const head = investmentToHead(saved as unknown as Investment);
+			await Repos.accountHeads.save(head as Parameters<typeof Repos.accountHeads.save>[0]);
+			dispatch({ type: 'UPSERT', payload: { entity: 'accountHeads', record: head } });
 		}
 
 		getPendingCount()
@@ -596,7 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 		await Repos[entity].delete(id);
 		dispatch({ type: 'REMOVE', payload: { entity, id } });
 
-		if (entity === 'accounts' || entity === 'loans') {
+		if (entity === 'accounts' || entity === 'loans' || entity === 'investments') {
 			await Repos.accountHeads.delete(id);
 			dispatch({ type: 'REMOVE', payload: { entity: 'accountHeads', id } });
 		}
