@@ -16,7 +16,13 @@ import type { Account } from '@/types';
 export function AccountsView() {
 	const { state, save } = useApp();
 	const { route, openSubpage, goBack } = useNavigation();
-	const total = Object.values(state.computedBalances).reduce((s, b) => s + b, 0);
+	const listedAccounts = state.accounts.filter((account) =>
+		['bank', 'cash'].includes(account.type)
+	);
+	const total = listedAccounts.reduce(
+		(sum, account) => sum + (state.computedBalances[account.id] ?? account.openingBalance ?? 0),
+		0
+	);
 
 	const [reconId, setReconId] = useState<string | null>(null);
 
@@ -51,14 +57,14 @@ export function AccountsView() {
 					title="Accounts"
 					subtitle={`Total: ${fmt(total)}`}
 					onAdd={openAdd}>
-					{state.accounts.length === 0 ? (
+					{listedAccounts.length === 0 ? (
 						<EmptyState
 							icon="🏦"
-							title="No accounts yet"
-							description="Add bank accounts, cash wallets, credit cards…"
+							title="No savings accounts yet"
+							description="Add bank or cash accounts for your day-to-day money"
 						/>
 					) : (
-						state.accounts.map((a) => (
+						listedAccounts.map((a) => (
 							<Card
 								key={a.id}
 								className="cursor-pointer hover:border-primary/40 transition-colors"

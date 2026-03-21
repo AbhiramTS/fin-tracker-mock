@@ -1,11 +1,11 @@
 - [x] Clicking in an Entity should list all the transactions related to that entity, including those where it's not the primary head (e.g. for a loan, show all journal entries where it's either debit or credit head)
-- [ ] I should be able to edit account heads from the settings page, including changing their type (e.g. from loan to credit card).
-- [ ] When I click on an account head in the settings page, I should see a list of all receivables and journal entries related to that head, and be able to click through to edit them.
 - [x] When adding/editing a credit card,I should be able calculate the billing cycle based on any one statement date, billing cycle days and payment due days.
-- [ ] Accounts should just list the savings accounts.
 - [x] Calculate lending outstanding balance based on the related journal entries, instead of having a separate field for it.
-- [ ] Track stock investments properly. (LOW PRIORITY)
 - [x] Add an import view, where I can view and edit imported journal entries before they get saved to the database.
 - [x] Instead of opening in a popup, the add/edit forms as well as the ledger should open in a new page, with a back button to return to the previous page. (This is especially important for the ledger, which will be difficult to use in a small popup.)
 - [x] I should be able to delete a ledger entry (**CRITICAL**)
-- [ ] Make ledger rows orderable by drag-and-drop.
+- [x] Make ledger rows orderable by drag-and-drop.
+- [x] I should be able to edit account heads from the settings page, including changing their type (e.g. from loan to credit card).
+- [x] When I click on an account head in the settings page, I should see a list of all receivables and journal entries related to that head, and be able to click through to edit them.
+- [x] Accounts should just list the savings accounts.
+- [ ] Track stock investments properly. (LOW PRIORITY)

@@ -8,8 +8,11 @@ import {
 	Plus,
 	RefreshCw,
 	Upload,
+	ChevronRight,
+	Pencil,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
+import { useNavigation } from '@/context/NavigationContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -792,6 +795,7 @@ function ClearDataSection() {
 // ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
 	const { state, connectFirebase, syncNow } = useApp();
+	const { setTab } = useNavigation();
 	const [connected, setConnected] = useState(() => !!localStorage.getItem('ft_firebase_config'));
 	const [showQR, setShowQR] = useState(false);
 	const [qrData, setQrData] = useState('');
@@ -902,6 +906,23 @@ export function SettingsView() {
 					</Card>
 				</TabsContent>
 			</Tabs>
+
+			<Card>
+				<CardHeader className="pb-2">
+					<CardTitle>Account Heads</CardTitle>
+				</CardHeader>
+				<CardContent className="flex items-center justify-between gap-3">
+					<p className="text-sm text-muted-foreground">
+						Manage account heads in the dedicated Account Heads view.
+					</p>
+					<Button
+						variant="outline"
+						onClick={() => setTab('accountheads')}
+						className="shrink-0">
+						Open Account Heads
+					</Button>
+				</CardContent>
+			</Card>
 
 			{/* Firebase Sync + Status */}
 			<Card>
@@ -1105,14 +1126,23 @@ export function SettingsView() {
 // ── Account Heads Management ──────────────────────────────────────────────────
 export function AccountHeadsView() {
 	const { state, save, remove } = useApp();
+	const { route, openSubpage, goBack } = useNavigation();
 	const [newName, setNewName] = useState('');
 	const [newType, setNewType] = useState('expense');
 	const [newParent, setNewParent] = useState('head_expense');
 	const [newEntityHint, setNewEntityHint] = useState('');
 	const [adding, setAdding] = useState(false);
+	const [editingHeadId, setEditingHeadId] = useState<string | null>(null);
+	const [editName, setEditName] = useState('');
+	const [editType, setEditType] = useState<import('@/types').RootAccountHeadType>('expense');
+	const [editParentId, setEditParentId] = useState('head_expense');
 
 	const roots = state.accountHeads.filter((h) => h.parentId === null);
 	const children = (pid: string) => state.accountHeads.filter((h) => h.parentId === pid);
+	const selectedHead =
+		route.tab === 'accountheads' && route.subpage === 'head'
+			? (state.accountHeads.find((h) => h.id === route.id) ?? null)
+			: null;
 
 	const addHead = async () => {
 		if (!newName.trim()) return;
@@ -1136,6 +1166,73 @@ export function AccountHeadsView() {
 	};
 
 	const selectedParentType = state.accountHeads.find((h) => h.id === newParent)?.type ?? newType;
+	const editingHead = editingHeadId
+		? (state.accountHeads.find((h) => h.id === editingHeadId) ?? null)
+		: null;
+
+	const relatedReceivables = selectedHead
+		? state.receivables.filter(
+				(r) => r.receivableHeadId === selectedHead.id || r.accountId === selectedHead.id
+			)
+		: [];
+	const relatedJournalEntries = selectedHead
+		? state.journalEntries
+				.filter(
+					(entry) =>
+						entry.debitAccountHeadId === selectedHead.id ||
+						entry.creditAccountHeadId === selectedHead.id
+				)
+				.sort((a, b) => {
+					if (a.date !== b.date) return b.date.localeCompare(a.date);
+					return b.createdAt.localeCompare(a.createdAt);
+				})
+		: [];
+
+	const startEditHead = (head: import('@/types').AccountHead) => {
+		if (head.isSystem || head.isAccount) return;
+		setEditingHeadId(head.id);
+		setEditName(head.name);
+		setEditType(head.type);
+		setEditParentId(head.parentId ?? `head_${head.type}`);
+	};
+
+	const saveHeadEdit = async () => {
+		if (!editingHead || !editName.trim()) return;
+		await save('accountHeads', {
+			...editingHead,
+			name: editName.trim(),
+			type: editType,
+			parentId: editParentId || null,
+			updatedAt: new Date().toISOString(),
+		});
+		setEditingHeadId(null);
+	};
+
+	const editLinkedEntity = (head: import('@/types').AccountHead) => {
+		const linkedAccount = state.accounts.find((a) => a.id === head.id);
+		if (linkedAccount) {
+			const targetTab = linkedAccount.type === 'credit_card' ? 'cards' : 'accounts';
+			openSubpage('edit', { tab: targetTab, id: linkedAccount.id });
+			return;
+		}
+
+		const linkedLoan = state.loans.find((loan) => loan.id === head.id);
+		if (linkedLoan) {
+			openSubpage('edit', { tab: 'loans', id: linkedLoan.id });
+			return;
+		}
+
+		const linkedInvestment = state.investments.find((investment) => investment.id === head.id);
+		if (linkedInvestment) {
+			openSubpage('edit', { tab: 'investments', id: linkedInvestment.id });
+			return;
+		}
+
+		const linkedReceivable = state.receivables.find((r) => r.receivableHeadId === head.id);
+		if (linkedReceivable) {
+			openSubpage('edit', { tab: 'receivables', id: linkedReceivable.id });
+		}
+	};
 
 	const canDelete = (h: import('@/types').AccountHead) =>
 		!h.isSystem &&
@@ -1146,6 +1243,149 @@ export function AccountHeadsView() {
 			(e) => e.debitAccountHeadId === h.id || e.creditAccountHeadId === h.id
 		);
 
+	if (selectedHead) {
+		const parentName =
+			selectedHead.parentId === null
+				? 'Root'
+				: (state.accountHeads.find((h) => h.id === selectedHead.parentId)?.name ??
+					selectedHead.parentId);
+
+		return (
+			<div className="flex flex-col gap-3">
+				<div className="flex items-center justify-between gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						onClick={goBack}>
+						Back
+					</Button>
+					<div className="flex items-center gap-2">
+						{selectedHead.isAccount ? (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => editLinkedEntity(selectedHead)}>
+								<Pencil className="h-3.5 w-3.5 mr-1" /> Edit linked record
+							</Button>
+						) : (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={() => startEditHead(selectedHead)}>
+								<Pencil className="h-3.5 w-3.5 mr-1" /> Edit head
+							</Button>
+						)}
+					</div>
+				</div>
+
+				<Card>
+					<CardContent className="p-4">
+						<div className="flex items-center justify-between gap-3">
+							<div>
+								<p className="text-lg font-semibold">{selectedHead.name}</p>
+								<p className="text-xs text-muted-foreground mt-0.5">
+									Parent: {parentName}
+								</p>
+							</div>
+							<div className="flex items-center gap-1.5">
+								<Badge variant="muted">{selectedHead.type}</Badge>
+								{selectedHead.isSystem && <Badge variant="secondary">System</Badge>}
+								{selectedHead.isAccount && <Badge variant="warning">Linked</Badge>}
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="pb-2">
+						<CardTitle>Related Receivables ({relatedReceivables.length})</CardTitle>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-2">
+						{relatedReceivables.length === 0 ? (
+							<p className="text-xs text-muted-foreground">No related receivables.</p>
+						) : (
+							relatedReceivables.map((receivable) => (
+								<button
+									key={receivable.id}
+									type="button"
+									onClick={() =>
+										openSubpage('edit', {
+											tab: 'receivables',
+											id: receivable.id,
+										})
+									}
+									className="w-full text-left rounded-lg border border-border p-3 hover:border-primary/40 transition-colors">
+									<div className="flex items-center justify-between gap-2">
+										<div>
+											<p className="text-sm font-semibold">
+												{receivable.personName}
+											</p>
+											<p className="text-xs text-muted-foreground mt-0.5">
+												{receivable.description || 'No description'}
+											</p>
+										</div>
+										<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+									</div>
+								</button>
+							))
+						)}
+					</CardContent>
+				</Card>
+
+				<Card>
+					<CardHeader className="pb-2">
+						<CardTitle>
+							Related Journal Entries ({relatedJournalEntries.length})
+						</CardTitle>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-2">
+						{relatedJournalEntries.length === 0 ? (
+							<p className="text-xs text-muted-foreground">
+								No related journal entries.
+							</p>
+						) : (
+							relatedJournalEntries.map((entry) => {
+								const isDebit = entry.debitAccountHeadId === selectedHead.id;
+								return (
+									<button
+										key={entry.id}
+										type="button"
+										onClick={() =>
+											openSubpage('edit-entry', {
+												tab: 'journalledger',
+												id: entry.id,
+											})
+										}
+										className="w-full text-left rounded-lg border border-border p-3 hover:border-primary/40 transition-colors">
+										<div className="flex items-center justify-between gap-2">
+											<div>
+												<p className="text-sm font-semibold">
+													{entry.description}
+												</p>
+												<p className="text-xs text-muted-foreground mt-0.5">
+													{fmtDate(entry.date)}
+												</p>
+											</div>
+											<div className="flex items-center gap-2">
+												<Badge variant={isDebit ? 'profit' : 'destructive'}>
+													{isDebit ? 'Debit' : 'Credit'}
+												</Badge>
+												<span className="font-mono text-xs font-semibold">
+													{fmt(entry.amount)}
+												</span>
+												<ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />
+											</div>
+										</div>
+									</button>
+								);
+							})
+						)}
+					</CardContent>
+				</Card>
+			</div>
+		);
+	}
+
 	return (
 		<div className="flex flex-col gap-3">
 			<p className="text-xs text-muted-foreground">
@@ -1155,7 +1395,10 @@ export function AccountHeadsView() {
 				<div
 					key={root.id}
 					className="rounded-xl border border-border overflow-hidden">
-					<div className="flex items-center justify-between px-3 py-2 bg-muted/30">
+					<button
+						type="button"
+						onClick={() => openSubpage('head', { tab: 'accountheads', id: root.id })}
+						className="w-full flex items-center justify-between px-3 py-2 bg-muted/30 hover:bg-muted/40 transition-colors">
 						<div className="flex items-center gap-2">
 							<span className="text-xs font-bold uppercase tracking-wide">
 								{root.name}
@@ -1171,20 +1414,55 @@ export function AccountHeadsView() {
 							className="text-[9px]">
 							System
 						</Badge>
-					</div>
+					</button>
 					{children(root.id).map((child) => (
 						<div
 							key={child.id}
-							className="flex items-center justify-between px-3 py-2 border-t border-border/50">
-							<span className="text-sm pl-3">└ {child.name}</span>
-							<Button
-								size="icon-sm"
-								variant="destructive"
-								disabled={!canDelete(child)}
-								onClick={() => remove('accountHeads', child.id)}
-								title={canDelete(child) ? 'Delete' : 'In use or has children'}>
-								<Trash2 className="h-3 w-3" />
-							</Button>
+							className="flex items-center justify-between px-3 py-2 border-t border-border/50 hover:bg-muted/10 transition-colors">
+							<button
+								type="button"
+								onClick={() =>
+									openSubpage('head', { tab: 'accountheads', id: child.id })
+								}
+								className="text-sm pl-3 text-left flex-1">
+								└ {child.name}
+							</button>
+							<div className="flex items-center gap-1">
+								{child.isAccount ? (
+									<Button
+										size="icon-sm"
+										variant="outline"
+										onClick={(e) => {
+											e.stopPropagation();
+											editLinkedEntity(child);
+										}}
+										title="Edit linked record">
+										<Pencil className="h-3 w-3" />
+									</Button>
+								) : (
+									<Button
+										size="icon-sm"
+										variant="outline"
+										onClick={(e) => {
+											e.stopPropagation();
+											startEditHead(child);
+										}}
+										title="Edit head">
+										<Pencil className="h-3 w-3" />
+									</Button>
+								)}
+								<Button
+									size="icon-sm"
+									variant="destructive"
+									disabled={!canDelete(child)}
+									onClick={(e) => {
+										e.stopPropagation();
+										remove('accountHeads', child.id);
+									}}
+									title={canDelete(child) ? 'Delete' : 'In use or has children'}>
+									<Trash2 className="h-3 w-3" />
+								</Button>
+							</div>
 						</div>
 					))}
 				</div>
@@ -1282,6 +1560,92 @@ export function AccountHeadsView() {
 					</div>
 				</div>
 			)}
+
+			<Dialog
+				open={!!editingHeadId}
+				onOpenChange={(open) => !open && setEditingHeadId(null)}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Edit Account Head</DialogTitle>
+					</DialogHeader>
+					{editingHead && (
+						<div className="flex flex-col gap-3 p-5 pt-2">
+							<FormField label="Name">
+								<Input
+									value={editName}
+									onChange={(e) => setEditName(e.target.value)}
+									autoFocus
+								/>
+							</FormField>
+							<FormField label="Type">
+								<Select
+									value={editType}
+									onValueChange={(value) => {
+										const nextType =
+											value as import('@/types').RootAccountHeadType;
+										setEditType(nextType);
+										setEditParentId(`head_${nextType}`);
+									}}>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{(
+											[
+												'asset',
+												'liability',
+												'income',
+												'expense',
+												'equity',
+											] as import('@/types').RootAccountHeadType[]
+										).map((type) => (
+											<SelectItem
+												key={type}
+												value={type}>
+												{type}
+											</SelectItem>
+										))}
+									</SelectContent>
+								</Select>
+							</FormField>
+							<FormField label="Parent">
+								<Select
+									value={editParentId}
+									onValueChange={setEditParentId}>
+									<SelectTrigger>
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										{roots
+											.filter((root) => root.type === editType)
+											.map((root) => (
+												<SelectItem
+													key={root.id}
+													value={root.id}>
+													{root.name}
+												</SelectItem>
+											))}
+									</SelectContent>
+								</Select>
+							</FormField>
+							<div className="flex gap-2">
+								<Button
+									variant="outline"
+									className="flex-1"
+									onClick={() => setEditingHeadId(null)}>
+									Cancel
+								</Button>
+								<Button
+									className="flex-1"
+									onClick={saveHeadEdit}
+									disabled={!editName.trim()}>
+									Save
+								</Button>
+							</div>
+						</div>
+					)}
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
