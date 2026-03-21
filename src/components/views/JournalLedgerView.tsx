@@ -34,6 +34,11 @@ const TYPE_META: Record<
 	income: { icon: ArrowDownLeft, color: 'text-profit', label: 'Income' },
 	transfer: { icon: ArrowLeftRight, color: 'text-warning', label: 'Transfer' },
 	emi: { icon: ArrowUpRight, color: 'text-loss', label: 'EMI' },
+	credit_card_payment: {
+		icon: ArrowUpRight,
+		color: 'text-loss',
+		label: 'CC Bill Payment',
+	},
 	loan_disbursal: { icon: ArrowDownLeft, color: 'text-cyan', label: 'Loan Disbursal' },
 	loan_payoff: { icon: ArrowUpRight, color: 'text-loss', label: 'Loan Payoff' },
 	lending_disbursal: { icon: ArrowUpRight, color: 'text-warning', label: 'Lending Disbursal' },
@@ -73,6 +78,7 @@ function getSignedImpact(entry: JournalEntry, accountHeadId?: string): number {
 	if (
 		entry.type === 'expense' ||
 		entry.type === 'emi' ||
+		entry.type === 'credit_card_payment' ||
 		entry.type === 'loan_payoff' ||
 		entry.type === 'lending_disbursal'
 	)
@@ -316,6 +322,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 											'income',
 											'transfer',
 											'emi',
+												'credit_card_payment',
 											'loan_disbursal',
 											'loan_payoff',
 											'lending_disbursal',

@@ -423,6 +423,7 @@ export function JournalEntryForm({
 		{ value: 'income', label: 'Income' },
 		{ value: 'transfer', label: 'Transfer' },
 		{ value: 'emi', label: 'EMI' },
+		{ value: 'credit_card_payment', label: 'Credit Card Bill Payment' },
 		{ value: 'loan_disbursal', label: 'Loan Disbursal' },
 		{ value: 'loan_payoff', label: 'Loan Payoff' },
 		{ value: 'lending_disbursal', label: 'Lending Disbursal' },
@@ -455,6 +456,12 @@ export function JournalEntryForm({
 		},
 		emi: {
 			debitLabel: 'Loan / Liability Head (Debit) *',
+			creditLabel: 'Paying Account (Credit) *',
+			debitRoot: 'liability',
+			creditRoot: 'asset',
+		},
+		credit_card_payment: {
+			debitLabel: 'Credit Card Liability (Debit) *',
 			creditLabel: 'Paying Account (Credit) *',
 			debitRoot: 'liability',
 			creditRoot: 'asset',

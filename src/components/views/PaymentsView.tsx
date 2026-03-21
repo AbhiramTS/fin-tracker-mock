@@ -60,6 +60,7 @@ function PayDialog({
 	onCancel,
 }: PayDialogProps) {
 	const isIncome = occ?.kind === 'recurring_income';
+	const isCreditCardBill = occ?.kind === 'credit_card_bill';
 
 	const [paidDate, setPaidDate] = useState(todayStr());
 	const [paidAmount, setPaidAmount] = useState('');
@@ -70,12 +71,21 @@ function PayDialog({
 
 	useEffect(() => {
 		if (!occ) return;
+		const defaultAccount =
+			occ.accountId ??
+			(isIncome
+				? accounts.find((a) => !['investment'].includes(a.type))?.id
+				: isCreditCardBill
+					? accounts.find((a) => ['bank', 'cash'].includes(a.type))?.id
+					: accounts.find((a) => !['investment', 'loan'].includes(a.type))?.id) ??
+			accounts[0]?.id ??
+			'';
 		setPaidDate(todayStr());
 		setPaidAmount(String(occ.amount));
-		setCreditAccountId(occ.accountId ?? accounts[0]?.id ?? '');
+		setCreditAccountId(defaultAccount);
 		setTopUp(false);
 		setTopUpAmount('');
-	}, [occ?.id]);
+	}, [occ?.id, occ?.amount, occ?.accountId, accounts, isIncome, isCreditCardBill]);
 
 	if (!occ) return null;
 
@@ -95,7 +105,9 @@ function PayDialog({
 
 	const payableAccounts = isIncome
 		? accounts.filter((a) => !['investment'].includes(a.type))
-		: accounts.filter((a) => !['investment', 'loan'].includes(a.type));
+		: isCreditCardBill
+			? accounts.filter((a) => ['bank', 'cash'].includes(a.type))
+			: accounts.filter((a) => !['investment', 'loan'].includes(a.type));
 
 	useEffect(() => {
 		if (shortfall) setTopUpAmount(String(shortfallAmt));
@@ -580,6 +592,7 @@ export function PaymentsView() {
 			const { paidDate, paidAmount, creditAccountId, topUpAmount } = opts;
 			const isIncome = occ.kind === 'recurring_income';
 			const isLoanEmi = occ.kind === 'loan_emi';
+			const isCreditCardBill = occ.kind === 'credit_card_bill';
 
 			// 0. Top-up: income journal entry (debit the account, credit Equity/Adjustments)
 			if (topUpAmount > 0) {
@@ -597,14 +610,26 @@ export function PaymentsView() {
 			// 1. Main journal entry
 			// Expense: Dr expense head, Cr asset account
 			// Income:  Dr asset account, Cr income head
-			const debitId = isIncome ? creditAccountId : (occ.debitAccountHeadId ?? 'head_expense');
-			const creditId = isIncome ? (occ.debitAccountHeadId ?? 'head_income') : creditAccountId;
+			const debitId = isIncome
+				? creditAccountId
+				: isCreditCardBill
+					? (occ.sourceId ?? occ.debitAccountHeadId)
+					: (occ.debitAccountHeadId ?? 'head_expense');
+			const creditId = isIncome
+				? (occ.debitAccountHeadId ?? 'head_income')
+				: creditAccountId;
 
 			const entry = await save('journalEntries', {
 				description: occ.label,
 				amount: paidAmount,
 				date: paidDate,
-				type: isIncome ? 'income' : isLoanEmi ? 'emi' : 'expense',
+				type: isIncome
+					? 'income'
+					: isLoanEmi
+						? 'emi'
+						: isCreditCardBill
+							? 'credit_card_payment'
+							: 'expense',
 				debitAccountHeadId: debitId,
 				creditAccountHeadId: creditId,
 				notes: `From payment: ${occ.label}`,

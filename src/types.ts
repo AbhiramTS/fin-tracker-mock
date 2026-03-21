@@ -100,6 +100,7 @@ export type JournalEntryType =
 	| 'income'
 	| 'transfer'
 	| 'emi'
+	| 'credit_card_payment'
 	| 'loan_disbursal'
 	| 'loan_payoff'
 	| 'lending_disbursal'

@@ -7,6 +7,7 @@ import {
 	addDays,
 	addWeeks,
 	addMonths,
+	subMonths,
 	addQuarters,
 	addYears,
 	startOfMonth,
@@ -71,12 +72,31 @@ export function getOccurrencesForMonth(
 		amount: number,
 		label: string,
 		category?: string,
-		accountId?: string
+		accountId?: string,
+		debitAccountHeadId?: string
 	) => {
 		if (!isWithinInterval(parseISO(dueDate), interval)) return;
 		const id = occurrenceId(sourceId, dueDate);
+		const existing = stored.get(id);
+		if (existing?.status === 'paid') {
+			result.push(existing);
+			return;
+		}
 		result.push(
-			stored.get(id) ?? {
+			existing
+				? {
+					...existing,
+					kind,
+					sourceId,
+					dueDate,
+					amount,
+					label,
+					category,
+					accountId: existing.accountId ?? accountId,
+					debitAccountHeadId: existing.debitAccountHeadId ?? debitAccountHeadId,
+					updatedAt: now_iso,
+				}
+				: {
 				id,
 				createdAt: now_iso,
 				updatedAt: now_iso,
@@ -87,8 +107,9 @@ export function getOccurrencesForMonth(
 				label,
 				category,
 				accountId,
+				debitAccountHeadId,
 				status: 'unpaid',
-			}
+				}
 		);
 	};
 
@@ -138,18 +159,59 @@ export function getOccurrencesForMonth(
 		.filter((a) => a.type === 'credit_card' && a.creditCard)
 		.forEach((a) => {
 			const cc = a.creditCard!;
-			if (!cc.dueDate || !isWithinInterval(parseISO(cc.dueDate), interval)) return;
-			add(
-				'credit_card_bill',
-				a.id,
-				cc.dueDate,
-				cc.outstanding ?? 0,
-				`${a.name} bill`,
-				'Credit Card'
-			);
+
+			// A due date can land in this month from the previous or current statement month.
+			const candidateStatements = [
+				subMonths(new Date(year, month, cc.statementDay), 2),
+				subMonths(new Date(year, month, cc.statementDay), 1),
+				new Date(year, month, cc.statementDay),
+				addMonths(new Date(year, month, cc.statementDay), 1),
+			];
+
+			candidateStatements.forEach((statementDate) => {
+				const dueDate = addDays(statementDate, cc.gracePeriodDays ?? 20);
+				if (!isWithinInterval(dueDate, interval)) return;
+
+				const statementIso = format(statementDate, 'yyyy-MM-dd');
+				const dueIso = format(dueDate, 'yyyy-MM-dd');
+				const statementOutstanding = creditCardOutstandingOnDate(state, a.id, statementIso);
+
+				add(
+					'credit_card_bill',
+					a.id,
+					dueIso,
+					statementOutstanding,
+					`${a.name} bill`,
+					'Credit Card',
+					undefined,
+					a.id
+				);
+			});
 		});
 
 	return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+function creditCardOutstandingOnDate(
+	state: Partial<AppState>,
+	cardAccountId: string,
+	asOfDate: string
+): number {
+	const account = (state.accounts ?? []).find((a) => a.id === cardAccountId);
+	if (!account) return 0;
+
+	let outstanding = Math.max(0, -(account.openingBalance ?? 0));
+	if (outstanding === 0 && (account.creditCard?.outstanding ?? 0) > 0) {
+		outstanding = account.creditCard!.outstanding;
+	}
+
+	(state.journalEntries ?? []).forEach((entry) => {
+		if (entry.date > asOfDate) return;
+		if (entry.creditAccountHeadId === cardAccountId) outstanding += entry.amount;
+		if (entry.debitAccountHeadId === cardAccountId) outstanding -= entry.amount;
+	});
+
+	return Math.max(0, Math.round(outstanding * 100) / 100);
 }
 
 // ── Project recurring dates into a month ──────────────────────────────────────
