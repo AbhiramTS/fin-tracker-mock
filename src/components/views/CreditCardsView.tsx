@@ -76,7 +76,7 @@ export function CreditCardsView() {
 							<CardContent className="p-4">
 								<div className="flex items-start justify-between mb-3">
 									<div>
-										<p className="font-semibold">{c.name}</p>
+										<p className="font-semibold">{a.name || 'Unnamed card'}</p>
 										<div className="flex gap-1.5 mt-1">
 											<Badge variant="muted">
 												{c.billingCycleDays ?? 30}d cycle
