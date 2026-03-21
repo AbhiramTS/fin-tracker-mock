@@ -89,9 +89,13 @@ export async function ensurePushSubscription(
 	const registration = await navigator.serviceWorker.ready;
 	let subscription = await registration.pushManager.getSubscription();
 	if (!subscription) {
+		const vapidKeyBytes = base64ToUint8Array(vapidPublicKey);
+		const applicationServerKey = new Uint8Array(new ArrayBuffer(vapidKeyBytes.length));
+		applicationServerKey.set(vapidKeyBytes);
+
 		subscription = await registration.pushManager.subscribe({
 			userVisibleOnly: true,
-			applicationServerKey: base64ToUint8Array(vapidPublicKey),
+			applicationServerKey,
 		});
 	}
 
