@@ -423,9 +423,10 @@ function ExportSection() {
 			2
 		);
 		const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+		const ts = new Date().toISOString().slice(0, 19).replace('T', '_').replace(/:/g, '-');
 		Object.assign(document.createElement('a'), {
 			href: url,
-			download: `fintracker-export-${new Date().toISOString().slice(0, 10)}.json`,
+			download: `fintracker-export-${ts}.json`,
 		}).click();
 		URL.revokeObjectURL(url);
 	};
