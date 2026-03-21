@@ -114,6 +114,7 @@ export interface JournalEntry extends BaseRecord {
 	description: string;
 	amount: number; // always positive
 	type: JournalEntryType;
+	emiNumber?: number; // EMI installment number for loan EMI entries
 	debitAccountHeadId: string; // account head being debited
 	creditAccountHeadId: string; // account head being credited
 	notes?: string;
@@ -165,6 +166,7 @@ export interface PaymentOccurrence extends BaseRecord {
 	sourceId: string;
 	dueDate: string;
 	amount: number;
+	emiNumber?: number; // installment number for loan EMI occurrences
 	status: PaymentOccurrenceStatus;
 	paidDate?: string;
 	paidAmount?: number;

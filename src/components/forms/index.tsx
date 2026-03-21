@@ -858,8 +858,15 @@ export function JournalEntryForm({
 		...initialData,
 	});
 	const type = (f.type ?? defaultType) as JournalEntryType;
+	const emiNumber = f.emiNumber ?? undefined;
 
-	const canSave = !!(f.description && f.amount && f.debitAccountHeadId && f.creditAccountHeadId);
+	const canSave = !!(
+		f.description &&
+		f.amount &&
+		f.debitAccountHeadId &&
+		f.creditAccountHeadId &&
+		(type !== 'emi' || (emiNumber !== undefined && emiNumber > 0))
+	);
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (canSave) onSave(f);
@@ -1110,6 +1117,26 @@ export function JournalEntryForm({
 						required
 					/>
 				</FormField>
+
+				{type === 'emi' && (
+					<FormField label="EMI Number">
+						<Input
+							type="number"
+							min="1"
+							step="1"
+							value={f.emiNumber ?? ''}
+							onChange={(e) => {
+								const next = parseInt(e.target.value, 10);
+								setF({
+									...f,
+									emiNumber: Number.isFinite(next) && next > 0 ? next : undefined,
+								});
+							}}
+							placeholder="e.g. 12"
+							required
+						/>
+					</FormField>
+				)}
 
 				{/* Debit side */}
 				<FormField

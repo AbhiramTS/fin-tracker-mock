@@ -56,7 +56,7 @@ interface UseEntityFormPageOptions<T extends BaseRecord> {
 	formProps?: Record<string, unknown>;
 	pageTitle: string;
 	formTitle?: string;
-	onAfterSave?: (saved: BaseRecord) => void;
+	onAfterSave?: (saved: BaseRecord) => void | Promise<void>;
 	addSubpage?: string;
 	editSubpage?: string;
 }
@@ -83,7 +83,7 @@ export function useEntityFormPage<T extends BaseRecord>({
 
 	const handleSave = async (data: Partial<T>) => {
 		const saved = await save(entity, data as Record<string, unknown>);
-		onAfterSave?.(saved);
+		await onAfterSave?.(saved);
 		goBack();
 	};
 

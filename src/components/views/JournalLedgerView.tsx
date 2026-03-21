@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDateFull } from '@/utils/format';
+import { generateAmortisation } from '@/utils/amortisation';
+import { occurrenceId } from '@/utils/recurring';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -120,6 +122,38 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 		pageTitle: 'Journal Entry',
 		formTitle: 'Journal Entry',
 		editSubpage: 'edit-entry',
+		onAfterSave: async (savedBase) => {
+			const saved = savedBase as JournalEntry;
+			if (saved.type !== 'emi' || !saved.emiNumber || saved.emiNumber < 1) return;
+
+			const loan = state.loans.find((item) => item.id === saved.debitAccountHeadId);
+			if (!loan) return;
+
+			const row = generateAmortisation(loan).find((item) => item.month === saved.emiNumber);
+			if (!row) return;
+
+			const occId = occurrenceId(loan.id, row.date);
+			const existing = state.paymentOccurrences.find((item) => item.id === occId);
+			await save('paymentOccurrences', {
+				...(existing ?? {
+					id: occId,
+					createdAt: saved.createdAt,
+				}),
+				updatedAt: new Date().toISOString(),
+				kind: 'loan_emi',
+				sourceId: loan.id,
+				dueDate: row.date,
+				amount: row.totalPayable,
+				emiNumber: row.month,
+				label: `${loan.name} — EMI #${row.month}`,
+				debitAccountHeadId: loan.id,
+				accountId: saved.creditAccountHeadId,
+				status: 'paid',
+				paidDate: saved.date,
+				paidAmount: saved.amount,
+				transactionId: saved.id,
+			});
+		},
 	});
 
 	const showFormPage = Boolean(FormPage);

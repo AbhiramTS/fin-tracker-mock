@@ -671,6 +671,7 @@ export function PaymentsView() {
 						: isCreditCardBill
 							? 'credit_card_payment'
 							: 'expense',
+				emiNumber: isLoanEmi ? occ.emiNumber : undefined,
 				debitAccountHeadId: debitId,
 				creditAccountHeadId: creditId,
 				notes: `From payment: ${occ.label}`,

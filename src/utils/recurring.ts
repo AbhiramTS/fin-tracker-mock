@@ -144,6 +144,7 @@ export function getOccurrencesForMonth(
 					sourceId: l.id,
 					dueDate: row.date,
 					amount: row.totalPayable,
+					emiNumber: row.month,
 					label: `${l.name} — EMI #${row.month}`,
 					debitAccountHeadId: l.id,
 					accountId: l.accountId,
