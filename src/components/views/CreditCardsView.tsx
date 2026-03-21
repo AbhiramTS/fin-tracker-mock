@@ -3,7 +3,7 @@ import { ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { useApp } from '@/context/AppContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
-import { nextStatementDate, dueFromStatement } from '@/utils/amortisation';
+import { currentCreditCardCycle } from '@/utils/amortisation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -21,14 +21,15 @@ export function CreditCardsView() {
 	const detailsForAccount = (account: Account) => {
 		const trackedBalance = state.computedBalances[account.id] ?? account.openingBalance ?? 0;
 		const fromAccount = account.creditCard;
+		const todayIso = format(new Date(), 'yyyy-MM-dd');
 		return {
 			limit: fromAccount?.limit ?? 0,
 			outstanding: fromAccount?.outstanding ?? Math.max(0, -trackedBalance),
 			statementDay: fromAccount?.statementDay ?? 1,
 			billingCycleDays: fromAccount?.billingCycleDays ?? 30,
 			gracePeriodDays: fromAccount?.gracePeriodDays ?? 20,
-			dueDate: fromAccount?.dueDate ?? new Date().toISOString().split('T')[0],
-			statementDate: fromAccount?.statementDate ?? new Date().toISOString().split('T')[0],
+			dueDate: fromAccount?.dueDate ?? todayIso,
+			statementDate: fromAccount?.statementDate ?? todayIso,
 			taxRate: fromAccount?.taxRate,
 		};
 	};
@@ -58,12 +59,14 @@ export function CreditCardsView() {
 				creditCardAccounts.map((a) => {
 					const c = detailsForAccount(a);
 					const util = ((c.outstanding ?? 0) / Math.max(c.limit ?? 1, 1)) * 100;
-					const days = daysFromNow(c.dueDate);
-					const stmtDate = nextStatementDate({
+					const cycle = currentCreditCardCycle({
+						statementDate: c.statementDate,
 						statementDay: c.statementDay ?? 1,
 						billingCycleDays: c.billingCycleDays ?? 30,
+						gracePeriodDays: c.gracePeriodDays ?? 20,
 					});
-					const dueDate = dueFromStatement(stmtDate, c.gracePeriodDays ?? 20);
+					const nextDueIso = format(cycle.nextDueDate, 'yyyy-MM-dd');
+					const days = daysFromNow(nextDueIso);
 
 					return (
 						<Card
@@ -115,7 +118,7 @@ export function CreditCardsView() {
 									<span>{util.toFixed(0)}% utilised</span>
 									<span className={days <= 3 ? 'text-loss' : ''}>
 										Due {days <= 0 ? 'today' : `in ${days}d`} ·{' '}
-										{fmtDate(c.dueDate)}
+										{fmtDate(nextDueIso)}
 									</span>
 								</div>
 								<Separator className="my-3" />
@@ -123,13 +126,13 @@ export function CreditCardsView() {
 									{[
 										[
 											'Statement day',
-											`Day ${c.statementDay ?? 1}`,
-											`next: ${format(stmtDate, 'd MMM')}`,
+											`Day ${cycle.currentStatementDate.getDate()}`,
+											`next: ${format(cycle.nextStatementDate, 'd MMM')}`,
 										],
 										[
-											'Grace period',
+											'Payment due',
 											`${c.gracePeriodDays ?? 20} days`,
-											`due: ${format(dueDate, 'd MMM')}`,
+											`due: ${format(cycle.nextDueDate, 'd MMM')}`,
 										],
 										[
 											'Cycle length',

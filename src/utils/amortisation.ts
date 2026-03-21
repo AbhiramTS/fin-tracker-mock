@@ -1,4 +1,4 @@
-import { format } from 'date-fns';
+import { addDays, differenceInCalendarDays, format, isValid, parseISO, startOfDay } from 'date-fns';
 import { addMonths } from './format';
 import type { Loan, AmortisationRow } from '@/types';
 
@@ -123,18 +123,97 @@ export function totalCost(loan: Loan): number {
 
 // ── Credit card billing cycle helpers ─────────────────────────────────────────
 
+type CreditCardCycleInput = {
+	statementDay?: number;
+	billingCycleDays: number;
+	statementDate?: string | Date;
+	gracePeriodDays?: number;
+};
+
+function toStartOfDay(d: Date): Date {
+	return startOfDay(d);
+}
+
+function parseStatementAnchor(card: CreditCardCycleInput, referenceDate: Date): Date {
+	if (card.statementDate instanceof Date && isValid(card.statementDate)) {
+		return toStartOfDay(card.statementDate);
+	}
+	if (typeof card.statementDate === 'string') {
+		const parsed = parseISO(card.statementDate);
+		if (isValid(parsed)) return toStartOfDay(parsed);
+	}
+
+	const day = Math.max(1, Math.min(31, card.statementDay ?? 1));
+	return toStartOfDay(new Date(referenceDate.getFullYear(), referenceDate.getMonth(), day));
+}
+
+function cycleDays(card: Pick<CreditCardCycleInput, 'billingCycleDays'>): number {
+	return Math.max(1, Math.round(card.billingCycleDays || 30));
+}
+
+/** Latest statement date on or before the reference date. */
+export function statementDateOnOrBefore(
+	card: CreditCardCycleInput,
+	referenceDate: Date = new Date()
+): Date {
+	const ref = toStartOfDay(referenceDate);
+	const anchor = parseStatementAnchor(card, ref);
+	const step = cycleDays(card);
+
+	const diff = differenceInCalendarDays(ref, anchor);
+	const cycles = Math.floor(diff / step);
+	let candidate = addDays(anchor, cycles * step);
+
+	if (candidate > ref) candidate = addDays(candidate, -step);
+	return toStartOfDay(candidate);
+}
+
+/** Earliest statement date on or after the reference date. */
+export function statementDateOnOrAfter(
+	card: CreditCardCycleInput,
+	referenceDate: Date = new Date()
+): Date {
+	const ref = toStartOfDay(referenceDate);
+	const prev = statementDateOnOrBefore(card, ref);
+	if (prev >= ref) return prev;
+	return toStartOfDay(addDays(prev, cycleDays(card)));
+}
+
+/**
+ * Compute current cycle details from any one known statement date.
+ */
+export function currentCreditCardCycle(
+	card: CreditCardCycleInput,
+	referenceDate: Date = new Date()
+) {
+	const ref = toStartOfDay(referenceDate);
+	const currentStatementDate = statementDateOnOrBefore(card, ref);
+	const nextStatementDate = addDays(currentStatementDate, cycleDays(card));
+	const cycleEndDate = addDays(nextStatementDate, -1);
+	const graceDays = Math.max(0, Math.round(card.gracePeriodDays ?? 20));
+	const dueDate = dueFromStatement(currentStatementDate, graceDays);
+	const nextDueDate = dueDate >= ref ? dueDate : dueFromStatement(nextStatementDate, graceDays);
+
+	return {
+		currentStatementDate,
+		nextStatementDate,
+		cycleStartDate: currentStatementDate,
+		cycleEndDate,
+		dueDate,
+		nextDueDate,
+	};
+}
+
 /**
  * Given a credit card, compute the next statement date on or after today.
  * The statement is generated on `statementDay` of each month.
  */
-export function nextStatementDate(card: { statementDay: number; billingCycleDays: number }): Date {
-	const today = new Date();
-	const candidate = new Date(today.getFullYear(), today.getMonth(), card.statementDay);
-	// If today is past the statement day this month, move to next month
-	if (candidate <= today) {
-		candidate.setMonth(candidate.getMonth() + 1);
-	}
-	return candidate;
+export function nextStatementDate(card: {
+	statementDay?: number;
+	billingCycleDays: number;
+	statementDate?: string | Date;
+}): Date {
+	return statementDateOnOrAfter(card, new Date());
 }
 
 /**

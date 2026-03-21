@@ -7,7 +7,6 @@ import {
 	addDays,
 	addWeeks,
 	addMonths,
-	subMonths,
 	addQuarters,
 	addYears,
 	startOfMonth,
@@ -15,7 +14,7 @@ import {
 	parseISO,
 	isWithinInterval,
 } from 'date-fns';
-import { generateAmortisation } from './amortisation';
+import { generateAmortisation, statementDateOnOrBefore } from './amortisation';
 import type { AppState, Frequency, PaymentOccurrence, PaymentOccurrenceKind } from '@/types';
 
 // ── Frequency advancement ─────────────────────────────────────────────────────
@@ -85,31 +84,31 @@ export function getOccurrencesForMonth(
 		result.push(
 			existing
 				? {
-					...existing,
-					kind,
-					sourceId,
-					dueDate,
-					amount,
-					label,
-					category,
-					accountId: existing.accountId ?? accountId,
-					debitAccountHeadId: existing.debitAccountHeadId ?? debitAccountHeadId,
-					updatedAt: now_iso,
-				}
+						...existing,
+						kind,
+						sourceId,
+						dueDate,
+						amount,
+						label,
+						category,
+						accountId: existing.accountId ?? accountId,
+						debitAccountHeadId: existing.debitAccountHeadId ?? debitAccountHeadId,
+						updatedAt: now_iso,
+					}
 				: {
-				id,
-				createdAt: now_iso,
-				updatedAt: now_iso,
-				kind,
-				sourceId,
-				dueDate,
-				amount,
-				label,
-				category,
-				accountId,
-				debitAccountHeadId,
-				status: 'unpaid',
-				}
+						id,
+						createdAt: now_iso,
+						updatedAt: now_iso,
+						kind,
+						sourceId,
+						dueDate,
+						amount,
+						label,
+						category,
+						accountId,
+						debitAccountHeadId,
+						status: 'unpaid',
+					}
 		);
 	};
 
@@ -160,18 +159,27 @@ export function getOccurrencesForMonth(
 		.forEach((a) => {
 			const cc = a.creditCard!;
 
-			// A due date can land in this month from the previous or current statement month.
-			const candidateStatements = [
-				subMonths(new Date(year, month, cc.statementDay), 2),
-				subMonths(new Date(year, month, cc.statementDay), 1),
-				new Date(year, month, cc.statementDay),
-				addMonths(new Date(year, month, cc.statementDay), 1),
-			];
+			const grace = Math.max(0, cc.gracePeriodDays ?? 20);
+			const cycleDays = Math.max(1, cc.billingCycleDays ?? 30);
 
-			candidateStatements.forEach((statementDate) => {
-				const dueDate = addDays(statementDate, cc.gracePeriodDays ?? 20);
-				if (!isWithinInterval(dueDate, interval)) return;
+			// Need statement dates whose due dates fall inside the month interval.
+			const stmtWindowStart = addDays(interval.start, -grace);
+			const stmtWindowEnd = addDays(interval.end, -grace);
 
+			let statementDate = statementDateOnOrBefore(
+				{
+					statementDate: cc.statementDate,
+					statementDay: cc.statementDay,
+					billingCycleDays: cycleDays,
+				},
+				stmtWindowStart
+			);
+			while (statementDate < stmtWindowStart) {
+				statementDate = addDays(statementDate, cycleDays);
+			}
+
+			while (statementDate <= stmtWindowEnd) {
+				const dueDate = addDays(statementDate, grace);
 				const statementIso = format(statementDate, 'yyyy-MM-dd');
 				const dueIso = format(dueDate, 'yyyy-MM-dd');
 				const statementOutstanding = creditCardOutstandingOnDate(state, a.id, statementIso);
@@ -186,7 +194,9 @@ export function getOccurrencesForMonth(
 					undefined,
 					a.id
 				);
-			});
+
+				statementDate = addDays(statementDate, cycleDays);
+			}
 		});
 
 	return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));

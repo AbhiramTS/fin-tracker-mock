@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { todayStr } from '@/utils/format';
-import { calculateEMI, nextStatementDate, dueFromStatement } from '@/utils/amortisation';
+import { calculateEMI, currentCreditCardCycle } from '@/utils/amortisation';
 import { useApp } from '@/context/AppContext';
 import type {
 	Account,
@@ -105,6 +105,13 @@ export const GOAL_ICONS: Record<GoalType, string> = {
 	purchase: '🛍️',
 	custom: '🎯',
 };
+
+function toLocalIsoDate(d: Date): string {
+	const y = d.getFullYear();
+	const m = String(d.getMonth() + 1).padStart(2, '0');
+	const day = String(d.getDate()).padStart(2, '0');
+	return `${y}-${m}-${day}`;
+}
 
 type FP<T> = { initialData?: Partial<T>; onSave: (d: Partial<T>) => void; onCancel: () => void };
 type WithAccounts<T> = FP<T> & { accounts: Account[]; accountHeads?: AccountHead[] };
@@ -1628,27 +1635,25 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
 		...initialData,
 	});
 	const cc = f.creditCard;
-	const previewDueDate: string | null =
-		cc?.statementDay && cc.gracePeriodDays !== undefined
-			? (() => {
-					const s = nextStatementDate({
-						statementDay: cc.statementDay,
-						billingCycleDays: cc.billingCycleDays ?? 30,
-					});
-					return dueFromStatement(s, cc.gracePeriodDays).toISOString().split('T')[0];
-				})()
+	const cyclePreview =
+		cc && cc.statementDate
+			? currentCreditCardCycle({
+					statementDate: cc.statementDate,
+					statementDay: cc.statementDay,
+					billingCycleDays: cc.billingCycleDays ?? 30,
+					gracePeriodDays: cc.gracePeriodDays ?? 20,
+				})
 			: null;
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (f.name && cc && cc.limit !== undefined) {
-			const sd = cc.statementDay
-				? nextStatementDate({
-						statementDay: cc.statementDay,
-						billingCycleDays: cc.billingCycleDays ?? 30,
-					})
-						.toISOString()
-						.split('T')[0]
-				: (cc.statementDate ?? todayStr());
+			const statementAnchor = cc.statementDate ?? todayStr();
+			const anchorDay = Number.parseInt(statementAnchor.split('-')[2] ?? '', 10);
+			const normalizedStatementDay =
+				Number.isFinite(anchorDay) && anchorDay >= 1 ? anchorDay : (cc.statementDay ?? 1);
+			const normalizedDueDate = cyclePreview
+				? toLocalIsoDate(cyclePreview.nextDueDate)
+				: (cc.dueDate ?? todayStr());
 
 			onSave({
 				...f,
@@ -1656,8 +1661,9 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
 				openingBalance: f.openingBalance ?? -(cc.outstanding ?? 0),
 				creditCard: {
 					...cc,
-					dueDate: previewDueDate ?? cc.dueDate ?? todayStr(),
-					statementDate: sd,
+					statementDay: normalizedStatementDay,
+					statementDate: statementAnchor,
+					dueDate: normalizedDueDate,
 				},
 			});
 		}
@@ -1727,30 +1733,36 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
 						}
 					/>
 				</FormField>
-				<FormField label="Statement Day (1-28)">
-					<Input
-						type="number"
-						min="1"
-						max="28"
-						value={cc?.statementDay ?? 1}
-						onChange={(e) =>
-							setF({
-								...f,
-								creditCard: {
-									...(f.creditCard ?? {
-										limit: 0,
-										outstanding: 0,
-										billingCycleDays: 30,
-										gracePeriodDays: 20,
-										dueDate: todayStr(),
-										statementDate: todayStr(),
-										statementDay: 1,
-									}),
-									statementDay: parseInt(e.target.value) || 1,
-								},
-							})
-						}
-					/>
+				<FormField label="Reference Statement Date">
+					<div className="space-y-1.5">
+						<Input
+							type="date"
+							value={cc?.statementDate ?? ''}
+							onChange={(e) =>
+								setF({
+									...f,
+									creditCard: {
+										...(f.creditCard ?? {
+											limit: 0,
+											outstanding: 0,
+											statementDay: 1,
+											billingCycleDays: 30,
+											gracePeriodDays: 20,
+											dueDate: todayStr(),
+											statementDate: todayStr(),
+										}),
+										statementDate: e.target.value,
+									},
+								})
+							}
+							required
+						/>
+						<p className="text-[11px] text-muted-foreground">
+							Use any past statement date. The app uses it as the cycle anchor and
+							computes current cycle and due dates from billing cycle days + payment
+							due days.
+						</p>
+					</div>
 				</FormField>
 				<FormField label="Billing Cycle (days)">
 					<Input
@@ -1776,7 +1788,7 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
 						}
 					/>
 				</FormField>
-				<FormField label="Grace Period (days)">
+				<FormField label="Payment Due (days after statement)">
 					<Input
 						type="number"
 						min="0"
@@ -1800,9 +1812,20 @@ export function CreditCardForm({ initialData, onSave, onCancel }: FP<Account>) {
 						}
 					/>
 				</FormField>
-				{previewDueDate && (
+				{cyclePreview && (
 					<div className="col-span-2 rounded-lg bg-cyan/10 border border-cyan/25 p-2 text-xs text-cyan">
-						Next due date: <span className="font-mono font-bold">{previewDueDate}</span>
+						Cycle:{' '}
+						<span className="font-mono font-bold">
+							{toLocalIsoDate(cyclePreview.cycleStartDate)}
+						</span>{' '}
+						to{' '}
+						<span className="font-mono font-bold">
+							{toLocalIsoDate(cyclePreview.cycleEndDate)}
+						</span>
+						{' · '}Next due date:{' '}
+						<span className="font-mono font-bold">
+							{toLocalIsoDate(cyclePreview.nextDueDate)}
+						</span>
 					</div>
 				)}
 				<FormField label="Tax on Interest (%)">
