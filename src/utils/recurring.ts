@@ -12,7 +12,7 @@ import {
 	parseISO,
 	isWithinInterval,
 } from 'date-fns';
-import { generateAmortisation, statementDateOnOrBefore } from './amortisation';
+import { generateAmortisation } from './amortisation';
 import type {
 	AppState,
 	Frequency,
@@ -45,7 +45,11 @@ export function advanceByFrequency(
 	}
 }
 
-function advanceMonthPattern(current: Date, months: number, monthScheduleRule: MonthScheduleRule): Date {
+function advanceMonthPattern(
+	current: Date,
+	months: number,
+	monthScheduleRule: MonthScheduleRule
+): Date {
 	const target = addMonths(current, months);
 	switch (monthScheduleRule) {
 		case 'last_day':
@@ -91,6 +95,7 @@ export function getOccurrencesForMonth(
 	(state.paymentOccurrences ?? []).forEach((o) => stored.set(o.id, o));
 
 	const result: PaymentOccurrence[] = [];
+	const resultIds = new Set<string>();
 
 	/** Produce one occurrence, reusing stored version if it exists */
 	const add = (
@@ -108,6 +113,7 @@ export function getOccurrencesForMonth(
 		const existing = stored.get(id);
 		if (existing?.status === 'paid') {
 			result.push(existing);
+			resultIds.add(existing.id);
 			return;
 		}
 		result.push(
@@ -139,14 +145,15 @@ export function getOccurrencesForMonth(
 						status: 'unpaid',
 					}
 		);
+		resultIds.add(id);
 	};
 
 	// Recurring payments
 	(state.recurringPayments ?? [])
 		.filter((r) => r.isActive)
 		.forEach((r) =>
-			projectDatesInMonth(r.nextDate, r.frequency, interval, r.monthScheduleRule).forEach((d) =>
-				add('recurring_payment', r.id, d, r.amount, r.name, r.category, r.accountId)
+			projectDatesInMonth(r.nextDate, r.frequency, interval, r.monthScheduleRule).forEach(
+				(d) => add('recurring_payment', r.id, d, r.amount, r.name, r.category, r.accountId)
 			)
 		);
 
@@ -184,50 +191,43 @@ export function getOccurrencesForMonth(
 	});
 
 	// Credit card bills
+	// A card should contribute a single current obligation based on its tracked
+	// outstanding + due date. Historical paid/skipped card bills remain visible
+	// when navigating older months.
 	(state.accounts ?? [])
 		.filter((a) => a.type === 'credit_card' && a.creditCard)
 		.forEach((a) => {
 			const cc = a.creditCard!;
 
-			const grace = Math.max(0, cc.gracePeriodDays ?? 20);
-			const cycleDays = Math.max(1, cc.billingCycleDays ?? 30);
-
-			// Need statement dates whose due dates fall inside the month interval.
-			const stmtWindowStart = addDays(interval.start, -grace);
-			const stmtWindowEnd = addDays(interval.end, -grace);
-
-			let statementDate = statementDateOnOrBefore(
-				{
-					statementDate: cc.statementDate,
-					statementDay: cc.statementDay,
-					billingCycleDays: cycleDays,
-				},
-				stmtWindowStart
+			const dueIso = cc.dueDate;
+			const currentOutstanding = creditCardOutstandingOnDate(
+				state,
+				a.id,
+				format(new Date(), 'yyyy-MM-dd')
 			);
-			while (statementDate < stmtWindowStart) {
-				statementDate = addDays(statementDate, cycleDays);
-			}
 
-			while (statementDate <= stmtWindowEnd) {
-				const dueDate = addDays(statementDate, grace);
-				const statementIso = format(statementDate, 'yyyy-MM-dd');
-				const dueIso = format(dueDate, 'yyyy-MM-dd');
-				const statementOutstanding = creditCardOutstandingOnDate(state, a.id, statementIso);
-
+			if (dueIso && currentOutstanding > 0) {
 				add(
 					'credit_card_bill',
 					a.id,
 					dueIso,
-					statementOutstanding,
+					currentOutstanding,
 					`${a.name} bill`,
 					'Credit Card',
 					undefined,
 					a.id
 				);
-
-				statementDate = addDays(statementDate, cycleDays);
 			}
 		});
+
+	(state.paymentOccurrences ?? []).forEach((occ) => {
+		if (occ.kind !== 'credit_card_bill') return;
+		if (occ.status === 'unpaid') return;
+		if (!isWithinInterval(parseISO(occ.dueDate), interval)) return;
+		if (resultIds.has(occ.id)) return;
+		result.push(occ);
+		resultIds.add(occ.id);
+	});
 
 	return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 }
@@ -268,9 +268,7 @@ function projectDatesInMonth(
 	let cur = parseISO(anchorDate);
 	while (cur <= interval.end) {
 		if (cur >= interval.start) results.add(format(cur, 'yyyy-MM-dd'));
-		cur = parseISO(
-			advanceByFrequency(format(cur, 'yyyy-MM-dd'), frequency, monthScheduleRule)
-		);
+		cur = parseISO(advanceByFrequency(format(cur, 'yyyy-MM-dd'), frequency, monthScheduleRule));
 	}
 
 	// Walk backward from anchor to cover past months
