@@ -30,6 +30,9 @@ export interface QueryDataResult {
 	highlights: string[];
 }
 
+const MAX_METRICS_IN_QUERY_CONTEXT = 12;
+const MAX_HIGHLIGHTS_IN_QUERY_CONTEXT = 4;
+
 const TOPIC_KEYWORDS: Array<{ topic: QueryTopic; terms: string[] }> = [
 	{ topic: 'balances', terms: ['balance', 'cash', 'money left', 'liquid', 'bank'] },
 	{ topic: 'cashflow', terms: ['cashflow', 'cash flow', 'run rate', 'surplus', 'deficit'] },
@@ -382,8 +385,10 @@ export function fetchFinancialDataForQuery(query: string, state: AppState): Quer
 
 export function buildRealtimeQueryContext(query: string, state: AppState): string {
 	const data = fetchFinancialDataForQuery(query, state);
-	const metricsText = data.metrics.map((m) => `  - ${m.label}: ${m.value}`).join('\n');
-	const highlightsText = data.highlights.map((h) => `  - ${h}`).join('\n');
+	const metrics = data.metrics.slice(0, MAX_METRICS_IN_QUERY_CONTEXT);
+	const highlights = data.highlights.slice(0, MAX_HIGHLIGHTS_IN_QUERY_CONTEXT);
+	const metricsText = metrics.map((m) => `  - ${m.label}: ${m.value}`).join('\n');
+	const highlightsText = highlights.map((h) => `  - ${h}`).join('\n');
 
 	return `## Real-time query data
 Generated at: ${data.generatedAt}
@@ -393,8 +398,20 @@ Detected topics: ${data.topics.join(', ')}
 ### Metrics
 ${metricsText}
 
+${
+	data.metrics.length > metrics.length
+		? `... ${data.metrics.length - metrics.length} additional metrics omitted for token budget\n`
+		: ''
+}
+
 ### Highlights
 ${highlightsText}
+
+${
+	data.highlights.length > highlights.length
+		? `... ${data.highlights.length - highlights.length} additional highlights omitted for token budget\n`
+		: ''
+}
 
 Use this real-time data to answer the current user query. If the query asks for a metric not listed here, infer from app state rules and explicitly mention assumptions.`;
 }

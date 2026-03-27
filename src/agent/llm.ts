@@ -10,6 +10,8 @@ import type { AgentConfig } from './types';
 
 export type { CoreMessage };
 
+const AGENT_MAX_OUTPUT_TOKENS = 900;
+
 function getProvider(config: AgentConfig): 'openai-compatible' | 'gemini' {
 	return config.provider ?? 'openai-compatible';
 }
@@ -47,6 +49,7 @@ export async function streamAgentResponse(
 				? createGeminiModel(config)
 				: createOpenAIModel(config),
 		messages,
+		maxTokens: AGENT_MAX_OUTPUT_TOKENS,
 		abortSignal: signal,
 	});
 

@@ -2,6 +2,11 @@ import type { CoreMessage } from 'ai';
 import type { AppState } from '@/types';
 import { buildForecast } from '@/utils/forecast';
 
+const MAX_ACCOUNT_NAMES_IN_PROMPT = 20;
+const MAX_TOP_EXPENSE_LINES = 3;
+const MAX_HISTORY_MESSAGES = 8;
+const MAX_CHARS_PER_HISTORY_MESSAGE = 1200;
+
 function toDate(value: string): Date {
 	const d = new Date(value);
 	return Number.isNaN(d.getTime()) ? new Date(0) : d;
@@ -98,7 +103,7 @@ function buildFinancialSnapshot(state: AppState): string {
 		}, {});
 	const topExpenseLines = Object.entries(topExpenses)
 		.sort((a, b) => b[1] - a[1])
-		.slice(0, 5)
+		.slice(0, MAX_TOP_EXPENSE_LINES)
 		.map(([name, amount]) => `  - ${name}: ${Math.round(amount)}`)
 		.join('\n');
 
@@ -150,12 +155,20 @@ export function buildSystemPrompt(state: AppState): string {
 	const today = new Date().toISOString().slice(0, 10);
 	const snapshot = buildFinancialSnapshot(state);
 
+	const activeAccounts = state.accounts.filter((a) => !a.isArchived);
+	const accountLines = activeAccounts
+		.slice(0, MAX_ACCOUNT_NAMES_IN_PROMPT)
+		.map((a) => `  - "${a.name}" (${a.type})`)
+		.join('\n');
+	const remainingAccounts = Math.max(0, activeAccounts.length - MAX_ACCOUNT_NAMES_IN_PROMPT);
 	const accountList =
-		state.accounts
-			.filter((a) => !a.isArchived)
-			.map((a) => `  - "${a.name}" (${a.type})`)
-			.join('\n') ||
-		'  (no accounts yet — describe the account name when adding transactions)';
+		activeAccounts.length > 0
+			? `${accountLines}${
+					remainingAccounts > 0
+						? `\n  - ... plus ${remainingAccounts} more accounts (use exact names from app when possible)`
+						: ''
+				}`
+			: '  (no accounts yet - describe the account name when adding transactions)';
 
 	return `You are FinTracker Assistant, an AI financial copilot for a personal finance app. Today is ${today}.
 
@@ -266,8 +279,13 @@ export function buildMessages(
 	systemPrompt: string,
 	history: Array<{ role: 'user' | 'assistant'; content: string }>
 ): CoreMessage[] {
-	return [
-		{ role: 'system', content: systemPrompt },
-		...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-	];
+	const recentHistory = history.slice(-MAX_HISTORY_MESSAGES).map((m) => ({
+		role: m.role as 'user' | 'assistant',
+		content:
+			m.content.length > MAX_CHARS_PER_HISTORY_MESSAGE
+				? `${m.content.slice(0, MAX_CHARS_PER_HISTORY_MESSAGE)}\n\n[truncated for token budget]`
+				: m.content,
+	}));
+
+	return [{ role: 'system', content: systemPrompt }, ...recentHistory];
 }
