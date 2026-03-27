@@ -370,7 +370,7 @@ function AppShell() {
 				<main
 					ref={contentRef}
 					className="flex-1 overflow-y-auto pb-20 md:pb-6">
-					<div className="mx-auto max-w-2xl px-4 py-5">
+					<div className="w-full px-4 md:px-0 md:pl-3 md:pr-3 py-5">
 						{visitedTabs.map((id) => {
 							const View = VIEWS[id];
 							return (

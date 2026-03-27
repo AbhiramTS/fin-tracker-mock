@@ -105,7 +105,7 @@ export function ChatWindow({ className }: { className?: string }) {
 						placeholder="Type a message… (Enter to send, Shift+Enter for newline)"
 						rows={1}
 						disabled={isStreaming}
-						className="resize-none min-h-[38px] max-h-[120px] text-sm py-2"
+						className="resize-none overflow-hidden min-h-[38px] max-h-[120px] text-sm py-2"
 					/>
 					<Button
 						size="icon"
