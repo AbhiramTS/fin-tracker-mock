@@ -14,6 +14,7 @@ import { fmt, fmtDate, todayStr } from '@/utils/format';
 import {
 	advanceByFrequency,
 	getOccurrencesForMonth,
+	resolveMonthScheduleRule,
 	urgencyClass,
 	urgencyLabel,
 } from '@/utils/recurring';

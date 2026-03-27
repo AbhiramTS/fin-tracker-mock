@@ -18,6 +18,7 @@ import {
 	saveAgentSession,
 } from '@/agent/db';
 import { getAgentErrorInfo, streamAgentResponse } from '@/agent/llm';
+import type { CoreMessage } from '@/agent/llm';
 import { buildMessages, buildSystemPrompt } from '@/agent/prompt';
 import { buildRealtimeQueryContext } from '@/agent/dataQuery';
 import { parseAgentResponse, resolveAccountId } from '@/agent/parse';
@@ -253,6 +254,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
 			setIsStreaming(true);
 			setStreamingContent('');
+			let latestStreamingText = '';
 
 			try {
 				const basePrompt = buildSystemPrompt(appState);
@@ -263,7 +265,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					content: m.content,
 				}));
 				const coreMessages = buildMessages(systemPrompt, history);
-				let latestStreamingText = '';
 				const handleStreamingUpdate = (text: string) => {
 					latestStreamingText = text;
 					setStreamingContent(text);
@@ -284,7 +285,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
 				// If the model started JSON but got cut off, ask it to continue once.
 				if (!parsed && hasOpenJsonFence && !hasClosedJsonFence) {
-					const continuationMessages = [
+					const continuationMessages: CoreMessage[] = [
 						...coreMessages,
 						{ role: 'assistant', content: fullText },
 						{
@@ -292,7 +293,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 							content:
 								'Your previous response was truncated. Continue exactly where you stopped and finish the same fenced JSON block. Do not restart from the beginning.',
 						},
-					] as const;
+					];
 
 					const continuation = await streamAgentResponse(
 						continuationMessages,

@@ -127,7 +127,7 @@ export function ChatMessageBubble({
 							size="sm"
 							variant="secondary"
 							className="h-6 rounded-full px-2.5 text-[11px] font-medium"
-							onClick={() => onRetry(message)}
+							onClick={() => onRetry?.(message)}
 							disabled={retryDisabled}>
 							<RefreshCw className="mr-1 h-3 w-3" />
 							Resend message

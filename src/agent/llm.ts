@@ -97,7 +97,8 @@ function extractRetryAfterSeconds(error: unknown): number | null {
 function extractRawMessage(error: unknown): string {
 	if (error instanceof Error) {
 		if (error.message) return error.message;
-		if (error.cause) return extractRawMessage(error.cause);
+		const cause = (error as Error & { cause?: unknown }).cause;
+		if (cause) return extractRawMessage(cause);
 	}
 
 	if (typeof error === 'string') return error;

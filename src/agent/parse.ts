@@ -109,25 +109,31 @@ export function parseAgentResponse(
 
 		const fields = record.fields
 			.filter((field) => typeof field === 'object' && field !== null)
-			.map((field) => {
+			.map<MissingDataField | null>((field) => {
 				const item = field as Record<string, unknown>;
 				const type = String(item.type ?? 'text');
 				if (!['text', 'number', 'date', 'account'].includes(type)) return null;
 				const key = String(item.key ?? '').trim();
 				const label = String(item.label ?? '').trim();
 				if (!key || !label) return null;
-				return {
+
+				const parsed: MissingDataField = {
 					key,
 					label,
 					type: type as MissingDataField['type'],
-					placeholder:
-						typeof item.placeholder === 'string' ? String(item.placeholder) : undefined,
 					required: item.required !== false,
-					helpText:
-						typeof item.helpText === 'string' ? String(item.helpText) : undefined,
 				};
+
+				if (typeof item.placeholder === 'string') {
+					parsed.placeholder = String(item.placeholder);
+				}
+				if (typeof item.helpText === 'string') {
+					parsed.helpText = String(item.helpText);
+				}
+
+				return parsed;
 			})
-			.filter((field): field is MissingDataField => Boolean(field));
+			.filter((field): field is MissingDataField => field !== null);
 
 		if (!fields.length) return undefined;
 
