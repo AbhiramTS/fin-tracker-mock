@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { todayStr, fmtDec } from '@/utils/format';
 import { calculateEMI, currentCreditCardCycle } from '@/utils/amortisation';
+import { resolveMonthScheduleRule } from '@/utils/recurring';
 import { useApp } from '@/context/AppContext';
 import type {
 	Account,
@@ -1399,14 +1400,26 @@ export function RecurringIncomeForm({
 		amount: undefined,
 		frequency: 'monthly',
 		nextDate: todayStr(),
+		monthScheduleRule: resolveMonthScheduleRule(todayStr(), 'monthly'),
 		accountId: accounts[0]?.id ?? '',
 		isActive: true,
-		...initialData,
+		...(initialData
+			? {
+				...initialData,
+				monthScheduleRule: resolveMonthScheduleRule(
+					initialData.nextDate ?? todayStr(),
+					(initialData.frequency ?? 'monthly') as Frequency,
+					initialData.monthScheduleRule
+				),
+			}
+			: null),
 	});
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
 		if (f.name && f.amount) onSave(f);
 	};
+	const isMonthBased =
+		f.frequency === 'monthly' || f.frequency === 'quarterly' || f.frequency === 'yearly';
 	return (
 		<form
 			onSubmit={submit}
@@ -1455,10 +1468,44 @@ export function RecurringIncomeForm({
 					<Input
 						type="date"
 						value={f.nextDate ?? ''}
-						onChange={(e) => setF({ ...f, nextDate: e.target.value })}
+						onChange={(e) =>
+							setF({
+								...f,
+								nextDate: e.target.value,
+								monthScheduleRule: resolveMonthScheduleRule(
+									e.target.value,
+									(f.frequency ?? 'monthly') as Frequency,
+									f.monthScheduleRule
+								),
+							})
+						}
 						required
 					/>
 				</FormField>
+				{isMonthBased && (
+					<FormField
+						label="Month-end Rule"
+						hint="Choose how month-based recurrences are scheduled.">
+						<Select
+							value={f.monthScheduleRule ?? 'same_day'}
+							onValueChange={(v) =>
+								setF({ ...f, monthScheduleRule: v as MonthScheduleRule })
+							}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{MONTH_SCHEDULE_RULES.map((rule) => (
+									<SelectItem
+										key={rule}
+										value={rule}>
+										{MONTH_SCHEDULE_RULE_LABEL[rule]}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</FormField>
+				)}
 				<FormField label="Credit Account">
 					<Select
 						value={f.accountId ?? ''}

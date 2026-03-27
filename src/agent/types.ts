@@ -86,6 +86,7 @@ export interface ParsedRecurringPayment {
 	amount: number;
 	frequency: string; // daily | weekly | fortnightly | monthly | quarterly | yearly
 	nextDate: string;
+	monthScheduleRule?: string;
 	category: string;
 	accountName?: string; // resolved to accountId at save time
 	isActive?: boolean;
@@ -97,6 +98,7 @@ export interface ParsedRecurringIncome {
 	amount: number;
 	frequency: string;
 	nextDate: string;
+	monthScheduleRule?: string;
 	accountName?: string; // resolved to accountId at save time
 	isActive?: boolean;
 	notes?: string;

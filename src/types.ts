@@ -150,6 +150,7 @@ export interface RecurringIncome extends BaseRecord {
 	amount: number;
 	frequency: Frequency;
 	nextDate: string;
+	monthScheduleRule?: MonthScheduleRule;
 	accountId: string;
 	notes?: string;
 	isActive: boolean;

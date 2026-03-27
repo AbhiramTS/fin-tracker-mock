@@ -3,7 +3,8 @@
  * Extracts the fenced ```json block and resolves account-name references
  * to existing account IDs from the app state.
  */
-import type { AppState, AccountHead } from '@/types';
+import { format, parseISO } from 'date-fns';
+import type { AppState, AccountHead, Frequency, MonthScheduleRule } from '@/types';
 import type {
 	AgentParsedResponse,
 	MissingDataField,
@@ -18,6 +19,55 @@ const ROOT_HEAD_IDS = new Set([
 	'head_liability',
 	'head_equity',
 ]);
+
+const MONTH_BASED_FREQUENCIES = new Set<Frequency>(['monthly', 'quarterly', 'yearly']);
+const PREVIEW_CURRENCY = new Intl.NumberFormat('en-IN', {
+	style: 'currency',
+	currency: 'INR',
+	minimumFractionDigits: 0,
+	maximumFractionDigits: 0,
+});
+
+function normalizeMonthScheduleRule(value: unknown): MonthScheduleRule | undefined {
+	return value === 'same_day' || value === 'last_day' || value === 'last_working_day'
+		? value
+		: undefined;
+}
+
+function inferMonthScheduleRule(
+	nextDate: string,
+	frequency: string,
+	monthScheduleRule?: MonthScheduleRule
+): MonthScheduleRule | undefined {
+	if (monthScheduleRule) return monthScheduleRule;
+	if (!MONTH_BASED_FREQUENCIES.has(frequency as Frequency)) return undefined;
+
+	const parsedDate = parseISO(nextDate);
+	if (Number.isNaN(parsedDate.getTime())) return undefined;
+
+	return format(parsedDate, 'yyyy-MM-dd') === format(new Date(parsedDate.getFullYear(), parsedDate.getMonth() + 1, 0), 'yyyy-MM-dd')
+		? 'last_day'
+		: undefined;
+}
+
+function buildSummary(entities: ParsedEntities, fallback: string): string {
+	const totalCount = Object.values(entities).reduce(
+		(sum, value) => sum + (Array.isArray(value) ? value.length : 0),
+		0
+	);
+	if (totalCount !== 1 || (entities.recurringIncomes?.length ?? 0) !== 1) return fallback;
+
+	const recurringIncome = entities.recurringIncomes?.[0];
+	if (!recurringIncome?.nextDate) return fallback;
+
+	const parsedDate = parseISO(recurringIncome.nextDate);
+	if (Number.isNaN(parsedDate.getTime())) return fallback;
+
+	const destination = recurringIncome.accountName?.trim()
+		? ` to ${recurringIncome.accountName.trim()}`
+		: '';
+	return `Recording ${recurringIncome.name} of ${PREVIEW_CURRENCY.format(recurringIncome.amount)}${destination}, with the next payment due on ${format(parsedDate, 'MMMM d, yyyy')}.`;
+}
 
 function resolveAccountHeadId(nameOrId: string, state: AppState): string {
 	if (!nameOrId) return nameOrId;
@@ -267,11 +317,18 @@ export function parseAgentResponse(
 			.filter((e) => typeof e === 'object' && e !== null)
 			.map((e) => {
 				const rp = e as Record<string, unknown>;
+				const nextDate = String(rp.nextDate ?? new Date().toISOString().slice(0, 10));
+				const frequency = String(rp.frequency ?? 'monthly');
 				return {
 					name: String(rp.name ?? ''),
 					amount: Number(rp.amount ?? 0),
-					frequency: String(rp.frequency ?? 'monthly'),
-					nextDate: String(rp.nextDate ?? new Date().toISOString().slice(0, 10)),
+					frequency,
+					nextDate,
+					monthScheduleRule: inferMonthScheduleRule(
+						nextDate,
+						frequency,
+						normalizeMonthScheduleRule(rp.monthScheduleRule)
+					),
 					category: String(rp.category ?? 'Other'),
 					accountName: rp.accountName ? String(rp.accountName) : undefined,
 					isActive: rp.isActive !== false,
@@ -286,11 +343,18 @@ export function parseAgentResponse(
 			.filter((e) => typeof e === 'object' && e !== null)
 			.map((e) => {
 				const ri = e as Record<string, unknown>;
+				const nextDate = String(ri.nextDate ?? new Date().toISOString().slice(0, 10));
+				const frequency = String(ri.frequency ?? 'monthly');
 				return {
 					name: String(ri.name ?? ''),
 					amount: Number(ri.amount ?? 0),
-					frequency: String(ri.frequency ?? 'monthly'),
-					nextDate: String(ri.nextDate ?? new Date().toISOString().slice(0, 10)),
+					frequency,
+					nextDate,
+					monthScheduleRule: inferMonthScheduleRule(
+						nextDate,
+						frequency,
+						normalizeMonthScheduleRule(ri.monthScheduleRule)
+					),
 					accountName: ri.accountName ? String(ri.accountName) : undefined,
 					isActive: ri.isActive !== false,
 					notes: ri.notes ? String(ri.notes) : undefined,
@@ -304,5 +368,5 @@ export function parseAgentResponse(
 	);
 	if (!hasEntities && !missingDataRequest) return null;
 
-	return { entities, summary, missingDataRequest };
+	return { entities, summary: buildSummary(entities, summary), missingDataRequest };
 }

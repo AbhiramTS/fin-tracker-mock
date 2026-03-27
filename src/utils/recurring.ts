@@ -45,6 +45,22 @@ export function advanceByFrequency(
 	}
 }
 
+export function resolveMonthScheduleRule(
+	dateStr: string,
+	frequency: Frequency,
+	monthScheduleRule?: MonthScheduleRule
+): MonthScheduleRule {
+	if (monthScheduleRule) return monthScheduleRule;
+	if (!['monthly', 'quarterly', 'yearly'].includes(frequency)) return 'same_day';
+
+	const anchor = parseISO(dateStr);
+	if (Number.isNaN(anchor.getTime())) return 'same_day';
+
+	return format(anchor, 'yyyy-MM-dd') === format(endOfMonth(anchor), 'yyyy-MM-dd')
+		? 'last_day'
+		: 'same_day';
+}
+
 function advanceMonthPattern(
 	current: Date,
 	months: number,
@@ -161,7 +177,12 @@ export function getOccurrencesForMonth(
 	(state.recurringIncomes ?? [])
 		.filter((r) => r.isActive)
 		.forEach((r) =>
-			projectDatesInMonth(r.nextDate, r.frequency, interval).forEach((d) =>
+			projectDatesInMonth(
+				r.nextDate,
+				r.frequency,
+				interval,
+				resolveMonthScheduleRule(r.nextDate, r.frequency, r.monthScheduleRule)
+			).forEach((d) =>
 				add('recurring_income', r.id, d, r.amount, r.name, undefined, r.accountId)
 			)
 		);

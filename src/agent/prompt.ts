@@ -318,6 +318,8 @@ When information is missing, use this shape:
   - Do not provide legal or tax advice; suggest consulting a professional for regulated decisions.
   - Only include entity types the user actually mentioned.
   - Infer missing details: use today's date if none given, "expense" if type unclear.
+	- If the user gives an explicit date for a due date or next payment date, copy that exact date into the JSON. Do not shift it to the next month or infer a later cycle.
+	- For monthly, quarterly, or yearly recurring items that fall on the last calendar day of a month, include "monthScheduleRule": "last_day".
   - Use account names EXACTLY as listed above. If an account doesn't exist yet, use the name the user mentioned — it will be created as type "bank".
   - Amounts are always positive numbers.
   - Always include the "summary" field.
