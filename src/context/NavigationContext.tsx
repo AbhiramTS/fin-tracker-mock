@@ -28,7 +28,8 @@ export type TabId =
 	| 'accountheads'
 	| 'settings'
 	| 'importreview'
-	| 'import';
+	| 'import'
+	| 'agent';
 
 export const VALID_TABS = new Set<TabId>([
 	'dashboard',
@@ -51,6 +52,7 @@ export const VALID_TABS = new Set<TabId>([
 	'settings',
 	'importreview',
 	'import',
+	'agent',
 ]);
 
 export interface AppRoute {

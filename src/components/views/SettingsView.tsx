@@ -12,10 +12,16 @@ import {
 	Pencil,
 	Bell,
 	BellRing,
+	Bot,
+	Eye,
+	EyeOff,
+	Wifi,
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useNavigation } from '@/context/NavigationContext';
+import { useAgentChat } from '@/context/AgentContext';
+import { testAgentConnection } from '@/agent/llm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -806,6 +812,163 @@ function ClearDataSection() {
 	);
 }
 
+// ── AI Agent Settings ─────────────────────────────────────────────────────────
+function AIAgentSettings() {
+	const { config, saveConfig, removeConfig } = useAgentChat();
+	const { notify } = useNotifications();
+	const { setTab } = useNavigation();
+
+	const [baseUrl, setBaseUrl] = useState(() => config?.baseUrl ?? 'https://api.openai.com/v1');
+	const [apiKey, setApiKey] = useState(() => config?.apiKey ?? '');
+	const [model, setModel] = useState(() => config?.model ?? 'gpt-4o');
+	const [showKey, setShowKey] = useState(false);
+	const [testing, setTesting] = useState(false);
+	const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+	const hasChanged =
+		baseUrl !== (config?.baseUrl ?? 'https://api.openai.com/v1') ||
+		apiKey !== (config?.apiKey ?? '') ||
+		model !== (config?.model ?? 'gpt-4o');
+
+	const handleSave = () => {
+		if (!baseUrl.trim() || !apiKey.trim() || !model.trim()) {
+			notify({ title: 'All fields are required', tone: 'warning' });
+			return;
+		}
+		saveConfig({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim() });
+		notify({ title: 'AI Agent settings saved', tone: 'success' });
+	};
+
+	const handleTest = async () => {
+		if (!baseUrl.trim() || !apiKey.trim() || !model.trim()) {
+			notify({ title: 'Fill all fields first', tone: 'warning' });
+			return;
+		}
+		setTesting(true);
+		setTestResult(null);
+		try {
+			const msg = await testAgentConnection({
+				baseUrl: baseUrl.trim(),
+				apiKey: apiKey.trim(),
+				model: model.trim(),
+			});
+			setTestResult({ ok: true, message: msg || 'Connection OK' });
+		} catch (e) {
+			setTestResult({ ok: false, message: (e as Error).message });
+		} finally {
+			setTesting(false);
+		}
+	};
+
+	return (
+		<div className="flex flex-col gap-3">
+			<div className="flex items-center gap-2">
+				{config ? (
+					<Badge variant="profit">Configured</Badge>
+				) : (
+					<Badge variant="secondary">Not configured</Badge>
+				)}
+				<p className="text-xs text-muted-foreground">
+					{config ? `Model: ${config.model}` : 'Set up an AI endpoint to start chatting'}
+				</p>
+			</div>
+
+			<FormField label="API Base URL">
+				<Input
+					value={baseUrl}
+					onChange={(e) => setBaseUrl(e.target.value)}
+					placeholder="https://api.openai.com/v1"
+					autoComplete="off"
+				/>
+			</FormField>
+
+			<FormField label="API Key">
+				<div className="relative">
+					<Input
+						type={showKey ? 'text' : 'password'}
+						value={apiKey}
+						onChange={(e) => setApiKey(e.target.value)}
+						placeholder="sk-…"
+						autoComplete="new-password"
+						className="pr-10"
+					/>
+					<button
+						type="button"
+						onClick={() => setShowKey((v) => !v)}
+						className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+						{showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+					</button>
+				</div>
+			</FormField>
+
+			<FormField label="Model">
+				<Input
+					value={model}
+					onChange={(e) => setModel(e.target.value)}
+					placeholder="gpt-4o"
+					autoComplete="off"
+				/>
+			</FormField>
+
+			<p className="text-xs text-muted-foreground">
+				Works with any OpenAI-compatible endpoint — OpenAI, Groq, Ollama, LM Studio, etc.
+				Your key is stored locally and{' '}
+				<span className="font-semibold">never synced to the cloud</span>.
+			</p>
+
+			{testResult && (
+				<div
+					className={`flex items-start gap-2 rounded-lg px-3 py-2 text-xs ${
+						testResult.ok
+							? 'bg-profit/10 text-profit border border-profit/20'
+							: 'bg-loss/10 text-loss border border-loss/20'
+					}`}>
+					{testResult.ok ? (
+						<CheckCircle2 className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+					) : (
+						<AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+					)}
+					<span className="break-all">{testResult.message}</span>
+				</div>
+			)}
+
+			<div className="flex gap-2">
+				<Button onClick={handleSave} className="flex-1" disabled={!hasChanged}>
+					Save
+				</Button>
+				<Button
+					onClick={() => void handleTest()}
+					variant="outline"
+					disabled={testing}
+					className="gap-2">
+					{testing ? (
+						<RefreshCw className="h-4 w-4 animate-spin" />
+					) : (
+						<Wifi className="h-4 w-4" />
+					)}
+					{testing ? 'Testing…' : 'Test'}
+				</Button>
+				<Button
+					variant="outline"
+					className="gap-2"
+					onClick={() => setTab('agent')}>
+					<Bot className="h-4 w-4" />
+					Open
+				</Button>
+			</div>
+
+			{config && (
+				<button
+					type="button"
+					onClick={removeConfig}
+					className="text-xs text-muted-foreground hover:text-loss text-left transition-colors">
+					Clear configuration
+				</button>
+			)}
+		</div>
+	);
+}
+
 // ── Main SettingsView ─────────────────────────────────────────────────────────
 export function SettingsView() {
 	const { state, connectFirebase, syncNow } = useApp();
@@ -1268,6 +1431,18 @@ export function SettingsView() {
 					</div>
 				</DialogContent>
 			</Dialog>
+
+			<Card>
+				<CardHeader className="pb-2">
+					<CardTitle className="flex items-center gap-2">
+						<Bot className="h-4 w-4" />
+						AI Agent
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<AIAgentSettings />
+				</CardContent>
+			</Card>
 
 			<Card>
 				<CardHeader className="pb-2">

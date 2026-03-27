@@ -19,10 +19,13 @@ import {
 	X,
 	BookOpen,
 	Upload,
+	Bot,
 } from 'lucide-react';
 import { AppProvider, useApp } from '@/context/AppContext';
 import { NavigationProvider, useNavigation, type TabId } from '@/context/NavigationContext';
 import { NotificationProvider, useNotifications } from '@/context/NotificationContext';
+import { AgentProvider } from '@/context/AgentContext';
+import { ChatDrawer } from '@/components/agent/ChatDrawer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -45,6 +48,7 @@ import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import { SettingsView, AccountHeadsView } from '@/components/views/SettingsView';
 import { ImportReviewView } from '@/components/views/ImportReviewView';
 import { ImportView } from '@/components/views/ImportView';
+import { AgentView } from '@/components/views/AgentView';
 
 const APP_VERSION = __APP_VERSION__;
 
@@ -80,6 +84,7 @@ const NAV: NavItem[] = [
 
 	{ id: 'settings', label: 'Settings', icon: Settings },
 	{ id: 'import', label: 'Import Data', icon: Upload },
+	{ id: 'agent', label: 'AI Assistant', icon: Bot },
 	// importreview is accessed programmatically from the import flow; not shown in nav
 ];
 
@@ -107,6 +112,7 @@ const VIEWS: Record<TabId, React.ComponentType> = {
 	settings: SettingsView,
 	importreview: ImportReviewView,
 	import: ImportView,
+	agent: AgentView,
 };
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -378,6 +384,9 @@ function AppShell() {
 					</div>
 				</main>
 
+				{/* Floating AI chat drawer — visible on every tab */}
+				<ChatDrawer />
+
 				{/* Mobile bottom nav */}
 				<nav className="fixed bottom-0 left-0 right-0 border-t border-border bg-card/90 backdrop-blur-md md:hidden pb-safe z-30">
 					<div className="flex">
@@ -420,7 +429,9 @@ export default function App() {
 		<NotificationProvider>
 			<AppProvider>
 				<NavigationProvider>
-					<AppShell />
+					<AgentProvider>
+						<AppShell />
+					</AgentProvider>
 				</NavigationProvider>
 			</AppProvider>
 		</NotificationProvider>
