@@ -813,6 +813,24 @@ function ClearDataSection() {
 }
 
 // ── AI Agent Settings ─────────────────────────────────────────────────────────
+const AGENT_MODEL_OPTIONS: Record<
+	'openai-compatible' | 'gemini',
+	Array<{ label: string; value: string }>
+> = {
+	'openai-compatible': [
+		{ label: 'OpenAI · GPT-4o', value: 'gpt-4o' },
+		{ label: 'OpenAI · GPT-4.1', value: 'gpt-4.1' },
+		{ label: 'OpenAI · GPT-4.1 mini', value: 'gpt-4.1-mini' },
+		{ label: 'OpenAI · o4-mini', value: 'o4-mini' },
+	],
+	gemini: [
+		{ label: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+		{ label: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
+		{ label: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
+		{ label: 'Gemini 2.0 Flash Lite', value: 'gemini-2.0-flash-lite' },
+	],
+};
+
 function AIAgentSettings() {
 	const { config, saveConfig, removeConfig } = useAgentChat();
 	const { notify } = useNotifications();
@@ -827,12 +845,22 @@ function AIAgentSettings() {
 	const [showKey, setShowKey] = useState(false);
 	const [testing, setTesting] = useState(false);
 	const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+	const modelOptions = AGENT_MODEL_OPTIONS[provider];
+	const isCustomModel = !modelOptions.some((option) => option.value === model);
 
 	useEffect(() => {
 		if (provider === 'openai-compatible' && !baseUrl.trim()) {
 			setBaseUrl('https://api.openai.com/v1');
 		}
 	}, [provider, baseUrl]);
+
+	useEffect(() => {
+		if (!modelOptions.some((option) => option.value === model)) {
+			setModel(modelOptions[0]?.value ?? '');
+		}
+		// Runs only when provider changes.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [provider]);
 
 	const hasChanged =
 		provider !== (config?.provider ?? 'openai-compatible') ||
@@ -944,12 +972,42 @@ function AIAgentSettings() {
 			</FormField>
 
 			<FormField label="Model">
-				<Input
-					value={model}
-					onChange={(e) => setModel(e.target.value)}
-					placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o'}
-					autoComplete="off"
-				/>
+				<div className="space-y-2">
+					<Select
+						value={isCustomModel ? '__custom__' : model}
+						onValueChange={(value) => {
+							if (value === '__custom__') {
+								if (!isCustomModel) {
+									setModel('');
+								}
+								return;
+							}
+							setModel(value);
+						}}>
+						<SelectTrigger>
+							<SelectValue placeholder="Select model" />
+						</SelectTrigger>
+						<SelectContent>
+							{modelOptions.map((option) => (
+								<SelectItem
+									key={option.value}
+									value={option.value}>
+									{option.label}
+								</SelectItem>
+							))}
+							<SelectItem value="__custom__">Custom model…</SelectItem>
+						</SelectContent>
+					</Select>
+
+					{isCustomModel && (
+						<Input
+							value={model}
+							onChange={(e) => setModel(e.target.value)}
+							placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o'}
+							autoComplete="off"
+						/>
+					)}
+				</div>
 			</FormField>
 
 			<p className="text-xs text-muted-foreground">
