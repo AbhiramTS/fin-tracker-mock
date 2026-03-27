@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/agent/types';
+import { Button } from '@/components/ui/button';
 
 function formatTimestamp(iso: string): string {
 	try {
@@ -32,17 +33,28 @@ function renderInline(text: string): React.ReactNode[] {
 
 // Strip fenced code blocks from assistant messages (we render them as EntityPreviewCard)
 function stripJsonBlock(text: string): string {
-	return text.replace(/```(?:json)?\s*[\s\S]*?```/g, '').trim();
+	// Also strip unterminated fences so partial JSON doesn't leak into the chat bubble.
+	return text.replace(/```(?:json)?\s*[\s\S]*?(?:```|$)/gi, '').trim();
 }
 
 interface ChatMessageBubbleProps {
 	message: ChatMessage;
 	isStreaming?: boolean;
+	onQuickChoice?: (message: ChatMessage, choice: 'enter-now' | 'do-later') => void;
 }
 
-export function ChatMessageBubble({ message, isStreaming }: ChatMessageBubbleProps) {
+function hasMissingDataChoicePrompt(text: string): boolean {
+	return /enter now\s+or\s+do it later\??/i.test(text);
+}
+
+export function ChatMessageBubble({
+	message,
+	isStreaming,
+	onQuickChoice,
+}: ChatMessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const displayText = isUser ? message.content : stripJsonBlock(message.content);
+	const showMissingDataChoices = !isUser && hasMissingDataChoicePrompt(displayText);
 
 	return (
 		<div className={cn('flex gap-2 items-end', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -72,6 +84,25 @@ export function ChatMessageBubble({ message, isStreaming }: ChatMessageBubblePro
 				{/* Streaming cursor */}
 				{isStreaming && (
 					<span className="inline-block h-3.5 w-0.5 bg-current ml-0.5 animate-pulse rounded-full" />
+				)}
+
+				{showMissingDataChoices && onQuickChoice && (
+					<div className="mt-2 flex flex-wrap gap-1.5">
+						<Button
+							size="sm"
+							variant="secondary"
+							className="h-6 rounded-full px-2.5 text-[11px] font-medium border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+							onClick={() => onQuickChoice(message, 'enter-now')}>
+							Enter now
+						</Button>
+						<Button
+							size="sm"
+							variant="ghost"
+							className="h-6 rounded-full px-2.5 text-[11px] font-medium border border-border/70 bg-background/20 hover:bg-background/35"
+							onClick={() => onQuickChoice(message, 'do-later')}>
+							Do it later
+						</Button>
+					</div>
 				)}
 
 				<p

@@ -47,13 +47,27 @@ export function parseAgentResponse(
 	text: string,
 	state: AppState
 ): AgentParsedResponse | null {
-	// Extract first fenced JSON block
-	const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-	if (!match) return null;
+	const extractJsonCandidate = (rawText: string): string | null => {
+		// Preferred: complete fenced block
+		const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+		if (fenced?.[1]) return fenced[1].trim();
+
+		// Fallback: started fenced block but missing trailing ```
+		const openFence = rawText.match(/```(?:json)?\s*([\s\S]*)$/i);
+		if (openFence?.[1]) return openFence[1].trim();
+
+		// Last fallback: raw text might be pure JSON
+		const firstBrace = rawText.indexOf('{');
+		if (firstBrace >= 0) return rawText.slice(firstBrace).trim();
+		return null;
+	};
+
+	const candidate = extractJsonCandidate(text);
+	if (!candidate) return null;
 
 	let raw: unknown;
 	try {
-		raw = JSON.parse(match[1].trim());
+		raw = JSON.parse(candidate);
 	} catch {
 		return null;
 	}
@@ -99,6 +113,7 @@ export function parseAgentResponse(
 			.filter((e) => typeof e === 'object' && e !== null)
 			.map((e) => {
 				const acc = e as Record<string, unknown>;
+				const isCreditCard = String(acc.type ?? 'bank') === 'credit_card';
 				return {
 					name: String(acc.name ?? ''),
 					type: String(acc.type ?? 'bank'),
@@ -106,6 +121,16 @@ export function parseAgentResponse(
 						acc.openingBalance !== undefined ? Number(acc.openingBalance) : 0,
 					color: acc.color ? String(acc.color) : undefined,
 					currency: acc.currency ? String(acc.currency) : undefined,
+					...(isCreditCard && {
+						creditLimit: acc.creditLimit !== undefined ? Number(acc.creditLimit) : undefined,
+						outstanding: acc.outstanding !== undefined ? Number(acc.outstanding) : undefined,
+						statementDay: acc.statementDay !== undefined ? Number(acc.statementDay) : undefined,
+						billingCycleDays: acc.billingCycleDays !== undefined ? Number(acc.billingCycleDays) : undefined,
+						gracePeriodDays: acc.gracePeriodDays !== undefined ? Number(acc.gracePeriodDays) : undefined,
+						dueDate: acc.dueDate ? String(acc.dueDate) : undefined,
+						statementDate: acc.statementDate ? String(acc.statementDate) : undefined,
+						taxRate: acc.taxRate !== undefined ? Number(acc.taxRate) : undefined,
+					}),
 				};
 			});
 	}

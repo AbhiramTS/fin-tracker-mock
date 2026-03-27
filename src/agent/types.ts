@@ -9,7 +9,7 @@ export interface AgentConfig {
 }
 
 // ── Save lifecycle ────────────────────────────────────────────────────────────
-export type SaveStatus = 'pending' | 'saving' | 'saved' | 'dismissed';
+export type SaveStatus = 'pending' | 'deferred' | 'saving' | 'saved' | 'dismissed';
 
 // ── Parsed entity shapes (account names as strings, pre-ID-resolution) ────────
 export interface ParsedJournalEntry {
@@ -29,6 +29,15 @@ export interface ParsedAccount {
 	openingBalance?: number;
 	color?: string;
 	currency?: string;
+	// Credit-card specific (only when type === 'credit_card')
+	creditLimit?: number;
+	outstanding?: number;
+	statementDay?: number;
+	billingCycleDays?: number;
+	gracePeriodDays?: number;
+	dueDate?: string;
+	statementDate?: string;
+	taxRate?: number;
 }
 
 export interface ParsedLoan {
@@ -114,6 +123,7 @@ export interface EntityPreview {
 	entities: ParsedEntities;
 	summary: string;
 	saveStatus: SaveStatus;
+	missingDataPoints?: string[];
 	errorMessage?: string;
 }
 

@@ -10,7 +10,7 @@ import type { AgentConfig } from './types';
 
 export type { CoreMessage };
 
-const AGENT_MAX_OUTPUT_TOKENS = 900;
+const AGENT_MAX_OUTPUT_TOKENS = 1600;
 
 function redactSecrets(input: string): string {
 	return input

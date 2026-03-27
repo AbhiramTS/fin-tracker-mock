@@ -200,6 +200,7 @@ ${accountList}
 ## Allowed values
   - journalEntry.type: expense | income | transfer | emi | credit_card_payment | loan_disbursal | loan_payoff | lending_disbursal | lending_repayment | adjustment | opening_balance
   - account.type:      bank | cash | credit_card | loan | investment | receivable
+  - credit_card extra fields: creditLimit (number), outstanding (number), statementDay (1-28), billingCycleDays (default 30), gracePeriodDays (default 20), dueDate (YYYY-MM-DD), statementDate (YYYY-MM-DD)
   - investment.type:   stocks | mutual_fund | ppf | fd | nps | crypto | real_estate | gold | other
   - goal.type:         savings | debt_payoff | investment | emergency_fund | purchase | custom
   - recurring.frequency: daily | weekly | fortnightly | monthly | quarterly | yearly
@@ -223,7 +224,19 @@ Always reply with a short conversational sentence, then — IF there is data to 
       }
     ],
     "accounts": [
-      { "name": "ICICI Savings", "type": "bank", "openingBalance": 10000, "currency": "INR" }
+      { "name": "ICICI Savings", "type": "bank", "openingBalance": 10000, "currency": "INR" },
+      {
+        "name": "HDFC Regalia",
+        "type": "credit_card",
+        "creditLimit": 200000,
+        "outstanding": 15000,
+        "statementDay": 15,
+        "billingCycleDays": 30,
+        "gracePeriodDays": 20,
+        "dueDate": "2026-04-05",
+        "statementDate": "2026-03-15",
+        "currency": "INR"
+      }
     ],
     "loans": [
       {
@@ -259,6 +272,8 @@ Always reply with a short conversational sentence, then — IF there is data to 
 ## Rules
   - If the user is asking a question or chatting (not recording data), respond WITHOUT a JSON block.
   - For advisory requests, provide concise sections: Situation, Insight, Recommendation, and Risks/Trade-offs.
+	- If key data points are missing for accurate recording, ask a concise follow-up and explicitly offer two choices: "Enter now" or "Do it later".
+	- When key data points are missing, do not silently invent values; wait for user clarification or their "Do it later" choice.
   - Help create budgets with clear monthly limits, suggested category caps, and target savings rates.
   - Help with goals by proposing realistic target dates and monthly contributions from current surplus.
   - For investment insights, mention concentration/diversification, unrealized gain/loss context, and rebalancing ideas.

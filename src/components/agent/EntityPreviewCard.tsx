@@ -10,15 +10,7 @@ function countEntities(entities: ParsedEntities): number {
 	);
 }
 
-function EntityRow({
-	icon,
-	label,
-	detail,
-}: {
-	icon: string;
-	label: string;
-	detail: string;
-}) {
+function EntityRow({ icon, label, detail }: { icon: string; label: string; detail: string }) {
 	return (
 		<div className="flex items-start gap-2.5 px-3 py-2">
 			<span className="text-base shrink-0 leading-tight mt-0.5">{icon}</span>
@@ -34,19 +26,24 @@ interface EntityPreviewCardProps {
 	messageId: string;
 	preview: EntityPreview;
 	onSave: (messageId: string) => Promise<void>;
+	onDefer: (messageId: string) => void;
 	onDismiss: (messageId: string) => void;
+	onEnterNow: (messageId: string, missingDataPoints: string[]) => void;
 }
 
 export function EntityPreviewCard({
 	messageId,
 	preview,
 	onSave,
+	onDefer,
 	onDismiss,
+	onEnterNow,
 }: EntityPreviewCardProps) {
 	if (preview.saveStatus === 'dismissed') return null;
 
-	const { entities, summary, saveStatus, errorMessage } = preview;
+	const { entities, summary, saveStatus, errorMessage, missingDataPoints = [] } = preview;
 	const totalCount = countEntities(entities);
+	const hasMissingData = missingDataPoints.length > 0;
 
 	return (
 		<div className="mt-2 ml-8 rounded-xl border border-primary/25 bg-primary/5 overflow-hidden animate-fade-in">
@@ -54,7 +51,9 @@ export function EntityPreviewCard({
 			<div className="px-3 py-2.5 border-b border-primary/15">
 				<p className="text-xs font-semibold text-primary leading-snug">{summary}</p>
 				<p className="text-[10px] text-muted-foreground mt-0.5">
-					{totalCount} {totalCount === 1 ? 'item' : 'items'} ready to save
+					{hasMissingData
+						? `${missingDataPoints.length} data point${missingDataPoints.length === 1 ? '' : 's'} missing`
+						: `${totalCount} ${totalCount === 1 ? 'item' : 'items'} ready to save`}
 				</p>
 			</div>
 
@@ -63,9 +62,7 @@ export function EntityPreviewCard({
 				{entities.journalEntries?.map((je, i) => (
 					<EntityRow
 						key={`je-${i}`}
-						icon={
-							je.type === 'income' ? '💰' : je.type === 'transfer' ? '🔄' : '💳'
-						}
+						icon={je.type === 'income' ? '💰' : je.type === 'transfer' ? '🔄' : '💳'}
 						label={je.description}
 						detail={`${je.type} · ${fmt(je.amount)} · ${je.date}`}
 					/>
@@ -128,30 +125,72 @@ export function EntityPreviewCard({
 				))}
 			</div>
 
+			{hasMissingData && (
+				<div className="px-3 py-2.5 text-xs bg-warning/10 border-t border-warning/30">
+					<p className="font-semibold text-warning">Missing data points</p>
+					<p className="text-muted-foreground mt-0.5">
+						Please enter these now, or choose to do it later:
+					</p>
+					<p className="text-muted-foreground mt-1">
+						{missingDataPoints.slice(0, 4).join(' • ')}
+						{missingDataPoints.length > 4
+							? ` • +${missingDataPoints.length - 4} more`
+							: ''}
+					</p>
+				</div>
+			)}
+
 			{/* Error */}
-			{errorMessage && (
+			{errorMessage && !hasMissingData && (
 				<div className="px-3 py-2 text-xs text-destructive bg-destructive/5 border-t border-destructive/20">
 					{errorMessage}
 				</div>
 			)}
 
 			{/* Actions */}
-			{saveStatus === 'pending' && (
+			{(saveStatus === 'pending' || saveStatus === 'deferred') && (
 				<div className="flex gap-2 p-2.5 border-t border-primary/10">
-					<Button
-						size="sm"
-						className="flex-1 gap-1.5 text-xs"
-						onClick={() => void onSave(messageId)}>
-						Save All
-					</Button>
-					<Button
-						size="sm"
-						variant="ghost"
-						className="gap-1.5 text-xs shrink-0"
-						onClick={() => onDismiss(messageId)}>
-						<X className="h-3.5 w-3.5" />
-						Dismiss
-					</Button>
+					{hasMissingData ? (
+						<Button
+							size="sm"
+							className="flex-1 gap-1.5 text-xs"
+							onClick={() => onEnterNow(messageId, missingDataPoints)}>
+							{saveStatus === 'deferred' ? 'Complete now' : 'Enter now'}
+						</Button>
+					) : (
+						<Button
+							size="sm"
+							className="flex-1 gap-1.5 text-xs"
+							onClick={() => void onSave(messageId)}>
+							Save All
+						</Button>
+					)}
+					{hasMissingData && saveStatus === 'pending' && (
+						<Button
+							size="sm"
+							variant="ghost"
+							className="gap-1.5 text-xs shrink-0"
+							onClick={() => onDefer(messageId)}>
+							<X className="h-3.5 w-3.5" />
+							Do it later
+						</Button>
+					)}
+					{(!hasMissingData || saveStatus === 'deferred') && (
+						<Button
+							size="sm"
+							variant="ghost"
+							className="gap-1.5 text-xs shrink-0"
+							onClick={() => onDismiss(messageId)}>
+							<X className="h-3.5 w-3.5" />
+							Dismiss
+						</Button>
+					)}
+				</div>
+			)}
+
+			{saveStatus === 'deferred' && (
+				<div className="px-3 py-2 text-xs text-muted-foreground border-t border-border/60 bg-muted/20">
+					Marked to complete later. You can come back and finish this anytime.
 				</div>
 			)}
 

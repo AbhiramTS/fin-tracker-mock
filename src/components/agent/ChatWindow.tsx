@@ -1,11 +1,85 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useAgentChat } from '@/context/AgentContext';
+import type { ChatMessage } from '@/agent/types';
 import { ChatMessageBubble, StreamingBubble } from './ChatMessage';
 import { EntityPreviewCard } from './EntityPreviewCard';
+
+type MissingFieldType = 'text' | 'number' | 'date';
+
+interface MissingField {
+	key: string;
+	label: string;
+	type: MissingFieldType;
+	placeholder: string;
+}
+
+interface MissingDetailsFormState {
+	messageId: string;
+	fields: MissingField[];
+	values: Record<string, string>;
+	hasLinkedPreview: boolean;
+}
+
+function toField(point: string): MissingField {
+	const normalized = point.toLowerCase();
+	const rawLabel = point.includes(':') ? point.split(':').pop()?.trim() ?? point : point;
+
+	if (normalized.includes('credit limit')) {
+		return {
+			key: 'creditLimit',
+			label: 'Credit limit',
+			type: 'number',
+			placeholder: 'e.g. 200000',
+		};
+	}
+
+	if (normalized.includes('statement day')) {
+		return {
+			key: 'statementDay',
+			label: 'Statement day',
+			type: 'number',
+			placeholder: '1 to 28',
+		};
+	}
+
+	if (normalized.includes('due date') || normalized.endsWith(': date')) {
+		return {
+			key: rawLabel.replace(/\s+/g, ''),
+			label: rawLabel,
+			type: 'date',
+			placeholder: 'Select date',
+		};
+	}
+
+	if (normalized.includes('amount') || normalized.includes('value')) {
+		return {
+			key: rawLabel.replace(/\s+/g, ''),
+			label: rawLabel,
+			type: 'number',
+			placeholder: 'Enter amount',
+		};
+	}
+
+	return {
+		key: rawLabel.replace(/\s+/g, ''),
+		label: rawLabel,
+		type: 'text',
+		placeholder: `Enter ${rawLabel.toLowerCase()}`,
+	};
+}
+
+function inferMissingPointsFromText(text: string): string[] {
+	const inferred: string[] = [];
+	if (/credit limit/i.test(text)) inferred.push('Credit card: credit limit');
+	if (/statement day/i.test(text)) inferred.push('Credit card: statement day');
+	if (/due date/i.test(text)) inferred.push('Credit card: due date');
+	return inferred;
+}
 
 function EmptyState() {
 	return (
@@ -40,10 +114,12 @@ export function ChatWindow({ className }: { className?: string }) {
 		streamingContent,
 		sendMessage,
 		savePreview,
+		deferPreview,
 		dismissPreview,
 	} = useAgentChat();
 
 	const [input, setInput] = useState('');
+	const [missingForm, setMissingForm] = useState<MissingDetailsFormState | null>(null);
 	const bottomRef = useRef<HTMLDivElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -69,6 +145,80 @@ export function ChatWindow({ className }: { className?: string }) {
 		}
 	};
 
+	const openMissingForm = (
+		messageId: string,
+		missingDataPoints: string[],
+		hasLinkedPreview: boolean
+	) => {
+		const fields = (missingDataPoints.length ? missingDataPoints : ['Details'])
+			.slice(0, 6)
+			.map(toField);
+
+		setMissingForm({
+			messageId,
+			fields,
+			values: Object.fromEntries(fields.map((f) => [f.key, ''])),
+			hasLinkedPreview,
+		});
+	};
+
+	const handleEnterNow = (messageId: string, missingDataPoints: string[]) => {
+		openMissingForm(messageId, missingDataPoints, true);
+	};
+
+	const handleFormValueChange = (key: string, value: string) => {
+		setMissingForm((prev) =>
+			prev
+				? {
+						...prev,
+						values: { ...prev.values, [key]: value },
+				  }
+				: prev
+		);
+	};
+
+	const handleSubmitMissingForm = async () => {
+		if (!missingForm) return;
+
+		const lines = missingForm.fields.map((field) => {
+			const value = (missingForm.values[field.key] ?? '').trim();
+			return `- ${field.label}: ${value || 'Not provided yet'}`;
+		});
+
+		setMissingForm(null);
+		await sendMessage(`Here are the missing details:\n${lines.join('\n')}`);
+	};
+
+	const handleDeferMissingForm = async () => {
+		if (!missingForm) return;
+		const { messageId, hasLinkedPreview } = missingForm;
+		setMissingForm(null);
+		if (hasLinkedPreview) {
+			deferPreview(messageId);
+			return;
+		}
+		await sendMessage('Do it later');
+	};
+
+	const handleQuickChoice = async (message: ChatMessage, choice: 'enter-now' | 'do-later') => {
+		if (choice === 'enter-now') {
+			if (message.preview?.missingDataPoints?.length) {
+				openMissingForm(message.id, message.preview.missingDataPoints, true);
+				return;
+			}
+			const inferred = inferMissingPointsFromText(message.content);
+			openMissingForm(message.id, inferred, false);
+			return;
+		}
+
+		if (message.preview?.missingDataPoints?.length) {
+			deferPreview(message.id);
+			return;
+		}
+
+		await sendMessage('Do it later');
+	};
+
 	return (
 		<div className={cn('flex flex-col', className)}>
 			{/* Messages */}
@@ -77,13 +227,18 @@ export function ChatWindow({ className }: { className?: string }) {
 
 				{messages.map((msg) => (
 					<div key={msg.id}>
-						<ChatMessageBubble message={msg} />
+						<ChatMessageBubble
+							message={msg}
+							onQuickChoice={handleQuickChoice}
+						/>
 						{msg.role === 'assistant' && msg.preview && (
 							<EntityPreviewCard
 								messageId={msg.id}
 								preview={msg.preview}
 								onSave={savePreview}
+								onDefer={deferPreview}
 								onDismiss={dismissPreview}
+								onEnterNow={handleEnterNow}
 							/>
 						)}
 					</div>
@@ -96,6 +251,45 @@ export function ChatWindow({ className }: { className?: string }) {
 
 			{/* Input bar */}
 			<div className="shrink-0 border-t border-border px-3 py-2.5">
+				{missingForm && (
+					<div className="mb-2.5 rounded-xl border border-primary/25 bg-primary/5 p-3">
+						<p className="text-xs font-semibold text-primary">Enter missing details</p>
+						<div className="mt-2 space-y-2">
+							{missingForm.fields.map((field) => (
+								<div key={field.key} className="space-y-1">
+									<p className="text-[11px] text-muted-foreground">{field.label}</p>
+									<Input
+										type={field.type}
+										value={missingForm.values[field.key] ?? ''}
+										onChange={(e) =>
+											handleFormValueChange(field.key, e.target.value)
+										}
+										placeholder={field.placeholder}
+										className="h-8 text-xs"
+									/>
+								</div>
+							))}
+						</div>
+						<div className="mt-2.5 flex gap-2">
+							<Button
+								size="sm"
+								className="h-7 px-2.5 text-xs"
+								onClick={() => void handleSubmitMissingForm()}
+								disabled={isStreaming}>
+								Submit details
+							</Button>
+							<Button
+								size="sm"
+								variant="ghost"
+								className="h-7 px-2.5 text-xs"
+								onClick={() => void handleDeferMissingForm()}
+								disabled={isStreaming}>
+								Do it later
+							</Button>
+						</div>
+					</div>
+				)}
+
 				<div className="flex gap-2 items-end">
 					<Textarea
 						ref={textareaRef}

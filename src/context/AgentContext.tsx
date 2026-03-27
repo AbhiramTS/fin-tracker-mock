@@ -27,8 +27,81 @@ import type {
 	ChatSession,
 	ChatSessionSummary,
 	EntityPreview,
+	ParsedEntities,
 	SaveStatus,
 } from '@/agent/types';
+
+function detectMissingDataPoints(entities: ParsedEntities): string[] {
+	const missing: string[] = [];
+
+	for (const [index, je] of (entities.journalEntries ?? []).entries()) {
+		if (!je.description?.trim()) missing.push(`Journal entry ${index + 1}: description`);
+		if (!(je.amount > 0)) missing.push(`Journal entry ${index + 1}: amount`);
+		if (!je.date?.trim()) missing.push(`Journal entry ${index + 1}: date`);
+		if (!je.debitAccountHeadId?.trim()) {
+			missing.push(`Journal entry ${index + 1}: debit account`);
+		}
+		if (!je.creditAccountHeadId?.trim()) {
+			missing.push(`Journal entry ${index + 1}: credit account`);
+		}
+	}
+
+	for (const [index, acc] of (entities.accounts ?? []).entries()) {
+		if (!acc.name?.trim()) missing.push(`Account ${index + 1}: name`);
+		if (!acc.type?.trim()) missing.push(`Account ${index + 1}: type`);
+		if (acc.type === 'credit_card') {
+			if (acc.creditLimit === undefined) {
+				missing.push(`Credit card ${index + 1}: credit limit`);
+			}
+			if (acc.statementDay === undefined) {
+				missing.push(`Credit card ${index + 1}: statement day`);
+			}
+			if (!acc.dueDate?.trim()) missing.push(`Credit card ${index + 1}: due date`);
+		}
+	}
+
+	for (const [index, loan] of (entities.loans ?? []).entries()) {
+		if (!loan.name?.trim()) missing.push(`Loan ${index + 1}: name`);
+		if (!(loan.principalAmount > 0)) missing.push(`Loan ${index + 1}: principal amount`);
+		if (!(loan.interestRate > 0)) missing.push(`Loan ${index + 1}: interest rate`);
+		if (!(loan.tenureMonths > 0)) missing.push(`Loan ${index + 1}: tenure`);
+		if (!loan.startDate?.trim()) missing.push(`Loan ${index + 1}: start date`);
+	}
+
+	for (const [index, inv] of (entities.investments ?? []).entries()) {
+		if (!inv.name?.trim()) missing.push(`Investment ${index + 1}: name`);
+		if (!inv.type?.trim()) missing.push(`Investment ${index + 1}: type`);
+		if (!(inv.value > 0)) missing.push(`Investment ${index + 1}: value`);
+	}
+
+	for (const [index, goal] of (entities.goals ?? []).entries()) {
+		if (!goal.name?.trim()) missing.push(`Goal ${index + 1}: name`);
+		if (!(goal.targetAmount > 0)) missing.push(`Goal ${index + 1}: target amount`);
+	}
+
+	for (const [index, rec] of (entities.receivables ?? []).entries()) {
+		if (!rec.personName?.trim()) missing.push(`Receivable ${index + 1}: person name`);
+		if (!(rec.amountLent > 0)) missing.push(`Receivable ${index + 1}: amount`);
+		if (!rec.dateLent?.trim()) missing.push(`Receivable ${index + 1}: date`);
+	}
+
+	for (const [index, rp] of (entities.recurringPayments ?? []).entries()) {
+		if (!rp.name?.trim()) missing.push(`Recurring payment ${index + 1}: name`);
+		if (!(rp.amount > 0)) missing.push(`Recurring payment ${index + 1}: amount`);
+		if (!rp.frequency?.trim()) missing.push(`Recurring payment ${index + 1}: frequency`);
+		if (!rp.nextDate?.trim()) missing.push(`Recurring payment ${index + 1}: next date`);
+		if (!rp.category?.trim()) missing.push(`Recurring payment ${index + 1}: category`);
+	}
+
+	for (const [index, ri] of (entities.recurringIncomes ?? []).entries()) {
+		if (!ri.name?.trim()) missing.push(`Recurring income ${index + 1}: name`);
+		if (!(ri.amount > 0)) missing.push(`Recurring income ${index + 1}: amount`);
+		if (!ri.frequency?.trim()) missing.push(`Recurring income ${index + 1}: frequency`);
+		if (!ri.nextDate?.trim()) missing.push(`Recurring income ${index + 1}: next date`);
+	}
+
+	return missing;
+}
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 const CONFIG_KEY = 'ft_agent_config';
@@ -69,6 +142,7 @@ interface AgentContextValue {
 	stopStreaming: () => void;
 
 	savePreview: (messageId: string) => Promise<void>;
+	deferPreview: (messageId: string) => void;
 	dismissPreview: (messageId: string) => void;
 }
 
@@ -244,14 +318,39 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
 				abortRef.current = new AbortController();
 
-				const fullText = await streamAgentResponse(
+				let fullText = await streamAgentResponse(
 					coreMessages,
 					config,
 					setStreamingContent,
 					abortRef.current.signal
 				);
 
-				const parsed = parseAgentResponse(fullText, appState);
+				let parsed = parseAgentResponse(fullText, appState);
+				const hasOpenJsonFence = /```(?:json)?\s*/i.test(fullText);
+				const hasClosedJsonFence = /```(?:json)?\s*[\s\S]*```/i.test(fullText);
+
+				// If the model started JSON but got cut off, ask it to continue once.
+				if (!parsed && hasOpenJsonFence && !hasClosedJsonFence) {
+					const continuationMessages = [
+						...coreMessages,
+						{ role: 'assistant', content: fullText },
+						{
+							role: 'user',
+							content:
+								'Your previous response was truncated. Continue exactly where you stopped and finish the same fenced JSON block. Do not restart from the beginning.',
+						},
+					] as const;
+
+					const continuation = await streamAgentResponse(
+						continuationMessages,
+						config,
+						(deltaText) => setStreamingContent(`${fullText}${deltaText}`),
+						abortRef.current.signal
+					);
+
+					fullText = `${fullText}${continuation}`;
+					parsed = parseAgentResponse(fullText, appState);
+				}
 
 				const assistantMsg: ChatMessage = {
 					id: generateId(),
@@ -263,6 +362,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 								entities: parsed.entities,
 								summary: parsed.summary,
 								saveStatus: 'pending',
+								missingDataPoints: detectMissingDataPoints(parsed.entities),
 							}
 						: undefined,
 				};
@@ -311,6 +411,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 			const message = currentSession.messages.find((m) => m.id === messageId);
 			if (!message?.preview) return;
 
+			const missingDataPoints = detectMissingDataPoints(message.preview.entities);
+			if (missingDataPoints.length > 0) {
+				updateMessagePreview(messageId, {
+					saveStatus: 'pending' as SaveStatus,
+					missingDataPoints,
+					errorMessage:
+						'Missing data points found. You can enter details now or do it later.',
+				});
+				notify({
+					title: 'More details needed',
+					description: 'Please add missing fields now or choose to do it later.',
+					tone: 'warning',
+				});
+				return;
+			}
+
 			updateMessagePreview(messageId, { saveStatus: 'saving' as SaveStatus });
 
 			try {
@@ -325,7 +441,50 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
 				// Accounts
 				for (const acc of entities.accounts ?? []) {
-					await save('accounts', acc as unknown as Record<string, unknown>);
+					const {
+						creditLimit,
+						outstanding,
+						statementDay,
+						billingCycleDays,
+						gracePeriodDays,
+						dueDate,
+						statementDate,
+						taxRate,
+						...baseAcc
+					} = acc as typeof acc & {
+						creditLimit?: number;
+						outstanding?: number;
+						statementDay?: number;
+						billingCycleDays?: number;
+						gracePeriodDays?: number;
+						dueDate?: string;
+						statementDate?: string;
+						taxRate?: number;
+					};
+					const existingAccount = appState.accounts.find(
+						(a) =>
+							a.name.toLowerCase() === (acc.name ?? '').toLowerCase() &&
+							a.type === acc.type
+					);
+					const today = new Date().toISOString().slice(0, 10);
+					const creditCardDetails =
+						acc.type === 'credit_card'
+							? {
+									limit: creditLimit ?? 0,
+									outstanding: outstanding ?? 0,
+									statementDay: statementDay ?? 1,
+									billingCycleDays: billingCycleDays ?? 30,
+									gracePeriodDays: gracePeriodDays ?? 20,
+									dueDate: dueDate ?? today,
+									statementDate: statementDate ?? today,
+									...(taxRate !== undefined ? { taxRate } : {}),
+								}
+							: undefined;
+					await save('accounts', {
+						...baseAcc,
+						...(existingAccount ? { id: existingAccount.id } : {}),
+						...(creditCardDetails ? { creditCard: creditCardDetails } : {}),
+					} as unknown as Record<string, unknown>);
 					savedCount++;
 				}
 
@@ -470,6 +629,41 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 		[updateMessagePreview, persistSession]
 	);
 
+	const deferPreview = useCallback(
+		(messageId: string) => {
+			updateMessagePreview(messageId, {
+				saveStatus: 'deferred' as SaveStatus,
+				errorMessage: undefined,
+			});
+			setCurrentSession((prev) => {
+				if (!prev) return prev;
+				const updated: ChatSession = {
+					...prev,
+					messages: prev.messages.map((m) =>
+						m.id === messageId && m.preview
+							? {
+									...m,
+									preview: {
+										...m.preview,
+										saveStatus: 'deferred' as SaveStatus,
+										errorMessage: undefined,
+									},
+							  }
+							: m
+					),
+				};
+				persistSession(updated).catch(console.error);
+				return updated;
+			});
+			notify({
+				title: 'Saved for later',
+				description: 'You can complete this preview from this chat anytime.',
+				tone: 'default',
+			});
+		},
+		[updateMessagePreview, persistSession, notify]
+	);
+
 	return (
 		<AgentContext.Provider
 			value={{
@@ -486,6 +680,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 				sendMessage,
 				stopStreaming,
 				savePreview,
+				deferPreview,
 				dismissPreview,
 			}}>
 			{children}
