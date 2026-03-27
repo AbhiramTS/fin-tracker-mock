@@ -130,12 +130,14 @@ export type ComputedBalances = Record<string, number>;
 
 // ── Recurring items ───────────────────────────────────────────────────────────
 export type Frequency = 'daily' | 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'yearly';
+export type MonthScheduleRule = 'same_day' | 'last_day' | 'last_working_day';
 
 export interface RecurringPayment extends BaseRecord {
 	name: string;
 	amount: number;
 	frequency: Frequency;
 	nextDate: string;
+	monthScheduleRule?: MonthScheduleRule;
 	category: string;
 	accountId: string; // credit side (bank account to pay from)
 	debitAccountHeadId?: string; // expense head (e.g. "Bills → Netflix") — optional default

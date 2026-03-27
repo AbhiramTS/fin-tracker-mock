@@ -30,6 +30,7 @@ import type {
 	Reconciliation,
 	Goal,
 	Frequency,
+	MonthScheduleRule,
 	LoanType,
 	InvestmentType,
 	GoalType,
@@ -78,6 +79,16 @@ export const FREQS: Frequency[] = [
 	'quarterly',
 	'yearly',
 ];
+export const MONTH_SCHEDULE_RULES: MonthScheduleRule[] = [
+	'same_day',
+	'last_day',
+	'last_working_day',
+];
+const MONTH_SCHEDULE_RULE_LABEL: Record<MonthScheduleRule, string> = {
+	same_day: 'Same day-of-month',
+	last_day: 'Last day of month',
+	last_working_day: 'Last working day of month',
+};
 export const INV_TYPES: InvestmentType[] = [
 	'stocks',
 	'mutual_fund',
@@ -1221,6 +1232,7 @@ export function RecurringPaymentForm({
 		amount: undefined,
 		frequency: 'monthly',
 		nextDate: todayStr(),
+		monthScheduleRule: 'same_day',
 		category: 'Housing',
 		accountId: accounts[0]?.id ?? '',
 		debitAccountHeadId: '',
@@ -1239,6 +1251,8 @@ export function RecurringPaymentForm({
 			h.parentId === 'head_expense' ||
 			accountHeads.find((p) => p.id === h.parentId)?.type === 'expense'
 	);
+	const isMonthBased =
+		f.frequency === 'monthly' || f.frequency === 'quarterly' || f.frequency === 'yearly';
 
 	return (
 		<form
@@ -1292,6 +1306,30 @@ export function RecurringPaymentForm({
 						required
 					/>
 				</FormField>
+				{isMonthBased && (
+					<FormField
+						label="Month-end Rule"
+						hint="Choose how month-based recurrences are scheduled.">
+						<Select
+							value={f.monthScheduleRule ?? 'same_day'}
+							onValueChange={(v) =>
+								setF({ ...f, monthScheduleRule: v as MonthScheduleRule })
+							}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{MONTH_SCHEDULE_RULES.map((rule) => (
+									<SelectItem
+										key={rule}
+										value={rule}>
+										{MONTH_SCHEDULE_RULE_LABEL[rule]}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</FormField>
+				)}
 				<FormField label="Category">
 					<Select
 						value={f.category ?? 'Housing'}

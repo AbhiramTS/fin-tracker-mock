@@ -7,19 +7,27 @@ import {
 	addDays,
 	addWeeks,
 	addMonths,
-	addQuarters,
-	addYears,
 	startOfMonth,
 	endOfMonth,
 	parseISO,
 	isWithinInterval,
 } from 'date-fns';
 import { generateAmortisation, statementDateOnOrBefore } from './amortisation';
-import type { AppState, Frequency, PaymentOccurrence, PaymentOccurrenceKind } from '@/types';
+import type {
+	AppState,
+	Frequency,
+	MonthScheduleRule,
+	PaymentOccurrence,
+	PaymentOccurrenceKind,
+} from '@/types';
 
 // ── Frequency advancement ─────────────────────────────────────────────────────
 
-export function advanceByFrequency(dateStr: string, frequency: Frequency): string {
+export function advanceByFrequency(
+	dateStr: string,
+	frequency: Frequency,
+	monthScheduleRule: MonthScheduleRule = 'same_day'
+): string {
 	const d = parseISO(dateStr);
 	switch (frequency) {
 		case 'daily':
@@ -29,12 +37,33 @@ export function advanceByFrequency(dateStr: string, frequency: Frequency): strin
 		case 'fortnightly':
 			return format(addWeeks(d, 2), 'yyyy-MM-dd');
 		case 'monthly':
-			return format(addMonths(d, 1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, 1, monthScheduleRule), 'yyyy-MM-dd');
 		case 'quarterly':
-			return format(addQuarters(d, 1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, 3, monthScheduleRule), 'yyyy-MM-dd');
 		case 'yearly':
-			return format(addYears(d, 1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, 12, monthScheduleRule), 'yyyy-MM-dd');
 	}
+}
+
+function advanceMonthPattern(current: Date, months: number, monthScheduleRule: MonthScheduleRule): Date {
+	const target = addMonths(current, months);
+	switch (monthScheduleRule) {
+		case 'last_day':
+			return endOfMonth(target);
+		case 'last_working_day':
+			return lastWorkingDayOfMonth(target);
+		case 'same_day':
+		default:
+			return target;
+	}
+}
+
+function lastWorkingDayOfMonth(dateInMonth: Date): Date {
+	let d = endOfMonth(dateInMonth);
+	while (d.getDay() === 0 || d.getDay() === 6) {
+		d = addDays(d, -1);
+	}
+	return d;
 }
 
 // ── Deterministic occurrence id ───────────────────────────────────────────────
@@ -116,7 +145,7 @@ export function getOccurrencesForMonth(
 	(state.recurringPayments ?? [])
 		.filter((r) => r.isActive)
 		.forEach((r) =>
-			projectDatesInMonth(r.nextDate, r.frequency, interval).forEach((d) =>
+			projectDatesInMonth(r.nextDate, r.frequency, interval, r.monthScheduleRule).forEach((d) =>
 				add('recurring_payment', r.id, d, r.amount, r.name, r.category, r.accountId)
 			)
 		);
@@ -230,7 +259,8 @@ function creditCardOutstandingOnDate(
 function projectDatesInMonth(
 	anchorDate: string,
 	frequency: Frequency,
-	interval: { start: Date; end: Date }
+	interval: { start: Date; end: Date },
+	monthScheduleRule: MonthScheduleRule = 'same_day'
 ): string[] {
 	const results = new Set<string>();
 
@@ -238,20 +268,26 @@ function projectDatesInMonth(
 	let cur = parseISO(anchorDate);
 	while (cur <= interval.end) {
 		if (cur >= interval.start) results.add(format(cur, 'yyyy-MM-dd'));
-		cur = parseISO(advanceByFrequency(format(cur, 'yyyy-MM-dd'), frequency));
+		cur = parseISO(
+			advanceByFrequency(format(cur, 'yyyy-MM-dd'), frequency, monthScheduleRule)
+		);
 	}
 
 	// Walk backward from anchor to cover past months
-	let back = stepBack(anchorDate, frequency);
+	let back = stepBack(anchorDate, frequency, monthScheduleRule);
 	while (parseISO(back) >= interval.start) {
 		if (parseISO(back) <= interval.end) results.add(back);
-		back = stepBack(back, frequency);
+		back = stepBack(back, frequency, monthScheduleRule);
 	}
 
 	return [...results].sort();
 }
 
-function stepBack(dateStr: string, frequency: Frequency): string {
+function stepBack(
+	dateStr: string,
+	frequency: Frequency,
+	monthScheduleRule: MonthScheduleRule = 'same_day'
+): string {
 	const d = parseISO(dateStr);
 	switch (frequency) {
 		case 'daily':
@@ -261,11 +297,11 @@ function stepBack(dateStr: string, frequency: Frequency): string {
 		case 'fortnightly':
 			return format(addWeeks(d, -2), 'yyyy-MM-dd');
 		case 'monthly':
-			return format(addMonths(d, -1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, -1, monthScheduleRule), 'yyyy-MM-dd');
 		case 'quarterly':
-			return format(addQuarters(d, -1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, -3, monthScheduleRule), 'yyyy-MM-dd');
 		case 'yearly':
-			return format(addYears(d, -1), 'yyyy-MM-dd');
+			return format(advanceMonthPattern(d, -12, monthScheduleRule), 'yyyy-MM-dd');
 	}
 }
 

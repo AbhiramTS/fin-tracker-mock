@@ -694,7 +694,11 @@ export function PaymentsView() {
 				if (src && occ.dueDate >= src.nextDate)
 					await save('recurringPayments', {
 						...src,
-						nextDate: advanceByFrequency(src.nextDate, src.frequency),
+						nextDate: advanceByFrequency(
+							src.nextDate,
+							src.frequency,
+							src.monthScheduleRule
+						),
 					} as unknown as Record<string, unknown>);
 			}
 			if (occ.kind === 'recurring_income') {
@@ -734,7 +738,11 @@ export function PaymentsView() {
 				if (src && occ.dueDate >= src.nextDate)
 					await save('recurringPayments', {
 						...src,
-						nextDate: advanceByFrequency(src.nextDate, src.frequency),
+						nextDate: advanceByFrequency(
+							src.nextDate,
+							src.frequency,
+							src.monthScheduleRule
+						),
 					} as unknown as Record<string, unknown>);
 			}
 			if (occ.kind === 'recurring_income') {
