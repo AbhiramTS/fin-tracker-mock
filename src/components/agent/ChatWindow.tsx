@@ -16,13 +16,17 @@ function EmptyState() {
 			<div>
 				<p className="text-sm font-semibold text-foreground/70">AI Finance Assistant</p>
 				<p className="text-xs text-muted-foreground mt-1 max-w-[240px]">
-					Describe transactions, loans, goals and more in plain language.
+					Ask for budgeting, forecasting, risk checks, product comparisons, or data entry
+					in plain language.
 				</p>
 			</div>
 			<div className="text-xs text-muted-foreground bg-muted/40 rounded-xl px-4 py-3 max-w-[280px] space-y-1 text-left">
 				<p>💬 "Add salary of ₹85,000 to HDFC savings for March"</p>
+				<p>💬 "Build a monthly budget so I can save ₹20,000"</p>
+				<p>💬 "Forecast my next 6 months and highlight risk"</p>
 				<p>💬 "Netflix subscription ₹649 monthly from ICICI"</p>
 				<p>💬 "Lent ₹5,000 to Rahul from cash wallet"</p>
+				<p>💬 "Compare two credit cards for my spending pattern"</p>
 				<p>💬 "New goal: Emergency fund of ₹3 lakhs"</p>
 			</div>
 		</div>

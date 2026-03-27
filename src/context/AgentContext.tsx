@@ -19,6 +19,7 @@ import {
 } from '@/agent/db';
 import { streamAgentResponse } from '@/agent/llm';
 import { buildMessages, buildSystemPrompt } from '@/agent/prompt';
+import { buildRealtimeQueryContext } from '@/agent/dataQuery';
 import { parseAgentResponse, resolveAccountId } from '@/agent/parse';
 import type {
 	AgentConfig,
@@ -232,7 +233,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 			setStreamingContent('');
 
 			try {
-				const systemPrompt = buildSystemPrompt(appState);
+				const basePrompt = buildSystemPrompt(appState);
+				const queryContext = buildRealtimeQueryContext(content, appState);
+				const systemPrompt = `${basePrompt}\n\n${queryContext}`;
 				const history = sessionWithUser.messages.map((m) => ({
 					role: m.role,
 					content: m.content,
