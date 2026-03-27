@@ -60,6 +60,7 @@ export function ChatWindow({ className }: { className?: string }) {
 		isStreaming,
 		streamingContent,
 		sendMessage,
+		resendMessage,
 		savePreview,
 		deferPreview,
 		dismissPreview,
@@ -126,7 +127,7 @@ export function ChatWindow({ className }: { className?: string }) {
 				? {
 						...prev,
 						values: { ...prev.values, [key]: value },
-				  }
+					}
 				: prev
 		);
 	};
@@ -170,17 +171,40 @@ export function ChatWindow({ className }: { className?: string }) {
 		await sendMessage('Do it later');
 	};
 
+	const handleRetry = async (message: ChatMessage) => {
+		await resendMessage(message.id);
+	};
+
+	const shouldShowRetryForMessage = (message: ChatMessage, index: number): boolean => {
+		if (message.role !== 'assistant') return false;
+		if (message.error?.canRetry) return true;
+
+		const looksLikeError = message.content.trim().startsWith('⚠️');
+		if (!looksLikeError) return false;
+
+		// Legacy fallback: if an older error bubble exists, allow retry using the nearest
+		// previous user message in the session.
+		for (let i = index - 1; i >= 0; i--) {
+			if (messages[i]?.role === 'user') return true;
+		}
+
+		return false;
+	};
+
 	return (
 		<div className={cn('flex flex-col', className)}>
 			{/* Messages */}
 			<div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
 				{messages.length === 0 && !isStreaming && <EmptyState />}
 
-				{messages.map((msg) => (
+				{messages.map((msg, index) => (
 					<div key={msg.id}>
 						<ChatMessageBubble
 							message={msg}
 							onQuickChoice={handleQuickChoice}
+							onRetry={handleRetry}
+							retryDisabled={isStreaming}
+							showRetry={shouldShowRetryForMessage(msg, index)}
 						/>
 						{msg.role === 'assistant' && msg.preview && (
 							<EntityPreviewCard
@@ -212,18 +236,26 @@ export function ChatWindow({ className }: { className?: string }) {
 						)}
 						<div className="mt-2 space-y-2">
 							{missingForm.fields.map((field) => (
-								<div key={field.key} className="space-y-1">
-									<p className="text-[11px] text-muted-foreground">{field.label}</p>
+								<div
+									key={field.key}
+									className="space-y-1">
+									<p className="text-[11px] text-muted-foreground">
+										{field.label}
+									</p>
 									{field.type === 'account' ? (
 										<Select
 											value={missingForm.values[field.key] ?? ''}
-											onValueChange={(value) => handleFormValueChange(field.key, value)}>
+											onValueChange={(value) =>
+												handleFormValueChange(field.key, value)
+											}>
 											<SelectTrigger className="h-8 text-xs">
 												<SelectValue placeholder={field.placeholder} />
 											</SelectTrigger>
 											<SelectContent>
 												{accountOptions.map((accountName) => (
-													<SelectItem key={accountName} value={accountName}>
+													<SelectItem
+														key={accountName}
+														value={accountName}>
 														{accountName}
 													</SelectItem>
 												))}

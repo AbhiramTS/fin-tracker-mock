@@ -17,7 +17,7 @@ import {
 	listAgentSessions,
 	saveAgentSession,
 } from '@/agent/db';
-import { getAgentErrorMessage, streamAgentResponse } from '@/agent/llm';
+import { getAgentErrorInfo, streamAgentResponse } from '@/agent/llm';
 import { buildMessages, buildSystemPrompt } from '@/agent/prompt';
 import { buildRealtimeQueryContext } from '@/agent/dataQuery';
 import { parseAgentResponse, resolveAccountId } from '@/agent/parse';
@@ -33,7 +33,7 @@ import type {
 // ── localStorage helpers ──────────────────────────────────────────────────────
 const CONFIG_KEY = 'ft_agent_config';
 
-export function loadAgentConfig(): AgentConfig | null {
+function loadAgentConfig(): AgentConfig | null {
 	try {
 		const raw = localStorage.getItem(CONFIG_KEY);
 		if (!raw) return null;
@@ -43,11 +43,11 @@ export function loadAgentConfig(): AgentConfig | null {
 	}
 }
 
-export function persistAgentConfig(config: AgentConfig): void {
+function persistAgentConfig(config: AgentConfig): void {
 	localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 }
 
-export function clearAgentConfig(): void {
+function clearAgentConfig(): void {
 	localStorage.removeItem(CONFIG_KEY);
 }
 
@@ -66,6 +66,7 @@ interface AgentContextValue {
 	isStreaming: boolean;
 	streamingContent: string;
 	sendMessage: (content: string) => Promise<void>;
+	resendMessage: (messageId: string) => Promise<void>;
 	stopStreaming: () => void;
 
 	savePreview: (messageId: string) => Promise<void>;
@@ -74,6 +75,26 @@ interface AgentContextValue {
 }
 
 const AgentContext = createContext<AgentContextValue | null>(null);
+let warnedMissingAgentProvider = false;
+
+const DEV_AGENT_FALLBACK: AgentContextValue = {
+	config: null,
+	saveConfig: () => undefined,
+	removeConfig: () => undefined,
+	sessions: [],
+	currentSession: null,
+	startNewSession: () => undefined,
+	loadSession: async () => undefined,
+	deleteSession: async () => undefined,
+	isStreaming: false,
+	streamingContent: '',
+	sendMessage: async () => undefined,
+	resendMessage: async () => undefined,
+	stopStreaming: () => undefined,
+	savePreview: async () => undefined,
+	deferPreview: () => undefined,
+	dismissPreview: () => undefined,
+};
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 export function AgentProvider({ children }: { children: ReactNode }) {
@@ -242,13 +263,18 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					content: m.content,
 				}));
 				const coreMessages = buildMessages(systemPrompt, history);
+				let latestStreamingText = '';
+				const handleStreamingUpdate = (text: string) => {
+					latestStreamingText = text;
+					setStreamingContent(text);
+				};
 
 				abortRef.current = new AbortController();
 
 				let fullText = await streamAgentResponse(
 					coreMessages,
 					config,
-					setStreamingContent,
+					handleStreamingUpdate,
 					abortRef.current.signal
 				);
 
@@ -271,7 +297,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					const continuation = await streamAgentResponse(
 						continuationMessages,
 						config,
-						(deltaText) => setStreamingContent(`${fullText}${deltaText}`),
+						(deltaText) => handleStreamingUpdate(`${fullText}${deltaText}`),
 						abortRef.current.signal
 					);
 
@@ -289,7 +315,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 								entities: parsed.entities,
 								summary: parsed.summary,
 								saveStatus: 'pending',
-								missingDataPoints: parsed.missingDataRequest?.fields.map((field) => field.label),
+								missingDataPoints: parsed.missingDataRequest?.fields.map(
+									(field) => field.label
+								),
 								missingDataRequest: parsed.missingDataRequest,
 							}
 						: undefined,
@@ -304,13 +332,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 				await persistSession(finalSession);
 			} catch (error) {
 				if (error instanceof Error && error.name === 'AbortError') return;
-				const message = getAgentErrorMessage(error);
+				const errorInfo = getAgentErrorInfo(error);
+				const partialResponse = latestStreamingText.trim();
+				const errorContent = partialResponse
+					? `${partialResponse}\n\n⚠️ ${errorInfo.message}`
+					: `⚠️ ${errorInfo.message}`;
 
 				const errMsg: ChatMessage = {
 					id: generateId(),
 					role: 'assistant',
-					content: `⚠️ ${message}`,
+					content: errorContent,
 					timestamp: new Date().toISOString(),
+					error: {
+						kind: errorInfo.kind === 'abort' ? 'unknown' : errorInfo.kind,
+						canRetry: errorInfo.kind !== 'auth',
+						retryMessageId: userMsg.id,
+					},
 				};
 				const errSession: ChatSession = {
 					...sessionWithUser,
@@ -318,6 +355,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					updatedAt: new Date().toISOString(),
 				};
 				setCurrentSession(errSession);
+				notify({
+					title:
+						errorInfo.kind === 'rate-limit'
+							? 'AI request rate-limited'
+							: 'AI request failed',
+					description: errorInfo.message,
+					tone: errorInfo.kind === 'rate-limit' ? 'warning' : 'error',
+					durationMs: errorInfo.kind === 'rate-limit' ? 7000 : undefined,
+				});
 				await persistSession(errSession);
 			} finally {
 				setIsStreaming(false);
@@ -326,6 +372,34 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 			}
 		},
 		[config, currentSession, isStreaming, appState, persistSession]
+	);
+
+	const resendMessage = useCallback(
+		async (messageId: string) => {
+			if (isStreaming || !currentSession) return;
+
+			const failedMessageIndex = currentSession.messages.findIndex(
+				(message) => message.id === messageId
+			);
+			if (failedMessageIndex < 0) return;
+
+			const failedMessage = currentSession.messages[failedMessageIndex];
+			const retryMessageId = failedMessage?.error?.retryMessageId;
+
+			const sourceMessage = retryMessageId
+				? currentSession.messages.find(
+						(message) => message.id === retryMessageId && message.role === 'user'
+					)
+				: [...currentSession.messages]
+						.slice(0, failedMessageIndex)
+						.reverse()
+						.find((message) => message.role === 'user');
+			const sourceContent = sourceMessage?.content.trim();
+			if (!sourceContent) return;
+
+			await sendMessage(sourceContent);
+		},
+		[currentSession, isStreaming, sendMessage]
 	);
 
 	const stopStreaming = useCallback(() => {
@@ -577,7 +651,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 										saveStatus: 'deferred' as SaveStatus,
 										errorMessage: undefined,
 									},
-							  }
+								}
 							: m
 					),
 				};
@@ -607,6 +681,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 				isStreaming,
 				streamingContent,
 				sendMessage,
+				resendMessage,
 				stopStreaming,
 				savePreview,
 				deferPreview,
@@ -619,6 +694,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
 export function useAgentChat(): AgentContextValue {
 	const ctx = useContext(AgentContext);
-	if (!ctx) throw new Error('useAgentChat must be used inside AgentProvider');
+	if (!ctx) {
+		if (import.meta.env.DEV) {
+			if (!warnedMissingAgentProvider) {
+				warnedMissingAgentProvider = true;
+				console.warn(
+					'useAgentChat called without AgentProvider. Returning dev fallback context.'
+				);
+			}
+			return DEV_AGENT_FALLBACK;
+		}
+		throw new Error('useAgentChat must be used inside AgentProvider');
+	}
 	return ctx;
 }

@@ -155,6 +155,11 @@ export interface ChatMessage {
 	content: string;
 	timestamp: string; // ISO 8601
 	preview?: EntityPreview;
+	error?: {
+		kind: 'auth' | 'rate-limit' | 'network' | 'unknown';
+		canRetry: boolean;
+		retryMessageId?: string;
+	};
 }
 
 // ── Chat session ──────────────────────────────────────────────────────────────

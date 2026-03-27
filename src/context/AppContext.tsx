@@ -131,6 +131,18 @@ interface AppContextValue {
 }
 
 const AppCtx = createContext<AppContextValue | null>(null);
+let warnedMissingAppProvider = false;
+
+const DEV_APP_FALLBACK: AppContextValue = {
+	state: INITIAL,
+	save: async () => {
+		throw new Error('save is unavailable without AppProvider');
+	},
+	remove: async () => undefined,
+	clearData: async () => undefined,
+	syncNow: async () => undefined,
+	connectFirebase: async () => undefined,
+};
 
 // ── AccountHead mirror helpers ────────────────────────────────────────────────
 // Every Account and Loan is ALSO an AccountHead (same id, isAccount: true).
@@ -674,6 +686,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp(): AppContextValue {
 	const ctx = useContext(AppCtx);
-	if (!ctx) throw new Error('useApp must be used inside <AppProvider>');
+	if (!ctx) {
+		if (import.meta.env.DEV) {
+			if (!warnedMissingAppProvider) {
+				warnedMissingAppProvider = true;
+				console.warn('useApp called without AppProvider. Returning dev fallback context.');
+			}
+			return DEV_APP_FALLBACK;
+		}
+		throw new Error('useApp must be used inside <AppProvider>');
+	}
 	return ctx;
 }

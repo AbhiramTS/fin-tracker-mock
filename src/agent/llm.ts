@@ -12,6 +12,13 @@ export type { CoreMessage };
 
 const AGENT_MAX_OUTPUT_TOKENS = 1600;
 
+export interface AgentErrorInfo {
+	kind: 'abort' | 'auth' | 'rate-limit' | 'network' | 'unknown';
+	message: string;
+	statusCode?: number;
+	retryAfterSeconds?: number;
+}
+
 function redactSecrets(input: string): string {
 	return input
 		.replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[redacted-api-key]')
@@ -19,28 +26,117 @@ function redactSecrets(input: string): string {
 		.replace(/\bBearer\s+[A-Za-z0-9._-]{8,}\b/gi, 'Bearer [redacted-token]');
 }
 
-function extractStatusCode(text: string): number | null {
+function extractStatusCodeFromText(text: string): number | null {
 	const statusMatch = text.match(/\b(4\d\d|5\d\d)\b/);
 	if (!statusMatch) return null;
 	const parsed = Number(statusMatch[1]);
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function getAgentErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.name === 'AbortError') {
-		return 'Request cancelled.';
+function readObjectValue(source: unknown, key: string): unknown {
+	if (!source || typeof source !== 'object') return undefined;
+	return (source as Record<string, unknown>)[key];
+}
+
+function extractStatusCode(error: unknown): number | null {
+	const statusCandidates = [
+		readObjectValue(error, 'statusCode'),
+		readObjectValue(error, 'status'),
+		readObjectValue(readObjectValue(error, 'response'), 'status'),
+		readObjectValue(readObjectValue(error, 'cause'), 'statusCode'),
+		readObjectValue(readObjectValue(error, 'cause'), 'status'),
+	];
+
+	for (const candidate of statusCandidates) {
+		const parsed = Number(candidate);
+		if (Number.isFinite(parsed) && parsed >= 400 && parsed <= 599) {
+			return parsed;
+		}
 	}
 
-	const rawMessage =
-		error instanceof Error
-			? error.message
-			: typeof error === 'string'
-				? error
-				: 'Unexpected AI provider error.';
+	const rawMessage = extractRawMessage(error);
+	return rawMessage ? extractStatusCodeFromText(rawMessage) : null;
+}
 
+function readHeaderValue(headers: unknown, key: string): string | null {
+	if (!headers) return null;
+	if (headers instanceof Headers) {
+		return headers.get(key);
+	}
+	if (typeof headers === 'object') {
+		const record = headers as Record<string, unknown>;
+		const direct = record[key] ?? record[key.toLowerCase()] ?? record[key.toUpperCase()];
+		return typeof direct === 'string' ? direct : null;
+	}
+	return null;
+}
+
+function extractRetryAfterSeconds(error: unknown): number | null {
+	const headersCandidates = [
+		readObjectValue(error, 'headers'),
+		readObjectValue(error, 'responseHeaders'),
+		readObjectValue(readObjectValue(error, 'response'), 'headers'),
+		readObjectValue(readObjectValue(error, 'cause'), 'headers'),
+	];
+
+	for (const headers of headersCandidates) {
+		const raw = readHeaderValue(headers, 'retry-after');
+		if (!raw) continue;
+		const seconds = Number(raw);
+		if (Number.isFinite(seconds) && seconds > 0) return seconds;
+		const retryDate = Date.parse(raw);
+		if (!Number.isNaN(retryDate)) {
+			const deltaSeconds = Math.ceil((retryDate - Date.now()) / 1000);
+			if (deltaSeconds > 0) return deltaSeconds;
+		}
+	}
+
+	return null;
+}
+
+function extractRawMessage(error: unknown): string {
+	if (error instanceof Error) {
+		if (error.message) return error.message;
+		if (error.cause) return extractRawMessage(error.cause);
+	}
+
+	if (typeof error === 'string') return error;
+
+	if (error && typeof error === 'object') {
+		for (const key of ['message', 'error', 'detail', 'details']) {
+			const value = readObjectValue(error, key);
+			if (typeof value === 'string' && value.trim()) return value;
+		}
+
+		const cause = readObjectValue(error, 'cause');
+		if (cause) {
+			const causeMessage = extractRawMessage(cause);
+			if (causeMessage.trim()) return causeMessage;
+		}
+	}
+
+	return 'Unexpected AI provider error.';
+}
+
+function formatRetryDelay(seconds: number): string {
+	if (seconds < 60) return `about ${seconds}s`;
+	const minutes = Math.ceil(seconds / 60);
+	return minutes === 1 ? 'about 1 minute' : `about ${minutes} minutes`;
+}
+
+export function getAgentErrorInfo(error: unknown): AgentErrorInfo {
+	if (error instanceof Error && error.name === 'AbortError') {
+		return {
+			kind: 'abort',
+			message: 'Request cancelled.',
+		};
+	}
+
+	const rawMessage = extractRawMessage(error);
 	const safeMessage = redactSecrets(rawMessage);
 	const lower = safeMessage.toLowerCase();
-	const statusCode = extractStatusCode(safeMessage);
+	const statusCode = extractStatusCode(error);
+	const retryAfterSeconds = extractRetryAfterSeconds(error) ?? undefined;
 
 	const isAuthLike =
 		statusCode === 401 ||
@@ -50,17 +146,56 @@ export function getAgentErrorMessage(error: unknown): string {
 		);
 
 	if (isAuthLike) {
-		return 'Authentication failed for the AI provider. Your token may be missing, expired, or invalid. Update it in Settings -> AI Agent and try again.';
+		return {
+			kind: 'auth',
+			statusCode: statusCode ?? undefined,
+			message:
+				'Authentication failed for the AI provider. Your token may be missing, expired, or invalid. Update it in Settings -> AI Agent and try again.',
+		};
 	}
 
 	const isQuotaLike =
 		statusCode === 429 ||
-		/quota|rate limit|billing|insufficient_quota|resource exhausted/.test(lower);
+		/too many requests|quota|rate limit|billing|insufficient_quota|resource exhausted/.test(
+			lower
+		);
 	if (isQuotaLike) {
-		return 'AI provider quota or billing limit reached. Check your provider plan/limits and try again.';
+		return {
+			kind: 'rate-limit',
+			statusCode: statusCode ?? undefined,
+			retryAfterSeconds,
+			message: retryAfterSeconds
+				? `Rate limit reached for the AI provider. Wait ${formatRetryDelay(retryAfterSeconds)} and send the message again.`
+				: 'Rate limit reached for the AI provider. Wait a moment and send the message again. If this keeps happening, check your provider quota or billing limits.',
+		};
 	}
 
-	return safeMessage || 'Unexpected AI provider error.';
+	const isNetworkLike =
+		statusCode === 408 ||
+		statusCode === 502 ||
+		statusCode === 503 ||
+		statusCode === 504 ||
+		/failed to fetch|network|timed out|timeout|unavailable|offline|econn|enotfound|socket|connection/.test(
+			lower
+		);
+	if (isNetworkLike) {
+		return {
+			kind: 'network',
+			statusCode: statusCode ?? undefined,
+			message:
+				'Could not reach the AI provider right now. Check your network connection or provider status and try again.',
+		};
+	}
+
+	return {
+		kind: 'unknown',
+		statusCode: statusCode ?? undefined,
+		message: safeMessage || 'Unexpected AI provider error.',
+	};
+}
+
+export function getAgentErrorMessage(error: unknown): string {
+	return getAgentErrorInfo(error).message;
 }
 
 function getProvider(config: AgentConfig): 'openai-compatible' | 'gemini' {

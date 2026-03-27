@@ -1,3 +1,4 @@
+import { RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ChatMessage } from '@/agent/types';
 import { Button } from '@/components/ui/button';
@@ -39,16 +40,35 @@ function stripJsonBlock(text: string): string {
 	return text.replace(/```(?:json)?\s*[\s\S]*?(?:```|$)/gi, '').trim();
 }
 
+function getAssistantDisplayText(message: ChatMessage): string {
+	const stripped = stripJsonBlock(message.content);
+	if (stripped) return stripped;
+	if (message.preview?.summary) return message.preview.summary;
+	return message.content.trim();
+}
+
 interface ChatMessageBubbleProps {
 	message: ChatMessage;
 	isStreaming?: boolean;
 	onQuickChoice?: (message: ChatMessage, choice: 'enter-now' | 'do-later') => void;
+	onRetry?: (message: ChatMessage) => void;
+	retryDisabled?: boolean;
+	showRetry?: boolean;
 }
 
-export function ChatMessageBubble({ message, isStreaming, onQuickChoice }: ChatMessageBubbleProps) {
+export function ChatMessageBubble({
+	message,
+	isStreaming,
+	onQuickChoice,
+	onRetry,
+	retryDisabled,
+	showRetry,
+}: ChatMessageBubbleProps) {
 	const isUser = message.role === 'user';
-	const displayText = isUser ? message.content : stripJsonBlock(message.content);
+	const displayText = isUser ? message.content : getAssistantDisplayText(message);
 	const showMissingDataChoices = !isUser && Boolean(message.preview?.missingDataRequest);
+	const shouldShowRetry =
+		Boolean(showRetry) || (!isUser && Boolean(message.error?.canRetry) && Boolean(onRetry));
 
 	return (
 		<div className={cn('flex gap-2 items-end', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -97,6 +117,20 @@ export function ChatMessageBubble({ message, isStreaming, onQuickChoice }: ChatM
 							className="h-6 rounded-full px-2.5 text-[11px] font-medium border border-border/70 bg-background/20 hover:bg-background/35"
 							onClick={() => onQuickChoice(message, 'do-later')}>
 							Do it later
+						</Button>
+					</div>
+				)}
+
+				{shouldShowRetry && (
+					<div className="mt-2 flex flex-wrap gap-1.5">
+						<Button
+							size="sm"
+							variant="secondary"
+							className="h-6 rounded-full px-2.5 text-[11px] font-medium"
+							onClick={() => onRetry(message)}
+							disabled={retryDisabled}>
+							<RefreshCw className="mr-1 h-3 w-3" />
+							Resend message
 						</Button>
 					</div>
 				)}
