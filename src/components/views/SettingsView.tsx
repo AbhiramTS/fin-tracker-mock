@@ -817,30 +817,53 @@ function AIAgentSettings() {
 	const { config, saveConfig, removeConfig } = useAgentChat();
 	const { notify } = useNotifications();
 	const { setTab } = useNavigation();
+	const defaultProvider = config?.provider ?? 'openai-compatible';
+	const defaultBaseUrl = config?.baseUrl ?? 'https://api.openai.com/v1';
 
-	const [baseUrl, setBaseUrl] = useState(() => config?.baseUrl ?? 'https://api.openai.com/v1');
+	const [provider, setProvider] = useState<'openai-compatible' | 'gemini'>(defaultProvider);
+	const [baseUrl, setBaseUrl] = useState(() => defaultBaseUrl);
 	const [apiKey, setApiKey] = useState(() => config?.apiKey ?? '');
 	const [model, setModel] = useState(() => config?.model ?? 'gpt-4o');
 	const [showKey, setShowKey] = useState(false);
 	const [testing, setTesting] = useState(false);
 	const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
+	useEffect(() => {
+		if (provider === 'openai-compatible' && !baseUrl.trim()) {
+			setBaseUrl('https://api.openai.com/v1');
+		}
+	}, [provider, baseUrl]);
+
 	const hasChanged =
+		provider !== (config?.provider ?? 'openai-compatible') ||
 		baseUrl !== (config?.baseUrl ?? 'https://api.openai.com/v1') ||
 		apiKey !== (config?.apiKey ?? '') ||
 		model !== (config?.model ?? 'gpt-4o');
 
 	const handleSave = () => {
-		if (!baseUrl.trim() || !apiKey.trim() || !model.trim()) {
+		if (!apiKey.trim() || !model.trim()) {
+			notify({ title: 'API key and model are required', tone: 'warning' });
+			return;
+		}
+		if (provider === 'openai-compatible' && !baseUrl.trim()) {
 			notify({ title: 'All fields are required', tone: 'warning' });
 			return;
 		}
-		saveConfig({ baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim() });
+		saveConfig({
+			provider,
+			baseUrl: provider === 'openai-compatible' ? baseUrl.trim() : undefined,
+			apiKey: apiKey.trim(),
+			model: model.trim(),
+		});
 		notify({ title: 'AI Agent settings saved', tone: 'success' });
 	};
 
 	const handleTest = async () => {
-		if (!baseUrl.trim() || !apiKey.trim() || !model.trim()) {
+		if (!apiKey.trim() || !model.trim()) {
+			notify({ title: 'Fill all fields first', tone: 'warning' });
+			return;
+		}
+		if (provider === 'openai-compatible' && !baseUrl.trim()) {
 			notify({ title: 'Fill all fields first', tone: 'warning' });
 			return;
 		}
@@ -848,7 +871,8 @@ function AIAgentSettings() {
 		setTestResult(null);
 		try {
 			const msg = await testAgentConnection({
-				baseUrl: baseUrl.trim(),
+				provider,
+				baseUrl: provider === 'openai-compatible' ? baseUrl.trim() : undefined,
 				apiKey: apiKey.trim(),
 				model: model.trim(),
 			});
@@ -869,18 +893,36 @@ function AIAgentSettings() {
 					<Badge variant="secondary">Not configured</Badge>
 				)}
 				<p className="text-xs text-muted-foreground">
-					{config ? `Model: ${config.model}` : 'Set up an AI endpoint to start chatting'}
+					{config
+						? `Provider: ${config.provider ?? 'openai-compatible'} · Model: ${config.model}`
+						: 'Set up an AI provider to start chatting'}
 				</p>
 			</div>
 
-			<FormField label="API Base URL">
-				<Input
-					value={baseUrl}
-					onChange={(e) => setBaseUrl(e.target.value)}
-					placeholder="https://api.openai.com/v1"
-					autoComplete="off"
-				/>
+			<FormField label="Provider">
+				<Select
+					value={provider}
+					onValueChange={(value) => setProvider(value as 'openai-compatible' | 'gemini')}>
+					<SelectTrigger>
+						<SelectValue placeholder="Select provider" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="openai-compatible">OpenAI-compatible</SelectItem>
+						<SelectItem value="gemini">Google Gemini</SelectItem>
+					</SelectContent>
+				</Select>
 			</FormField>
+
+			{provider === 'openai-compatible' && (
+				<FormField label="API Base URL">
+					<Input
+						value={baseUrl}
+						onChange={(e) => setBaseUrl(e.target.value)}
+						placeholder="https://api.openai.com/v1"
+						autoComplete="off"
+					/>
+				</FormField>
+			)}
 
 			<FormField label="API Key">
 				<div className="relative">
@@ -888,7 +930,7 @@ function AIAgentSettings() {
 						type={showKey ? 'text' : 'password'}
 						value={apiKey}
 						onChange={(e) => setApiKey(e.target.value)}
-						placeholder="sk-…"
+						placeholder={provider === 'gemini' ? 'AIza…' : 'sk-…'}
 						autoComplete="new-password"
 						className="pr-10"
 					/>
@@ -905,14 +947,14 @@ function AIAgentSettings() {
 				<Input
 					value={model}
 					onChange={(e) => setModel(e.target.value)}
-					placeholder="gpt-4o"
+					placeholder={provider === 'gemini' ? 'gemini-2.5-flash' : 'gpt-4o'}
 					autoComplete="off"
 				/>
 			</FormField>
 
 			<p className="text-xs text-muted-foreground">
-				Works with any OpenAI-compatible endpoint — OpenAI, Groq, Ollama, LM Studio, etc.
-				Your key is stored locally and{' '}
+				Supports OpenAI-compatible endpoints (OpenAI, Groq, Ollama, LM Studio, etc.) and
+				Google Gemini. Your key is stored locally and{' '}
 				<span className="font-semibold">never synced to the cloud</span>.
 			</p>
 
@@ -933,7 +975,10 @@ function AIAgentSettings() {
 			)}
 
 			<div className="flex gap-2">
-				<Button onClick={handleSave} className="flex-1" disabled={!hasChanged}>
+				<Button
+					onClick={handleSave}
+					className="flex-1"
+					disabled={!hasChanged}>
 					Save
 				</Button>
 				<Button
@@ -1398,9 +1443,7 @@ export function SettingsView() {
 								disabled={!pushSupported || subscribingPush}>
 								{subscribingPush ? 'Subscribing…' : 'Enable push subscription'}
 							</Button>
-							{pushEndpoint && (
-								<Badge variant="outline">Subscribed</Badge>
-							)}
+							{pushEndpoint && <Badge variant="outline">Subscribed</Badge>}
 						</div>
 						{pushEndpoint && (
 							<p className="mt-2 break-all font-mono text-[10px] text-muted-foreground">

@@ -1,6 +1,9 @@
 // ── Agent config (stored in localStorage) ────────────────────────────────────
+export type AgentProvider = 'openai-compatible' | 'gemini';
+
 export interface AgentConfig {
-	baseUrl: string; // e.g. "https://api.openai.com/v1"
+	provider?: AgentProvider;
+	baseUrl?: string; // required for openai-compatible, ignored for gemini
 	apiKey: string;
 	model: string; // e.g. "gpt-4o"
 }

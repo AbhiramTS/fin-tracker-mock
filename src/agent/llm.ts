@@ -1,22 +1,33 @@
 /**
  * LLM transport layer using Vercel AI SDK.
- * Uses @ai-sdk/openai provider — compatible with any OpenAI-compatible endpoint.
+ * Supports OpenAI-compatible endpoints and Gemini.
  */
 import { streamText, generateText } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import type { CoreMessage } from 'ai';
 import type { AgentConfig } from './types';
 
 export type { CoreMessage };
 
-function createProvider(config: AgentConfig) {
-	return createOpenAI({
-		baseURL: config.baseUrl,
+function getProvider(config: AgentConfig): 'openai-compatible' | 'gemini' {
+	return config.provider ?? 'openai-compatible';
+}
+
+function createOpenAIModel(config: AgentConfig) {
+	const provider = createOpenAI({
+		baseURL: config.baseUrl?.trim() || 'https://api.openai.com/v1',
 		apiKey: config.apiKey,
 		// 'compatible' mode works with any OpenAI-compatible endpoint
-		// (Ollama, LM Studio, Groq, Together AI, Fireworks, etc.)
+		// (OpenAI, Ollama, LM Studio, Groq, Together AI, Fireworks, etc.)
 		compatibility: 'compatible',
 	});
+	return provider(config.model);
+}
+
+function createGeminiModel(config: AgentConfig) {
+	const google = createGoogleGenerativeAI({ apiKey: config.apiKey });
+	return google(config.model);
 }
 
 /**
@@ -30,9 +41,11 @@ export async function streamAgentResponse(
 	onChunk: (accumulatedText: string) => void,
 	signal?: AbortSignal
 ): Promise<string> {
-	const provider = createProvider(config);
 	const result = streamText({
-		model: provider(config.model),
+		model:
+			getProvider(config) === 'gemini'
+				? createGeminiModel(config)
+				: createOpenAIModel(config),
 		messages,
 		abortSignal: signal,
 	});
@@ -50,9 +63,11 @@ export async function streamAgentResponse(
  * Throws on error (network, auth, model not found, etc.).
  */
 export async function testAgentConnection(config: AgentConfig): Promise<string> {
-	const provider = createProvider(config);
 	const result = await generateText({
-		model: provider(config.model),
+		model:
+			getProvider(config) === 'gemini'
+				? createGeminiModel(config)
+				: createOpenAIModel(config),
 		prompt: 'Respond with exactly: "Connection OK"',
 		maxTokens: 10,
 	});

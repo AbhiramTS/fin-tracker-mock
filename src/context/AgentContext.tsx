@@ -207,12 +207,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 			setCurrentSession(sessionWithUser);
 
 			// Guard: no config
-			if (!config?.baseUrl || !config?.apiKey || !config?.model) {
+			const provider = config?.provider ?? 'openai-compatible';
+			const missingBaseUrl = provider === 'openai-compatible' && !config?.baseUrl?.trim();
+			if (!config?.apiKey || !config?.model || missingBaseUrl) {
 				const warnMsg: ChatMessage = {
 					id: generateId(),
 					role: 'assistant',
-					content:
-						'⚙️ AI Agent is not configured yet. Please go to **Settings → AI Agent** and enter your API endpoint, API key, and model name.',
+					content: missingBaseUrl
+						? '⚙️ AI Agent is not configured yet. Please go to **Settings → AI Agent** and set the provider base URL, API key, and model name.'
+						: '⚙️ AI Agent is not configured yet. Please go to **Settings → AI Agent** and set the API key and model name.',
 					timestamp: new Date().toISOString(),
 				};
 				const warnSession: ChatSession = {
@@ -328,11 +331,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					const accountId = resolveAccountId(loan.account, appState);
 					const emi =
 						loan.emi ??
-						calculateEMI(
-							loan.principalAmount,
-							loan.interestRate,
-							loan.tenureMonths
-						);
+						calculateEMI(loan.principalAmount, loan.interestRate, loan.tenureMonths);
 					const { account: _account, ...loanData } = loan;
 					void _account;
 					await save('loans', {
@@ -410,7 +409,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 						...prev,
 						messages: prev.messages.map((m) =>
 							m.id === messageId && m.preview
-								? { ...m, preview: { ...m.preview, saveStatus: 'saved' as SaveStatus } }
+								? {
+										...m,
+										preview: {
+											...m.preview,
+											saveStatus: 'saved' as SaveStatus,
+										},
+									}
 								: m
 						),
 					};
@@ -445,7 +450,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 					...prev,
 					messages: prev.messages.map((m) =>
 						m.id === messageId && m.preview
-							? { ...m, preview: { ...m.preview, saveStatus: 'dismissed' as SaveStatus } }
+							? {
+									...m,
+									preview: {
+										...m.preview,
+										saveStatus: 'dismissed' as SaveStatus,
+									},
+								}
 							: m
 					),
 				};
