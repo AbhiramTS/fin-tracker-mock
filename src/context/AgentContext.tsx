@@ -17,7 +17,7 @@ import {
 	listAgentSessions,
 	saveAgentSession,
 } from '@/agent/db';
-import { streamAgentResponse } from '@/agent/llm';
+import { getAgentErrorMessage, streamAgentResponse } from '@/agent/llm';
 import { buildMessages, buildSystemPrompt } from '@/agent/prompt';
 import { buildRealtimeQueryContext } from '@/agent/dataQuery';
 import { parseAgentResponse, resolveAccountId } from '@/agent/parse';
@@ -275,13 +275,13 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 				setCurrentSession(finalSession);
 				await persistSession(finalSession);
 			} catch (error) {
-				const err = error as Error;
-				if (err.name === 'AbortError') return;
+				if (error instanceof Error && error.name === 'AbortError') return;
+				const message = getAgentErrorMessage(error);
 
 				const errMsg: ChatMessage = {
 					id: generateId(),
 					role: 'assistant',
-					content: `⚠️ Request failed: ${err.message}. Check your AI Agent settings and try again.`,
+					content: `⚠️ ${message}`,
 					timestamp: new Date().toISOString(),
 				};
 				const errSession: ChatSession = {
