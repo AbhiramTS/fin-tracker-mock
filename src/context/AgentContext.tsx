@@ -27,81 +27,8 @@ import type {
 	ChatSession,
 	ChatSessionSummary,
 	EntityPreview,
-	ParsedEntities,
 	SaveStatus,
 } from '@/agent/types';
-
-function detectMissingDataPoints(entities: ParsedEntities): string[] {
-	const missing: string[] = [];
-
-	for (const [index, je] of (entities.journalEntries ?? []).entries()) {
-		if (!je.description?.trim()) missing.push(`Journal entry ${index + 1}: description`);
-		if (!(je.amount > 0)) missing.push(`Journal entry ${index + 1}: amount`);
-		if (!je.date?.trim()) missing.push(`Journal entry ${index + 1}: date`);
-		if (!je.debitAccountHeadId?.trim()) {
-			missing.push(`Journal entry ${index + 1}: debit account`);
-		}
-		if (!je.creditAccountHeadId?.trim()) {
-			missing.push(`Journal entry ${index + 1}: credit account`);
-		}
-	}
-
-	for (const [index, acc] of (entities.accounts ?? []).entries()) {
-		if (!acc.name?.trim()) missing.push(`Account ${index + 1}: name`);
-		if (!acc.type?.trim()) missing.push(`Account ${index + 1}: type`);
-		if (acc.type === 'credit_card') {
-			if (acc.creditLimit === undefined) {
-				missing.push(`Credit card ${index + 1}: credit limit`);
-			}
-			if (acc.statementDay === undefined) {
-				missing.push(`Credit card ${index + 1}: statement day`);
-			}
-			if (!acc.dueDate?.trim()) missing.push(`Credit card ${index + 1}: due date`);
-		}
-	}
-
-	for (const [index, loan] of (entities.loans ?? []).entries()) {
-		if (!loan.name?.trim()) missing.push(`Loan ${index + 1}: name`);
-		if (!(loan.principalAmount > 0)) missing.push(`Loan ${index + 1}: principal amount`);
-		if (!(loan.interestRate > 0)) missing.push(`Loan ${index + 1}: interest rate`);
-		if (!(loan.tenureMonths > 0)) missing.push(`Loan ${index + 1}: tenure`);
-		if (!loan.startDate?.trim()) missing.push(`Loan ${index + 1}: start date`);
-	}
-
-	for (const [index, inv] of (entities.investments ?? []).entries()) {
-		if (!inv.name?.trim()) missing.push(`Investment ${index + 1}: name`);
-		if (!inv.type?.trim()) missing.push(`Investment ${index + 1}: type`);
-		if (!(inv.value > 0)) missing.push(`Investment ${index + 1}: value`);
-	}
-
-	for (const [index, goal] of (entities.goals ?? []).entries()) {
-		if (!goal.name?.trim()) missing.push(`Goal ${index + 1}: name`);
-		if (!(goal.targetAmount > 0)) missing.push(`Goal ${index + 1}: target amount`);
-	}
-
-	for (const [index, rec] of (entities.receivables ?? []).entries()) {
-		if (!rec.personName?.trim()) missing.push(`Receivable ${index + 1}: person name`);
-		if (!(rec.amountLent > 0)) missing.push(`Receivable ${index + 1}: amount`);
-		if (!rec.dateLent?.trim()) missing.push(`Receivable ${index + 1}: date`);
-	}
-
-	for (const [index, rp] of (entities.recurringPayments ?? []).entries()) {
-		if (!rp.name?.trim()) missing.push(`Recurring payment ${index + 1}: name`);
-		if (!(rp.amount > 0)) missing.push(`Recurring payment ${index + 1}: amount`);
-		if (!rp.frequency?.trim()) missing.push(`Recurring payment ${index + 1}: frequency`);
-		if (!rp.nextDate?.trim()) missing.push(`Recurring payment ${index + 1}: next date`);
-		if (!rp.category?.trim()) missing.push(`Recurring payment ${index + 1}: category`);
-	}
-
-	for (const [index, ri] of (entities.recurringIncomes ?? []).entries()) {
-		if (!ri.name?.trim()) missing.push(`Recurring income ${index + 1}: name`);
-		if (!(ri.amount > 0)) missing.push(`Recurring income ${index + 1}: amount`);
-		if (!ri.frequency?.trim()) missing.push(`Recurring income ${index + 1}: frequency`);
-		if (!ri.nextDate?.trim()) missing.push(`Recurring income ${index + 1}: next date`);
-	}
-
-	return missing;
-}
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 const CONFIG_KEY = 'ft_agent_config';
@@ -362,7 +289,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 								entities: parsed.entities,
 								summary: parsed.summary,
 								saveStatus: 'pending',
-								missingDataPoints: detectMissingDataPoints(parsed.entities),
+								missingDataPoints: parsed.missingDataRequest?.fields.map((field) => field.label),
+								missingDataRequest: parsed.missingDataRequest,
 							}
 						: undefined,
 				};
@@ -411,7 +339,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 			const message = currentSession.messages.find((m) => m.id === messageId);
 			if (!message?.preview) return;
 
-			const missingDataPoints = detectMissingDataPoints(message.preview.entities);
+			const missingDataPoints =
+				message.preview.missingDataRequest?.fields.map((field) => field.label) ?? [];
 			if (missingDataPoints.length > 0) {
 				updateMessagePreview(messageId, {
 					saveStatus: 'pending' as SaveStatus,

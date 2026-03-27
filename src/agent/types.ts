@@ -113,9 +113,28 @@ export interface ParsedEntities {
 	recurringIncomes?: ParsedRecurringIncome[];
 }
 
+export type MissingDataFieldType = 'text' | 'number' | 'date' | 'account';
+
+export interface MissingDataField {
+	key: string;
+	label: string;
+	type: MissingDataFieldType;
+	placeholder?: string;
+	required?: boolean;
+	helpText?: string;
+}
+
+export interface MissingDataRequest {
+	title: string;
+	description?: string;
+	fields: MissingDataField[];
+	allowDoLater?: boolean;
+}
+
 export interface AgentParsedResponse {
 	entities: ParsedEntities;
 	summary: string;
+	missingDataRequest?: MissingDataRequest;
 }
 
 // ── Chat message ──────────────────────────────────────────────────────────────
@@ -124,6 +143,7 @@ export interface EntityPreview {
 	summary: string;
 	saveStatus: SaveStatus;
 	missingDataPoints?: string[];
+	missingDataRequest?: MissingDataRequest;
 	errorMessage?: string;
 }
 

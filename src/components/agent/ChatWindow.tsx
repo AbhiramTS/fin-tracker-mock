@@ -2,83 +2,29 @@ import { useEffect, useRef, useState } from 'react';
 import { Send, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { useAgentChat } from '@/context/AgentContext';
-import type { ChatMessage } from '@/agent/types';
+import { useApp } from '@/context/AppContext';
+import type { ChatMessage, MissingDataField } from '@/agent/types';
 import { ChatMessageBubble, StreamingBubble } from './ChatMessage';
 import { EntityPreviewCard } from './EntityPreviewCard';
 
-type MissingFieldType = 'text' | 'number' | 'date';
-
-interface MissingField {
-	key: string;
-	label: string;
-	type: MissingFieldType;
-	placeholder: string;
-}
-
 interface MissingDetailsFormState {
 	messageId: string;
-	fields: MissingField[];
+	title: string;
+	description?: string;
+	fields: MissingDataField[];
 	values: Record<string, string>;
 	hasLinkedPreview: boolean;
-}
-
-function toField(point: string): MissingField {
-	const normalized = point.toLowerCase();
-	const rawLabel = point.includes(':') ? point.split(':').pop()?.trim() ?? point : point;
-
-	if (normalized.includes('credit limit')) {
-		return {
-			key: 'creditLimit',
-			label: 'Credit limit',
-			type: 'number',
-			placeholder: 'e.g. 200000',
-		};
-	}
-
-	if (normalized.includes('statement day')) {
-		return {
-			key: 'statementDay',
-			label: 'Statement day',
-			type: 'number',
-			placeholder: '1 to 28',
-		};
-	}
-
-	if (normalized.includes('due date') || normalized.endsWith(': date')) {
-		return {
-			key: rawLabel.replace(/\s+/g, ''),
-			label: rawLabel,
-			type: 'date',
-			placeholder: 'Select date',
-		};
-	}
-
-	if (normalized.includes('amount') || normalized.includes('value')) {
-		return {
-			key: rawLabel.replace(/\s+/g, ''),
-			label: rawLabel,
-			type: 'number',
-			placeholder: 'Enter amount',
-		};
-	}
-
-	return {
-		key: rawLabel.replace(/\s+/g, ''),
-		label: rawLabel,
-		type: 'text',
-		placeholder: `Enter ${rawLabel.toLowerCase()}`,
-	};
-}
-
-function inferMissingPointsFromText(text: string): string[] {
-	const inferred: string[] = [];
-	if (/credit limit/i.test(text)) inferred.push('Credit card: credit limit');
-	if (/statement day/i.test(text)) inferred.push('Credit card: statement day');
-	if (/due date/i.test(text)) inferred.push('Credit card: due date');
-	return inferred;
+	allowDoLater: boolean;
 }
 
 function EmptyState() {
@@ -108,6 +54,7 @@ function EmptyState() {
 }
 
 export function ChatWindow({ className }: { className?: string }) {
+	const { state: appState } = useApp();
 	const {
 		currentSession,
 		isStreaming,
@@ -124,6 +71,9 @@ export function ChatWindow({ className }: { className?: string }) {
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
 	const messages = currentSession?.messages ?? [];
+	const accountOptions = appState.accounts
+		.filter((account) => !account.isArchived)
+		.map((account) => account.name);
 
 	// Auto-scroll to bottom when messages or streaming content changes
 	useEffect(() => {
@@ -145,25 +95,29 @@ export function ChatWindow({ className }: { className?: string }) {
 		}
 	};
 
-	const openMissingForm = (
+	const openMissingDataRequestForm = (
 		messageId: string,
-		missingDataPoints: string[],
+		request: NonNullable<ChatMessage['preview']>['missingDataRequest'],
 		hasLinkedPreview: boolean
 	) => {
-		const fields = (missingDataPoints.length ? missingDataPoints : ['Details'])
-			.slice(0, 6)
-			.map(toField);
-
+		if (!request) return;
 		setMissingForm({
 			messageId,
-			fields,
-			values: Object.fromEntries(fields.map((f) => [f.key, ''])),
+			title: request.title,
+			description: request.description,
+			fields: request.fields,
+			values: Object.fromEntries(request.fields.map((field) => [field.key, ''])),
 			hasLinkedPreview,
+			allowDoLater: request.allowDoLater !== false,
 		});
 	};
 
 	const handleEnterNow = (messageId: string, missingDataPoints: string[]) => {
-		openMissingForm(messageId, missingDataPoints, true);
+		void missingDataPoints;
+		const message = messages.find((item) => item.id === messageId);
+		if (message?.preview?.missingDataRequest) {
+			openMissingDataRequestForm(messageId, message.preview.missingDataRequest, true);
+		}
 	};
 
 	const handleFormValueChange = (key: string, value: string) => {
@@ -202,12 +156,9 @@ export function ChatWindow({ className }: { className?: string }) {
 
 	const handleQuickChoice = async (message: ChatMessage, choice: 'enter-now' | 'do-later') => {
 		if (choice === 'enter-now') {
-			if (message.preview?.missingDataPoints?.length) {
-				openMissingForm(message.id, message.preview.missingDataPoints, true);
-				return;
+			if (message.preview?.missingDataRequest) {
+				openMissingDataRequestForm(message.id, message.preview.missingDataRequest, true);
 			}
-			const inferred = inferMissingPointsFromText(message.content);
-			openMissingForm(message.id, inferred, false);
 			return;
 		}
 
@@ -253,20 +204,42 @@ export function ChatWindow({ className }: { className?: string }) {
 			<div className="shrink-0 border-t border-border px-3 py-2.5">
 				{missingForm && (
 					<div className="mb-2.5 rounded-xl border border-primary/25 bg-primary/5 p-3">
-						<p className="text-xs font-semibold text-primary">Enter missing details</p>
+						<p className="text-xs font-semibold text-primary">{missingForm.title}</p>
+						{missingForm.description && (
+							<p className="mt-1 text-[11px] text-muted-foreground">
+								{missingForm.description}
+							</p>
+						)}
 						<div className="mt-2 space-y-2">
 							{missingForm.fields.map((field) => (
 								<div key={field.key} className="space-y-1">
 									<p className="text-[11px] text-muted-foreground">{field.label}</p>
-									<Input
-										type={field.type}
-										value={missingForm.values[field.key] ?? ''}
-										onChange={(e) =>
-											handleFormValueChange(field.key, e.target.value)
-										}
-										placeholder={field.placeholder}
-										className="h-8 text-xs"
-									/>
+									{field.type === 'account' ? (
+										<Select
+											value={missingForm.values[field.key] ?? ''}
+											onValueChange={(value) => handleFormValueChange(field.key, value)}>
+											<SelectTrigger className="h-8 text-xs">
+												<SelectValue placeholder={field.placeholder} />
+											</SelectTrigger>
+											<SelectContent>
+												{accountOptions.map((accountName) => (
+													<SelectItem key={accountName} value={accountName}>
+														{accountName}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									) : (
+										<Input
+											type={field.type}
+											value={missingForm.values[field.key] ?? ''}
+											onChange={(e) =>
+												handleFormValueChange(field.key, e.target.value)
+											}
+											placeholder={field.placeholder}
+											className="h-8 text-xs"
+										/>
+									)}
 								</div>
 							))}
 						</div>
@@ -278,14 +251,16 @@ export function ChatWindow({ className }: { className?: string }) {
 								disabled={isStreaming}>
 								Submit details
 							</Button>
-							<Button
-								size="sm"
-								variant="ghost"
-								className="h-7 px-2.5 text-xs"
-								onClick={() => void handleDeferMissingForm()}
-								disabled={isStreaming}>
-								Do it later
-							</Button>
+							{missingForm.allowDoLater && (
+								<Button
+									size="sm"
+									variant="ghost"
+									className="h-7 px-2.5 text-xs"
+									onClick={() => void handleDeferMissingForm()}
+									disabled={isStreaming}>
+									Do it later
+								</Button>
+							)}
 						</div>
 					</div>
 				)}

@@ -4,7 +4,12 @@
  * to existing account IDs from the app state.
  */
 import type { AppState, AccountHead } from '@/types';
-import type { AgentParsedResponse, ParsedEntities } from './types';
+import type {
+	AgentParsedResponse,
+	MissingDataField,
+	MissingDataRequest,
+	ParsedEntities,
+} from './types';
 
 const ROOT_HEAD_IDS = new Set([
 	'head_income',
@@ -47,6 +52,44 @@ export function parseAgentResponse(
 	text: string,
 	state: AppState
 ): AgentParsedResponse | null {
+	const parseMissingDataRequest = (value: unknown): MissingDataRequest | undefined => {
+		if (!value || typeof value !== 'object') return undefined;
+		const record = value as Record<string, unknown>;
+		if (typeof record.title !== 'string' || !Array.isArray(record.fields)) return undefined;
+
+		const fields = record.fields
+			.filter((field) => typeof field === 'object' && field !== null)
+			.map((field) => {
+				const item = field as Record<string, unknown>;
+				const type = String(item.type ?? 'text');
+				if (!['text', 'number', 'date', 'account'].includes(type)) return null;
+				const key = String(item.key ?? '').trim();
+				const label = String(item.label ?? '').trim();
+				if (!key || !label) return null;
+				return {
+					key,
+					label,
+					type: type as MissingDataField['type'],
+					placeholder:
+						typeof item.placeholder === 'string' ? String(item.placeholder) : undefined,
+					required: item.required !== false,
+					helpText:
+						typeof item.helpText === 'string' ? String(item.helpText) : undefined,
+				};
+			})
+			.filter((field): field is MissingDataField => Boolean(field));
+
+		if (!fields.length) return undefined;
+
+		return {
+			title: record.title,
+			description:
+				typeof record.description === 'string' ? String(record.description) : undefined,
+			fields,
+			allowDoLater: record.allowDoLater !== false,
+		};
+	};
+
 	const extractJsonCandidate = (rawText: string): string | null => {
 		// Preferred: complete fenced block
 		const fenced = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -74,9 +117,10 @@ export function parseAgentResponse(
 
 	if (typeof raw !== 'object' || raw === null) return null;
 	const root = raw as Record<string, unknown>;
-	if (!root.entities || typeof root.entities !== 'object') return null;
+	const missingDataRequest = parseMissingDataRequest(root.missingData);
+	if ((!root.entities || typeof root.entities !== 'object') && !missingDataRequest) return null;
 
-	const rawEntities = root.entities as Record<string, unknown[]>;
+	const rawEntities = (root.entities as Record<string, unknown[]>) ?? {};
 	const summary =
 		typeof root.summary === 'string' ? root.summary : 'Entities ready to save';
 
@@ -258,7 +302,7 @@ export function parseAgentResponse(
 	const hasEntities = Object.values(entities).some(
 		(arr) => Array.isArray(arr) && arr.length > 0
 	);
-	if (!hasEntities) return null;
+	if (!hasEntities && !missingDataRequest) return null;
 
-	return { entities, summary };
+	return { entities, summary, missingDataRequest };
 }

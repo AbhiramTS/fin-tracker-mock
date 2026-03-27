@@ -22,7 +22,9 @@ function renderInline(text: string): React.ReactNode[] {
 		}
 		if (part.startsWith('`') && part.endsWith('`')) {
 			return (
-				<code key={i} className="font-mono text-[11px] bg-muted/60 px-1 rounded">
+				<code
+					key={i}
+					className="font-mono text-[11px] bg-muted/60 px-1 rounded">
 					{part.slice(1, -1)}
 				</code>
 			);
@@ -43,18 +45,10 @@ interface ChatMessageBubbleProps {
 	onQuickChoice?: (message: ChatMessage, choice: 'enter-now' | 'do-later') => void;
 }
 
-function hasMissingDataChoicePrompt(text: string): boolean {
-	return /enter now\s+or\s+do it later\??/i.test(text);
-}
-
-export function ChatMessageBubble({
-	message,
-	isStreaming,
-	onQuickChoice,
-}: ChatMessageBubbleProps) {
+export function ChatMessageBubble({ message, isStreaming, onQuickChoice }: ChatMessageBubbleProps) {
 	const isUser = message.role === 'user';
 	const displayText = isUser ? message.content : stripJsonBlock(message.content);
-	const showMissingDataChoices = !isUser && hasMissingDataChoicePrompt(displayText);
+	const showMissingDataChoices = !isUser && Boolean(message.preview?.missingDataRequest);
 
 	return (
 		<div className={cn('flex gap-2 items-end', isUser ? 'flex-row-reverse' : 'flex-row')}>
@@ -75,7 +69,9 @@ export function ChatMessageBubble({
 				{/* Multi-line content with inline markdown */}
 				<div className="whitespace-pre-wrap break-words">
 					{displayText.split('\n').map((line, i) => (
-						<p key={i} className={i > 0 ? 'mt-1' : ''}>
+						<p
+							key={i}
+							className={i > 0 ? 'mt-1' : ''}>
 							{renderInline(line)}
 						</p>
 					))}
@@ -108,7 +104,9 @@ export function ChatMessageBubble({
 				<p
 					className={cn(
 						'text-[10px] mt-1.5',
-						isUser ? 'text-primary-foreground/50 text-right' : 'text-muted-foreground/70'
+						isUser
+							? 'text-primary-foreground/50 text-right'
+							: 'text-muted-foreground/70'
 					)}>
 					{formatTimestamp(message.timestamp)}
 				</p>
