@@ -173,11 +173,7 @@ export function JournalLedgerView({ filterAccountHeadId }: { filterAccountHeadId
 	const [isReordering, setIsReordering] = useState(false);
 
 	const handleDelete = async (entry: JournalEntry) => {
-		const confirmed = window.confirm(
-			`Delete ledger entry \"${entry.description}\" dated ${entry.date}?`
-		);
-		if (!confirmed) return;
-		await doRemove(entry.id);
+		await doRemove(entry.id, entry.description);
 		setExpanded((current) => (current === entry.id ? null : current));
 	};
 

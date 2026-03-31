@@ -25,6 +25,7 @@ import { AppProvider, useApp } from '@/context/AppContext';
 import { NavigationProvider, useNavigation, type TabId } from '@/context/NavigationContext';
 import { NotificationProvider, useNotifications } from '@/context/NotificationContext';
 import { AgentProvider } from '@/context/AgentContext';
+import { ConfirmProvider } from '@/context/ConfirmContext';
 import { ChatDrawer } from '@/components/agent/ChatDrawer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -429,9 +430,11 @@ export default function App() {
 		<NotificationProvider>
 			<AppProvider>
 				<NavigationProvider>
-					<AgentProvider>
-						<AppShell />
-					</AgentProvider>
+					<ConfirmProvider>
+						<AgentProvider>
+							<AppShell />
+						</AgentProvider>
+					</ConfirmProvider>
 				</NavigationProvider>
 			</AppProvider>
 		</NotificationProvider>

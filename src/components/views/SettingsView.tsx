@@ -21,6 +21,7 @@ import { useApp } from '@/context/AppContext';
 import { useNotifications } from '@/context/NotificationContext';
 import { useNavigation } from '@/context/NavigationContext';
 import { useAgentChat } from '@/context/AgentContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { testAgentConnection } from '@/agent/llm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -1620,6 +1621,7 @@ export function SettingsView() {
 // ── Account Heads Management ──────────────────────────────────────────────────
 export function AccountHeadsView() {
 	const { state, save, remove } = useApp();
+	const confirm = useConfirm();
 	const { route, openSubpage, goBack } = useNavigation();
 	const [newName, setNewName] = useState('');
 	const [newType, setNewType] = useState('expense');
@@ -1949,8 +1951,14 @@ export function AccountHeadsView() {
 									size="icon-sm"
 									variant="destructive"
 									disabled={!canDelete(child)}
-									onClick={(e) => {
+									onClick={async (e) => {
 										e.stopPropagation();
+										const ok = await confirm({
+											title: `Delete "${child.name}"?`,
+											description:
+												'This account head will be permanently removed.',
+										});
+										if (!ok) return;
 										remove('accountHeads', child.id);
 									}}
 									title={canDelete(child) ? 'Delete' : 'In use or has children'}>

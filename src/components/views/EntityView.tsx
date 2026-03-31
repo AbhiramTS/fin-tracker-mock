@@ -3,8 +3,62 @@ import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { SubpageLayout } from '@/components/ui/subpage-layout';
 import { useApp } from '@/context/AppContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { useNavigation, type TabId } from '@/context/NavigationContext';
-import type { EntityName, BaseRecord } from '@/types';
+import type { AppState, EntityName, BaseRecord } from '@/types';
+
+// ── Dependency checking ───────────────────────────────────────────────────────
+// Returns a human-readable list of associated records that block deletion.
+function getDeleteDependencies(entity: EntityName, id: string, state: AppState): string[] {
+	const deps: string[] = [];
+	switch (entity) {
+		case 'accounts': {
+			const jeCnt = state.journalEntries.filter(
+				(e) => e.debitAccountHeadId === id || e.creditAccountHeadId === id
+			).length;
+			if (jeCnt) deps.push(`${jeCnt} journal ${jeCnt === 1 ? 'entry' : 'entries'}`);
+			const rpCnt = state.recurringPayments.filter((r) => r.accountId === id).length;
+			if (rpCnt) deps.push(`${rpCnt} recurring payment${rpCnt !== 1 ? 's' : ''}`);
+			const riCnt = state.recurringIncomes.filter((r) => r.accountId === id).length;
+			if (riCnt) deps.push(`${riCnt} recurring income${riCnt !== 1 ? 's' : ''}`);
+			const lCnt = state.loans.filter((l) => l.accountId === id).length;
+			if (lCnt) deps.push(`${lCnt} loan${lCnt !== 1 ? 's' : ''}`);
+			const rvCnt = state.receivables.filter((r) => r.accountId === id).length;
+			if (rvCnt) deps.push(`${rvCnt} receivable${rvCnt !== 1 ? 's' : ''}`);
+			break;
+		}
+		case 'loans': {
+			const poCnt = state.paymentOccurrences.filter((p) => p.sourceId === id).length;
+			if (poCnt) deps.push(`${poCnt} payment schedule ${poCnt === 1 ? 'entry' : 'entries'}`);
+			const jeCnt = state.journalEntries.filter(
+				(e) => e.debitAccountHeadId === id || e.creditAccountHeadId === id
+			).length;
+			if (jeCnt) deps.push(`${jeCnt} journal ${jeCnt === 1 ? 'entry' : 'entries'}`);
+			break;
+		}
+		case 'investments': {
+			const jeCnt = state.journalEntries.filter(
+				(e) => e.debitAccountHeadId === id || e.creditAccountHeadId === id
+			).length;
+			if (jeCnt) deps.push(`${jeCnt} journal ${jeCnt === 1 ? 'entry' : 'entries'}`);
+			break;
+		}
+		case 'receivables': {
+			const rrCnt = state.repaymentRecords.filter((r) => r.receivableId === id).length;
+			if (rrCnt) deps.push(`${rrCnt} repayment record${rrCnt !== 1 ? 's' : ''}`);
+			break;
+		}
+		case 'recurringPayments':
+		case 'recurringIncomes': {
+			const poCnt = state.paymentOccurrences.filter((p) => p.sourceId === id).length;
+			if (poCnt) deps.push(`${poCnt} payment schedule ${poCnt === 1 ? 'entry' : 'entries'}`);
+			break;
+		}
+		default:
+			break;
+	}
+	return deps;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyFormComp = ComponentType<any>;
@@ -73,7 +127,8 @@ export function useEntityFormPage<T extends BaseRecord>({
 	addSubpage = 'new',
 	editSubpage = 'edit',
 }: UseEntityFormPageOptions<T>) {
-	const { save, remove } = useApp();
+	const { state, save, remove } = useApp();
+	const confirm = useConfirm();
 	const { route, openSubpage, goBack } = useNavigation();
 	const isAddPage = route.tab === tab && route.subpage === addSubpage;
 	const isEditPage = route.tab === tab && route.subpage === editSubpage;
@@ -116,7 +171,25 @@ export function useEntityFormPage<T extends BaseRecord>({
 	return {
 		openAdd: () => openSubpage(addSubpage, { tab }),
 		startEdit: (record: T) => openSubpage(editSubpage, { tab, id: record.id }),
-		doRemove: (id: string) => remove(entity, id),
+		doRemove: async (id: string, label?: string) => {
+			const record = records.find((r) => r.id === id);
+			const displayName =
+				label ??
+				(record && 'name' in record && typeof record.name === 'string'
+					? record.name
+					: 'this record');
+			const deps = getDeleteDependencies(entity, id, state);
+			const confirmed = await confirm(
+				deps.length > 0
+					? { title: displayName, blockedBy: deps }
+					: {
+							title: `Delete "${displayName}"?`,
+							description: 'This action cannot be undone.',
+						}
+			);
+			if (!confirmed) return;
+			await remove(entity, id);
+		},
 		FormPage,
 	};
 }
