@@ -6,7 +6,7 @@ export function buildForecast(data: Partial<AppState>, horizonDays = 60): Foreca
 	const today = new Date();
 	const balances = data.computedBalances ?? {};
 	const totalBalance = (data.accounts ?? [])
-		.filter((a) => a.type !== 'credit_card' && a.type !== 'loan')
+		.filter((a) => a.type === 'bank' || a.type === 'cash')
 		.reduce((s, a) => s + (balances[a.id] ?? a.openingBalance ?? 0), 0);
 
 	const events: ForecastEvent[] = [];

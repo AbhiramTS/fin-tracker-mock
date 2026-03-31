@@ -16,7 +16,13 @@ interface SimResult {
 
 export function SimulatorView() {
 	const { state } = useApp();
-	const totalBalance = Object.values(state.computedBalances).reduce((s, b) => s + b, 0);
+	const totalBalance = state.accounts
+		.filter((account) => account.type === 'bank' || account.type === 'cash')
+		.reduce(
+			(sum, account) =>
+				sum + (state.computedBalances[account.id] ?? account.openingBalance ?? 0),
+			0
+		);
 	const monthlyOut =
 		state.recurringPayments.filter((r) => r.isActive).reduce((s, r) => s + (r.amount ?? 0), 0) +
 		state.loans.reduce((s, l) => s + (l.emi ?? 0), 0);
