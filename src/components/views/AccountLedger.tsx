@@ -63,10 +63,12 @@ export function CreditCardLedgerPage({
 	card: Account | null;
 	onBack: () => void;
 }) {
+	const { state } = useApp();
 	if (!card) return null;
 	const details = card.creditCard;
 	const limit = details?.limit ?? 0;
-	const outstanding = details?.outstanding ?? Math.max(0, -(card.openingBalance ?? 0));
+	const trackedBalance = state.computedBalances[card.id] ?? card.openingBalance ?? 0;
+	const outstanding = Math.max(0, -trackedBalance);
 	return (
 		<SubpageLayout
 			title={card.name}

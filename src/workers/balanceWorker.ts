@@ -31,6 +31,15 @@ export function computeBalances(input: BalanceWorkerInput): ComputedBalances {
 	// Build a set of account ids that map to real accounts
 	const accountIds = new Set(accounts.map((a) => a.id));
 
+	// Credit card accounts store openingBalance as -(outstanding), i.e. always negative.
+	// The display formula is: outstanding = Max(0, -balance).
+	// To keep that convention correct when transactions are applied, credit cards must
+	// follow asset-style rules (debit increases balance, credit decreases), even though
+	// their account head sits under the liability root.
+	const creditCardIds = new Set(
+		accounts.filter((a) => a.type === 'credit_card').map((a) => a.id)
+	);
+
 	// Find the root type for an account head
 	const headMap = new Map(accountHeads.map((h) => [h.id, h]));
 	function getRootType(headId: string): string | null {
@@ -47,7 +56,8 @@ export function computeBalances(input: BalanceWorkerInput): ComputedBalances {
 
 		// Apply to debit side if it maps to a real account
 		if (accountIds.has(debit)) {
-			const rootType = getRootType(debit);
+			// Credit cards use asset-style convention regardless of their head root type.
+			const rootType = creditCardIds.has(debit) ? 'asset' : getRootType(debit);
 			// Asset/Expense: debit increases balance
 			// Liability/Income/Equity: debit decreases balance
 			if (rootType === 'asset' || rootType === 'expense') {
@@ -59,7 +69,8 @@ export function computeBalances(input: BalanceWorkerInput): ComputedBalances {
 
 		// Apply to credit side if it maps to a real account
 		if (accountIds.has(credit)) {
-			const rootType = getRootType(credit);
+			// Credit cards use asset-style convention regardless of their head root type.
+			const rootType = creditCardIds.has(credit) ? 'asset' : getRootType(credit);
 			// Asset/Expense: credit decreases balance
 			// Liability/Income/Equity: credit increases balance
 			if (rootType === 'asset' || rootType === 'expense') {

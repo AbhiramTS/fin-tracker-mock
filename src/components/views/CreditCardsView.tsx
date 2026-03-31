@@ -26,7 +26,7 @@ export function CreditCardsView() {
 		const todayIso = format(new Date(), 'yyyy-MM-dd');
 		return {
 			limit: fromAccount?.limit ?? 0,
-			outstanding: fromAccount?.outstanding ?? Math.max(0, -trackedBalance),
+			outstanding: Math.max(0, -trackedBalance),
 			statementDay: fromAccount?.statementDay ?? 1,
 			billingCycleDays: fromAccount?.billingCycleDays ?? 30,
 			gracePeriodDays: fromAccount?.gracePeriodDays ?? 20,
