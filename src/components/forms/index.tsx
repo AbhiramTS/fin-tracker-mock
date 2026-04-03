@@ -1405,13 +1405,13 @@ export function RecurringIncomeForm({
 		isActive: true,
 		...(initialData
 			? {
-				...initialData,
-				monthScheduleRule: resolveMonthScheduleRule(
-					initialData.nextDate ?? todayStr(),
-					(initialData.frequency ?? 'monthly') as Frequency,
-					initialData.monthScheduleRule
-				),
-			}
+					...initialData,
+					monthScheduleRule: resolveMonthScheduleRule(
+						initialData.nextDate ?? todayStr(),
+						(initialData.frequency ?? 'monthly') as Frequency,
+						initialData.monthScheduleRule
+					),
+				}
 			: null),
 	});
 	const submit = (e: FormEvent) => {
@@ -1540,6 +1540,7 @@ export function RecurringIncomeForm({
 
 // ── LoanForm ──────────────────────────────────────────────────────────────────
 export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccounts<Loan>) {
+	const creditCardAccounts = accounts.filter((a) => a.type === 'credit_card');
 	const [f, setF] = useState<Partial<Loan>>({
 		name: '',
 		loanType: 'normal',
@@ -1567,7 +1568,14 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 		f.taxRate && estMonthlyInterest ? Math.round((estMonthlyInterest * f.taxRate) / 100) : 0;
 	const submit = (e: FormEvent) => {
 		e.preventDefault();
-		if (f.name && f.principalAmount && f.tenureMonths) onSave({ ...f, emi: effectiveEMI });
+		if (!(f.name && f.principalAmount && f.tenureMonths)) return;
+		if ((f.loanType ?? 'normal') === 'credit_card' && !f.linkedCreditCardId) return;
+		onSave({
+			...f,
+			emi: effectiveEMI,
+			linkedCreditCardId:
+				(f.loanType ?? 'normal') === 'credit_card' ? f.linkedCreditCardId : undefined,
+		});
 	};
 	return (
 		<form
@@ -1586,7 +1594,14 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 				<FormField label="Type">
 					<Select
 						value={f.loanType ?? 'normal'}
-						onValueChange={(v) => setF({ ...f, loanType: v as LoanType })}>
+						onValueChange={(v) =>
+							setF({
+								...f,
+								loanType: v as LoanType,
+								linkedCreditCardId:
+									v === 'credit_card' ? f.linkedCreditCardId : undefined,
+							})
+						}>
 						<SelectTrigger>
 							<SelectValue />
 						</SelectTrigger>
@@ -1596,6 +1611,28 @@ export function LoanForm({ initialData, onSave, onCancel, accounts }: WithAccoun
 						</SelectContent>
 					</Select>
 				</FormField>
+				{(f.loanType ?? 'normal') === 'credit_card' && (
+					<FormField
+						label="Linked Credit Card"
+						span={2}>
+						<Select
+							value={f.linkedCreditCardId ?? ''}
+							onValueChange={(v) => setF({ ...f, linkedCreditCardId: v })}>
+							<SelectTrigger>
+								<SelectValue placeholder="Select a credit card" />
+							</SelectTrigger>
+							<SelectContent>
+								{creditCardAccounts.map((card) => (
+									<SelectItem
+										key={card.id}
+										value={card.id}>
+										{card.name}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</FormField>
+				)}
 				<FormField label="Principal (₹)">
 					<Input
 						type="number"

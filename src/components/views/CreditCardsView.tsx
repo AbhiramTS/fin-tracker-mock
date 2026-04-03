@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { useApp } from '@/context/AppContext';
 import { useNavigation } from '@/context/NavigationContext';
 import { fmt, fmtDate, daysFromNow } from '@/utils/format';
-import { currentCreditCardCycle } from '@/utils/amortisation';
+import { currentCreditCardCycle, generateAmortisation } from '@/utils/amortisation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -75,13 +75,41 @@ export function CreditCardsView() {
 					) : (
 						creditCardAccounts.map((a) => {
 							const c = detailsForAccount(a);
-							const util = ((c.outstanding ?? 0) / Math.max(c.limit ?? 1, 1)) * 100;
 							const cycle = currentCreditCardCycle({
 								statementDate: c.statementDate,
 								statementDay: c.statementDay ?? 1,
 								billingCycleDays: c.billingCycleDays ?? 30,
 								gracePeriodDays: c.gracePeriodDays ?? 20,
 							});
+							const cycleStartIso = format(cycle.cycleStartDate, 'yyyy-MM-dd');
+							const cycleEndIso = format(cycle.cycleEndDate, 'yyyy-MM-dd');
+							const linkedInstallments = state.loans
+								.filter(
+									(loan) =>
+										loan.loanType === 'credit_card' &&
+										loan.linkedCreditCardId === a.id
+								)
+								.flatMap((loan) => {
+									return generateAmortisation(loan)
+										.filter(
+											(row) =>
+												!row.isPaid &&
+												row.date >= cycleStartIso &&
+												row.date <= cycleEndIso
+										)
+										.map((row) => ({
+											loanId: loan.id,
+											loanName: loan.name,
+											amount: row.totalPayable,
+											label: `EMI #${row.month}`,
+										}));
+								});
+							const linkedEmiDue = linkedInstallments.reduce(
+								(sum, item) => sum + item.amount,
+								0
+							);
+							const billedTotal = (c.outstanding ?? 0) + linkedEmiDue;
+							const util = (billedTotal / Math.max(c.limit ?? 1, 1)) * 100;
 							const nextDueIso = format(cycle.nextDueDate, 'yyyy-MM-dd');
 							const days = daysFromNow(nextDueIso);
 
@@ -121,10 +149,14 @@ export function CreditCardsView() {
 											</div>
 										</div>
 										<p className="font-mono text-2xl font-bold text-loss">
-											{fmt(c.outstanding)}
+											{fmt(billedTotal)}
 										</p>
 										<p className="text-xs text-muted-foreground mt-0.5 mb-3">
-											of {fmt(c.limit)} limit
+											Cycle due · {fmt(c.outstanding)} spend
+											{linkedEmiDue > 0
+												? ` + ${fmt(linkedEmiDue)} linked EMI`
+												: ''}
+											· of {fmt(c.limit)} limit
 										</p>
 										<Progress
 											value={util}
@@ -177,27 +209,23 @@ export function CreditCardsView() {
 											))}
 										</div>
 										{(() => {
-											const ccLoans = state.loans.filter(
-												(l) =>
-													l.loanType === 'credit_card' &&
-													l.linkedCreditCardId === a.id
-											);
-											if (!ccLoans.length) return null;
+											if (!linkedInstallments.length) return null;
 											return (
 												<>
 													<Separator className="my-3" />
 													<p className="text-xs font-semibold text-muted-foreground mb-2">
-														CC-linked EMIs
+														Current cycle linked EMIs ({cycleStartIso} -{' '}
+														{cycleEndIso})
 													</p>
-													{ccLoans.map((loan) => (
+													{linkedInstallments.map((item) => (
 														<div
-															key={loan.id}
+															key={`${item.loanId}-${item.label}`}
 															className="flex justify-between text-xs py-1">
 															<span className="text-muted-foreground">
-																{loan.name}
+																{item.loanName} · {item.label}
 															</span>
 															<span className="font-mono font-semibold">
-																{fmt(loan.emi)}/mo
+																{fmt(item.amount)}
 															</span>
 														</div>
 													))}
