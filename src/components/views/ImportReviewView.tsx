@@ -54,6 +54,8 @@ const TYPE_META: Record<
 	loan_payoff: { icon: ArrowUpRight, color: 'text-loss', label: 'Loan Payoff' },
 	lending_disbursal: { icon: ArrowUpRight, color: 'text-warning', label: 'Lending' },
 	lending_repayment: { icon: ArrowDownLeft, color: 'text-profit', label: 'Repayment' },
+	borrowing_disbursal: { icon: ArrowDownLeft, color: 'text-warning', label: 'Borrowing' },
+	borrowing_repayment: { icon: ArrowUpRight, color: 'text-loss', label: 'Borrowing Repayment' },
 	adjustment: { icon: SlidersHorizontal, color: 'text-muted-foreground', label: 'Adjustment' },
 	opening_balance: {
 		icon: SlidersHorizontal,

@@ -52,6 +52,16 @@ const TYPE_META: Record<
 		color: 'text-profit',
 		label: 'Lending Repayment',
 	},
+	borrowing_disbursal: {
+		icon: ArrowDownLeft,
+		color: 'text-warning',
+		label: 'Borrowing Disbursal',
+	},
+	borrowing_repayment: {
+		icon: ArrowUpRight,
+		color: 'text-loss',
+		label: 'Borrowing Repayment',
+	},
 	adjustment: { icon: SlidersHorizontal, color: 'text-muted-foreground', label: 'Adjustment' },
 	opening_balance: { icon: SlidersHorizontal, color: 'text-cyan', label: 'Opening Balance' },
 };

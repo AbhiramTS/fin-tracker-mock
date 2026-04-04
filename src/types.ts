@@ -105,6 +105,8 @@ export type JournalEntryType =
 	| 'loan_payoff'
 	| 'lending_disbursal'
 	| 'lending_repayment'
+	| 'borrowing_disbursal'
+	| 'borrowing_repayment'
 	| 'adjustment'
 	| 'opening_balance';
 
@@ -214,6 +216,8 @@ export interface AmortisationRow {
 }
 
 // ── Receivables ───────────────────────────────────────────────────────────────
+export type LendingEntryType = 'lent' | 'received' | 'borrowed' | 'paid';
+
 export interface Receivable extends BaseRecord {
 	personName: string;
 	description?: string;
@@ -223,6 +227,7 @@ export interface Receivable extends BaseRecord {
 	expectedRepaymentDate?: string;
 	accountId: string;
 	receivableHeadId?: string;
+	payableHeadId?: string;
 	notes?: string;
 }
 
@@ -231,6 +236,7 @@ export interface RepaymentRecord extends BaseRecord {
 	amount: number;
 	date: string;
 	accountId?: string;
+	type?: LendingEntryType;
 	notes?: string;
 }
 

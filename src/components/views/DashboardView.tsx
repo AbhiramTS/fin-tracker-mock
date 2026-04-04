@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { AlertTriangle, ShieldCheck } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { buildForecast } from '@/utils/forecast';
-import { getReceivableJournalStats } from '@/utils/receivables';
+import { getPersonNetStats } from '@/utils/receivables';
 import { fmt, fmtDate, fmtCompact, todayStr } from '@/utils/format';
 import { getOccurrencesForMonth, urgencyClass, urgencyLabel } from '@/utils/recurring';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -31,9 +31,13 @@ export function DashboardView() {
 			0
 		) + unifiedCardDebt;
 	const netWorth = totalBalance + totalInv - totalDebt;
-	const outstandingReceivables = state.receivables.reduce((sum, receivable) => {
-		const { outstanding } = getReceivableJournalStats(receivable, state.journalEntries);
-		return sum + outstanding;
+	const totalReceivable = state.receivables.reduce((sum, receivable) => {
+		const { netBalance } = getPersonNetStats(receivable, state.journalEntries);
+		return sum + Math.max(0, netBalance);
+	}, 0);
+	const totalPayable = state.receivables.reduce((sum, receivable) => {
+		const { netBalance } = getPersonNetStats(receivable, state.journalEntries);
+		return sum + Math.max(0, -netBalance);
 	}, 0);
 	const stress = Math.min(
 		100,
@@ -379,17 +383,28 @@ export function DashboardView() {
 				</Card>
 			)}
 
-			{/* Receivables summary */}
-			{outstandingReceivables > 0 && (
-				<Card>
-					<CardContent className="flex items-center justify-between p-4">
+{/* Lending & borrowing summary */}
+		{(totalReceivable > 0 || totalPayable > 0) && (
+			<Card>
+				<CardContent className="space-y-2 p-4">
+					<div className="flex items-center justify-between">
 						<div className="flex items-center gap-2">
-							<ShieldCheck className="h-4 w-4 text-warning" />
-							<p className="text-sm font-medium">Outstanding Receivables</p>
+							<ShieldCheck className="h-4 w-4 text-profit" />
+							<p className="text-sm font-medium">Total receivable</p>
 						</div>
-						<span className="font-mono text-sm font-bold text-warning">
-							{fmt(outstandingReceivables)}
+						<span className="font-mono text-sm font-bold text-profit">
+							{fmt(totalReceivable)}
 						</span>
+					</div>
+					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-2">
+							<ShieldCheck className="h-4 w-4 text-loss" />
+							<p className="text-sm font-medium">Total payable</p>
+						</div>
+						<span className="font-mono text-sm font-bold text-loss">
+							{fmt(totalPayable)}
+						</span>
+					</div>
 					</CardContent>
 				</Card>
 			)}

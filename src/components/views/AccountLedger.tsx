@@ -2,7 +2,7 @@
 import { Badge } from '@/components/ui/badge';
 import { SubpageLayout } from '@/components/ui/subpage-layout';
 import { fmt } from '@/utils/format';
-import { getReceivableJournalStats } from '@/utils/receivables';
+import { getPersonNetStats } from '@/utils/receivables';
 import { useApp } from '@/context/AppContext';
 import { JournalLedgerView } from '@/components/views/JournalLedgerView';
 import type { Account, Loan, Receivable, Investment } from '@/types';
@@ -89,11 +89,11 @@ export function ReceivableLedgerPage({
 }) {
 	const { state } = useApp();
 	if (!receivable || !receivable.receivableHeadId) return null;
-	const stats = getReceivableJournalStats(receivable, state.journalEntries);
+	const stats = getPersonNetStats(receivable, state.journalEntries);
 	return (
 		<SubpageLayout
 			title={receivable.personName}
-			subtitle={`Opening: ${fmt(stats.openingBalance)} · Lent: ${fmt(stats.totalDisbursed)} · Repaid: ${fmt(stats.totalRepaid)}`}
+			subtitle={`Net: ${fmt(stats.netBalance)} · Lent: ${fmt(stats.netLent)} · Borrowed: ${fmt(stats.netBorrowed)}`}
 			onBack={onBack}>
 			<JournalLedgerView filterAccountHeadId={receivable.receivableHeadId} />
 		</SubpageLayout>

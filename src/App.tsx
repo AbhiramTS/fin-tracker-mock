@@ -76,7 +76,7 @@ const NAV: NavItem[] = [
 	{ id: 'accounts', label: 'Accounts', icon: Wallet, group: 'Accounts' },
 	{ id: 'loans', label: 'Loans & EMIs', icon: Landmark, group: 'Accounts' },
 	{ id: 'cards', label: 'Credit Cards', icon: CreditCard, group: 'Accounts' },
-	{ id: 'receivables', label: 'Money Lent', icon: Users, group: 'Accounts' },
+	{ id: 'receivables', label: 'Lending & Borrowing', icon: Users, group: 'Accounts' },
 	{ id: 'investments', label: 'Investments', icon: BarChart3, group: 'Accounts' },
 
 	{ id: 'goals', label: 'Goals', icon: Target, group: 'Planning' },

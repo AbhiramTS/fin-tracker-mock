@@ -22,6 +22,7 @@ import type {
 	AccountHead,
 	JournalEntry,
 	JournalEntryType,
+	LendingEntryType,
 	RecurringPayment,
 	RecurringIncome,
 	Loan,
@@ -894,6 +895,8 @@ export function JournalEntryForm({
 		{ value: 'loan_payoff', label: 'Loan Payoff' },
 		{ value: 'lending_disbursal', label: 'Lending Disbursal' },
 		{ value: 'lending_repayment', label: 'Lending Repayment' },
+		{ value: 'borrowing_disbursal', label: 'Borrowing Disbursal' },
+		{ value: 'borrowing_repayment', label: 'Borrowing Repayment' },
 		{ value: 'adjustment', label: 'Adjustment' },
 		{ value: 'opening_balance', label: 'Opening Balance' },
 	];
@@ -954,6 +957,18 @@ export function JournalEntryForm({
 			debitLabel: 'Receiving Account (Debit) *',
 			creditLabel: 'Receivable / Asset Head (Credit) *',
 			debitRoot: 'asset',
+			creditRoot: 'asset',
+		},
+		borrowing_disbursal: {
+			debitLabel: 'Receiving Account (Debit) *',
+			creditLabel: 'Payable / Liability Head (Credit) *',
+			debitRoot: 'asset',
+			creditRoot: 'liability',
+		},
+		borrowing_repayment: {
+			debitLabel: 'Payable / Liability Head (Debit) *',
+			creditLabel: 'Paying Account (Credit) *',
+			debitRoot: 'liability',
 			creditRoot: 'asset',
 		},
 		adjustment: {
@@ -2130,6 +2145,155 @@ export function ReceivableForm({
 					<Textarea
 						value={f.notes ?? ''}
 						onChange={(e) => setF({ ...f, notes: e.target.value })}
+						rows={2}
+					/>
+				</FormField>
+			</FormGrid>
+			<FormActions onCancel={onCancel} />
+		</form>
+	);
+}
+
+export function LendingEntryForm({
+	initialData,
+	receivables,
+	accounts,
+	onSave,
+	onCancel,
+}: {
+	initialData?: Partial<{
+		receivableId: string;
+		personName: string;
+		type: LendingEntryType;
+		amount: number;
+		date: string;
+		accountId: string;
+		notes?: string;
+	}>;
+	receivables: Receivable[];
+	accounts: Account[];
+	onSave: (data: {
+		receivableId?: string;
+		personName: string;
+		type: LendingEntryType;
+		amount: number;
+		date: string;
+		accountId: string;
+		notes?: string;
+	}) => void;
+	onCancel: () => void;
+}) {
+	const [personName, setPersonName] = useState(initialData?.personName ?? '');
+	const [receivableId, setReceivableId] = useState<string | undefined>(initialData?.receivableId);
+	const [type, setType] = useState<LendingEntryType>(initialData?.type ?? 'lent');
+	const [amount, setAmount] = useState<number>(initialData?.amount ?? 0);
+	const [date, setDate] = useState<string>(initialData?.date ?? todayStr());
+	const [accountId, setAccountId] = useState<string>(
+		initialData?.accountId ?? accounts[0]?.id ?? ''
+	);
+	const [notes, setNotes] = useState<string>(initialData?.notes ?? '');
+
+	const submit = (e: FormEvent) => {
+		e.preventDefault();
+		if (!personName.trim() || !amount || !accountId || !date) return;
+		onSave({
+			receivableId,
+			personName: personName.trim(),
+			type,
+			amount,
+			date,
+			accountId,
+			notes: notes || undefined,
+		});
+	};
+
+	return (
+		<form
+			onSubmit={submit}
+			className="flex flex-col gap-4 p-5 pt-2">
+			<FormGrid>
+				<FormField
+					label="Person / Entity"
+					span={2}>
+					<Input
+						list="person-options"
+						value={personName}
+						onChange={(e) => {
+							const value = e.target.value;
+							setPersonName(value);
+							const found = receivables.find(
+								(r) => r.personName.toLowerCase() === value.trim().toLowerCase()
+							);
+							setReceivableId(found?.id);
+						}}
+						placeholder="Type person name"
+					/>
+					<datalist id="person-options">
+						{receivables.map((r) => (
+							<option
+								key={r.id}
+								value={r.personName}
+							/>
+						))}
+					</datalist>
+				</FormField>
+				<FormField label="Entry Type">
+					<Select
+						value={type}
+						onValueChange={(v) => setType(v as LendingEntryType)}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="lent">Lent (I gave money)</SelectItem>
+							<SelectItem value="received">Received (they repaid me)</SelectItem>
+							<SelectItem value="borrowed">Borrowed (I received money)</SelectItem>
+							<SelectItem value="paid">Paid (I repaid them)</SelectItem>
+						</SelectContent>
+					</Select>
+				</FormField>
+				<FormField label="Amount (₹)">
+					<Input
+						type="number"
+						min="0"
+						step="0.01"
+						value={amount ?? ''}
+						onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+						required
+					/>
+				</FormField>
+				<FormField label="Date">
+					<Input
+						type="date"
+						value={date}
+						onChange={(e) => setDate(e.target.value)}
+						required
+					/>
+				</FormField>
+				<FormField label="Account">
+					<Select
+						value={accountId}
+						onValueChange={setAccountId}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							{accounts.map((a) => (
+								<SelectItem
+									key={a.id}
+									value={a.id}>
+									{a.name}
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</FormField>
+				<FormField
+					label="Notes (optional)"
+					span={2}>
+					<Textarea
+						value={notes}
+						onChange={(e) => setNotes(e.target.value)}
 						rows={2}
 					/>
 				</FormField>

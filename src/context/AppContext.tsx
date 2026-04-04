@@ -448,6 +448,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				const hint = String(draft.entityHint ?? '').toLowerCase();
 
 				if (rootType === 'liability') {
+					if (hint === 'payable') {
+						const savedHead = await Repos.accountHeads.save({
+							id: draft.id,
+							name,
+							type: 'liability',
+							parentId: draft.parentId ?? 'head_liability',
+							isSystem: false,
+							isAccount: false,
+							notes: draft.notes,
+							createdAt: draft.createdAt,
+							updatedAt: draft.updatedAt,
+						} as Parameters<typeof Repos.accountHeads.save>[0]);
+						dispatch({
+							type: 'UPSERT',
+							payload: { entity: 'accountHeads', record: savedHead },
+						});
+						getPendingCount()
+							.then((n) =>
+								dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } })
+							)
+							.catch(() => {});
+						return savedHead;
+					}
+
 					if (hint === 'credit_card') {
 						const savedAccount = (await Repos.accounts.save({
 							id: draft.id,
@@ -523,6 +547,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
 				}
 
 				const allowedAssetTypes: AccountType[] = ['bank', 'cash', 'investment'];
+				if (hint === 'lending_head') {
+					const savedHead = await Repos.accountHeads.save({
+						id: draft.id,
+						name,
+						type: draft.type ?? 'asset',
+						parentId: draft.parentId ?? 'head_asset',
+						isSystem: false,
+						isAccount: false,
+						notes: draft.notes,
+						createdAt: draft.createdAt,
+						updatedAt: draft.updatedAt,
+					} as Parameters<typeof Repos.accountHeads.save>[0]);
+					dispatch({
+						type: 'UPSERT',
+						payload: { entity: 'accountHeads', record: savedHead },
+					});
+
+					getPendingCount()
+						.then((n) =>
+							dispatch({ type: 'SET_SYNC_STATE', payload: { pendingCount: n } })
+						)
+						.catch(() => {});
+					return savedHead;
+				}
+
 				if (hint === 'receivable') {
 					const savedHead = await Repos.accountHeads.save({
 						id: draft.id,
@@ -624,6 +673,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
 	// ── Remove ────────────────────────────────────────────────────────────────
 	// When removing an Account or Loan → also remove its AccountHead mirror.
 	const remove = useCallback(async (entity: EntityName, id: string) => {
+		if (entity === 'receivables') {
+			const receivable = stateRef.current.receivables.find((r) => r.id === id);
+			if (receivable?.receivableHeadId) {
+				await Repos.accountHeads.delete(receivable.receivableHeadId);
+				dispatch({
+					type: 'REMOVE',
+					payload: { entity: 'accountHeads', id: receivable.receivableHeadId },
+				});
+			}
+			if (receivable?.payableHeadId) {
+				await Repos.accountHeads.delete(receivable.payableHeadId);
+				dispatch({
+					type: 'REMOVE',
+					payload: { entity: 'accountHeads', id: receivable.payableHeadId },
+				});
+			}
+		}
+
 		await Repos[entity].delete(id);
 		dispatch({ type: 'REMOVE', payload: { entity, id } });
 
