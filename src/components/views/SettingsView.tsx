@@ -431,10 +431,32 @@ const EXPORT_ENTITIES: EntityName[] = [
 // ── ExportSection ─────────────────────────────────────────────────────────────
 function ExportSection() {
 	const { state } = useApp();
+	const [selectedEntities, setSelectedEntities] = useState<Set<EntityName>>(
+		() => new Set(EXPORT_ENTITIES)
+	);
+
+	const toggleEntity = (entity: EntityName) => {
+		setSelectedEntities((current) => {
+			const next = new Set(current);
+			if (next.has(entity)) next.delete(entity);
+			else next.add(entity);
+			return next;
+		});
+	};
+
+	const selectAllEntities = () => setSelectedEntities(new Set(EXPORT_ENTITIES));
+	const clearSelectedEntities = () => setSelectedEntities(new Set());
+
+	const selectedList = EXPORT_ENTITIES.filter((entity) => selectedEntities.has(entity));
+	const selectedRecordsCount = selectedList.reduce((total, entity) => {
+		const records = (state[entity as keyof typeof state] as unknown[]) ?? [];
+		return total + records.length;
+	}, 0);
 
 	const handleExport = () => {
+		if (selectedList.length === 0) return;
 		const payload: Record<string, unknown[]> = {};
-		for (const entity of EXPORT_ENTITIES) {
+		for (const entity of selectedList) {
 			payload[entity] = (state[entity as keyof typeof state] as unknown[]) ?? [];
 		}
 		const json = JSON.stringify(
@@ -453,15 +475,80 @@ function ExportSection() {
 
 	return (
 		<div className="flex flex-col gap-3">
+			<div className="flex items-center justify-between">
+				<p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+					Choose entities to export
+				</p>
+				<div className="flex gap-2">
+					<button
+						type="button"
+						onClick={selectAllEntities}
+						className="text-[10px] text-primary hover:underline">
+						All
+					</button>
+					<button
+						type="button"
+						onClick={clearSelectedEntities}
+						className="text-[10px] text-muted-foreground hover:underline">
+						None
+					</button>
+				</div>
+			</div>
+
+			<div className="flex flex-col gap-1.5">
+				{EXPORT_ENTITIES.map((entity) => {
+					const checked = selectedEntities.has(entity);
+					const records = (state[entity as keyof typeof state] as unknown[]) ?? [];
+					return (
+						<button
+							key={entity}
+							type="button"
+							onClick={() => toggleEntity(entity)}
+							className={`flex items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors ${
+								checked
+									? 'border-primary/40 bg-primary/10'
+									: 'border-border hover:border-primary/20'
+							}`}>
+							<div
+								className={`h-4 w-4 shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
+									checked ? 'bg-primary border-primary' : 'border-border'
+								}`}>
+								{checked && (
+									<svg
+										className="h-2.5 w-2.5 text-white"
+										viewBox="0 0 10 10"
+										fill="none">
+										<path
+											d="M1.5 5L4 7.5L8.5 2.5"
+											stroke="currentColor"
+											strokeWidth="1.8"
+											strokeLinecap="round"
+											strokeLinejoin="round"
+										/>
+									</svg>
+								)}
+							</div>
+							<div className="flex-1 min-w-0">
+								<p className="text-sm font-medium text-foreground">{entity}</p>
+							</div>
+							<Badge variant="outline">{records.length} records</Badge>
+						</button>
+					);
+				})}
+			</div>
+
 			<Button
 				variant="outline"
 				onClick={handleExport}
+				disabled={selectedList.length === 0}
 				className="w-full justify-start gap-2">
-				<Download className="h-4 w-4 text-cyan" /> Export all data as JSON
+				<Download className="h-4 w-4 text-cyan" />
+				Export {selectedList.length > 0 ? `${selectedList.length} selected` : 'selected'}
+				entities as JSON
 			</Button>
 			<p className="text-xs text-muted-foreground">
-				Exports accounts, journal entries, loans, goals, and all other records as a
-				versioned JSON file you can re-import or back up.
+				Exports {selectedRecordsCount} records from {selectedList.length} selected entities
+				as a versioned JSON file you can re-import or back up.
 			</p>
 			<div className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5 mt-1">
 				<p className="text-xs text-muted-foreground">Want to import data?</p>
